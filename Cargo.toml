@@ -1,0 +1,9 @@
+[workspace]
+name = "vecnn"
+package.authors = ["Tadeo Hepperle"]
+members = ["vptree"]
+package.version = "0.0.1"
+resolver = "2"
+
+[workspace.dependencies]
+vecnn-vptree = { path = "vptree" }
