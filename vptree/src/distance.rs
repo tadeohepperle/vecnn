@@ -1,19 +1,39 @@
 use crate::Float;
 
-struct L1Distance;
-struct L2SqDistance;
+/// L1 distance
+pub struct AbsoluteDiffSum;
 
-trait Distance {
-    fn distance<const D: usize>(a: &[Float; D], b: &[Float; D]) -> Float;
+/// L2 distance
+pub struct SquaredDiffSum;
+
+// pub type DistanceFn = fn(&[Float], &[Float]) -> Float;
+
+pub trait DistanceT: Sized {
+    fn distance(a: &[Float], b: &[Float]) -> Float;
 }
 
-impl Distance for L2SqDistance {
-    fn distance<const D: usize>(a: &[Float; D], b: &[Float; D]) -> Float {
-        let oct_loops: usize = D / 8;
-        let remainder_lopps: usize = D % 8;
-
+impl DistanceT for SquaredDiffSum {
+    fn distance(a: &[Float], b: &[Float]) -> Float {
+        let dims = a.len();
+        debug_assert_eq!(a.len(), b.len());
         let mut sum: Float = 0.0;
+        for i in 0..dims {
+            let d = a[i] - b[i];
+            sum += d * d;
+        }
+        sum
+    }
+}
 
-        todo!()
+impl DistanceT for AbsoluteDiffSum {
+    fn distance(a: &[Float], b: &[Float]) -> Float {
+        let dims = a.len();
+        debug_assert_eq!(a.len(), b.len());
+        let mut sum: Float = 0.0;
+        for i in 0..dims {
+            let d = a[i] - b[i];
+            sum += d.abs();
+        }
+        sum
     }
 }

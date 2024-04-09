@@ -3,11 +3,18 @@ use rand::{thread_rng, Rng};
 use crate::Float;
 
 /// A collection of D-dimensional points.
-pub trait DatasetT<const D: usize> {
+///
+/// The points are indexed from `0..len`.
+/// Each point is a slice of `dims` floats.
+pub trait DatasetT {
     /// Number of points in this dataset
     fn len(&self) -> usize;
-    /// returns the point at index i
-    fn get(&self, i: usize) -> &[Float; D];
+    /// Number of dimensions (each a f32) each point has.
+    fn dims(&self) -> usize;
+    /// Returns the point at index idx.
+    /// - The returned slice is expected to have `len == self.dims()`;
+    /// - Calling [`DataSetT::get()`] for any index 0..len is valid, higher idx values will panic.
+    fn get(&self, idx: usize) -> &[Float];
 }
 
 const RANDOM_DATA_SET_DIMS: usize = 768;
@@ -37,12 +44,16 @@ impl RandomDataset {
     }
 }
 
-impl DatasetT<RANDOM_DATA_SET_DIMS> for RandomDataset {
+impl DatasetT for RandomDataset {
     fn len(&self) -> usize {
         self.inner.len()
     }
 
-    fn get(&self, i: usize) -> &[Float; RANDOM_DATA_SET_DIMS] {
-        &self.inner[i]
+    fn get(&self, idx: usize) -> &[Float] {
+        &self.inner[idx]
+    }
+
+    fn dims(&self) -> usize {
+        RANDOM_DATA_SET_DIMS
     }
 }
