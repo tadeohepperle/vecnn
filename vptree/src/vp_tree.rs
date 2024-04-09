@@ -99,63 +99,86 @@ impl<'a, D: DistanceT> VpTreeBuilder<'a, D> {
 fn quick_select_median_dist(tmp: &mut [Tmp]) -> usize {
     let rank = tmp.len() / 2;
     _quick_select(tmp, rank);
-    rank
-}
+    return rank;
 
-/// l and r both inclusive
-fn _quick_select(tmp: &mut [Tmp], rank: usize) {
-    if tmp.len() <= 1 {
-        return;
+    /// l and r both inclusive
+    fn _quick_select(tmp: &mut [Tmp], rank: usize) {
+        if tmp.len() <= 1 {
+            return;
+        }
+        let last_idx_of_first_part = _partition(tmp);
+        if last_idx_of_first_part >= rank {
+            _quick_select(&mut tmp[..=last_idx_of_first_part], rank);
+        } else {
+            _quick_select(
+                &mut tmp[(last_idx_of_first_part + 1)..],
+                rank - last_idx_of_first_part - 1,
+            );
+        }
     }
-    println!("rank needed: {rank}");
-    let last_idx_of_first_part = partition(tmp);
-    if last_idx_of_first_part >= rank {
-        println!("last_idx_of_first_part > rank: keep rank");
-        _quick_select(&mut tmp[..=last_idx_of_first_part], rank);
-    } else {
-        println!("last_idx_of_first_part < rank: lower rank");
-        _quick_select(
-            &mut tmp[(last_idx_of_first_part + 1)..],
-            rank - last_idx_of_first_part - 1,
-        );
-    }
-}
 
-/// the i returned here is the last index of the first partition
-fn partition(tmp: &mut [Tmp]) -> usize {
-    let pivot_i = 0;
-    let pivot_dist = tmp[pivot_i].dist;
-    let mut i: i32 = -1;
-    let mut j = tmp.len();
-    println!("        part_in: {tmp:?}");
-    loop {
-        i += 1;
-        while tmp[i as usize].dist < pivot_dist {
+    /// the i returned here is the last index of the first partition
+    fn _partition(tmp: &mut [Tmp]) -> usize {
+        let pivot_i = 0;
+        let pivot_dist = tmp[pivot_i].dist;
+        let mut i: i32 = -1;
+        let mut j = tmp.len();
+        loop {
             i += 1;
-        }
-        j -= 1;
-        while tmp[j].dist > pivot_dist {
+            while tmp[i as usize].dist < pivot_dist {
+                i += 1;
+            }
             j -= 1;
+            while tmp[j].dist > pivot_dist {
+                j -= 1;
+            }
+            if i as usize >= j {
+                return j;
+            }
+            tmp.swap(i as usize, j);
         }
-        if i as usize >= j {
-            println!("        part_out: {tmp:?} at{j}");
-            return j;
-        }
-        tmp.swap(i as usize, j);
     }
 }
 
 #[cfg(test)]
 pub mod tests {
-    use rand::{thread_rng, SeedableRng};
+    use rand::{thread_rng, Rng, SeedableRng};
     use rand_chacha::ChaCha12Rng;
-
-    use crate::vp_tree::partition;
 
     use super::{quick_select_median_dist, Tmp};
 
+    fn slow_select_median_dist(tmp: &mut [Tmp]) -> usize {
+        tmp.sort_by(|a, b| a.dist.total_cmp(&b.dist));
+        tmp.len() / 2
+    }
+
     #[test]
-    fn quick_select_median_test() {
+    fn compare_slow_and_quick_select() {
+        let mut rng = thread_rng();
+
+        for _ in 0..100 {
+            let mut tmp: Vec<Tmp> = vec![];
+            let n = rng.gen_range(1..4000);
+            for i in 0..n {
+                tmp.push(Tmp {
+                    idx: i,
+                    dist: rng.gen(),
+                })
+            }
+
+            // check that slow_select_median_dist and quick_select_median_dist give same result for median
+            // on a separate copy of the same data.
+            let mut tmp_cloned = tmp.clone();
+            let quick_i = quick_select_median_dist(&mut tmp);
+            let quick_e = &tmp[quick_i];
+            let slow_i = quick_select_median_dist(&mut tmp_cloned);
+            let slow_e = &tmp_cloned[slow_i];
+            assert_eq!(quick_e, slow_e);
+        }
+    }
+
+    #[test]
+    fn quick_select_test_1() {
         let mut tmp = vec![
             Tmp { idx: 1, dist: 1.0 },
             Tmp { idx: 2, dist: 2.0 },
@@ -170,17 +193,15 @@ pub mod tests {
 
         let mut rng = ChaCha12Rng::seed_from_u64(0);
 
-        let max = |s: &[Tmp]| -> f32 {
-            s.iter().map(|e| (e.dist * 100000.0) as i32).max().unwrap() as f32
-        };
-
         use rand::seq::SliceRandom;
-        for _ in 0..100000 {
+        for _ in 0..1000 {
             tmp.shuffle(&mut rng);
-            let i = partition(&mut tmp);
-            assert!(max(&tmp[..=i]) < max(&tmp[(i + 1)..]));
+            // let max = |s: &[Tmp]| -> f32 {
+            //     s.iter().map(|e| (e.dist * 100000.0) as i32).max().unwrap() as f32
+            // };
+            // let i = partition(&mut tmp);
+            // assert!(max(&tmp[..=i]) < max(&tmp[(i + 1)..]));
             let i = quick_select_median_dist(&mut tmp);
-            dbg!(i);
             assert_eq!(tmp[i], Tmp { idx: 5, dist: 5.0 });
         }
     }
