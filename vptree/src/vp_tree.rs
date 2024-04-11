@@ -1,19 +1,16 @@
 use std::{fmt::Debug, marker::PhantomData};
 
-use rand::{thread_rng, Rng, SeedableRng};
+use rand::{thread_rng, Rng, RngCore, SeedableRng};
 use rand_chacha::ChaCha12Rng;
 
 use crate::{dataset::DatasetT, distance::DistanceT, Float};
 
 pub struct VpTree {
-    heap: Vec<Node>,
+    nodes: Vec<Node>,
+    data: Box<dyn DatasetT>,
 }
 
-struct Node {
-    idx: usize,
-    // the median distance where the split happened for children of node
-    dist: Float,
-}
+impl VpTree {}
 
 pub struct VpTreeConfig {
     // todo!
@@ -22,27 +19,29 @@ pub struct VpTreeConfig {
 }
 
 impl VpTree {
-    pub fn new(data: &dyn DatasetT, distance_fn: impl DistanceT) -> Self {
+    pub fn new(data: Box<dyn DatasetT>, distance_fn: impl DistanceT) -> Self {
         let seed: u64 = thread_rng().gen();
         let builder = VpTreeBuilder::new(seed, data, distance_fn);
         builder.build()
     }
 }
 
-struct VpTreeBuilder<'a, D: DistanceT> {
-    rng: ChaCha12Rng,
-    tmp: Vec<Tmp>,
-    data: &'a dyn DatasetT,
+struct VpTreeBuilder<D: DistanceT> {
+    nodes: Vec<Node>,
+    data: Box<dyn DatasetT>,
     distance: PhantomData<D>,
+    rng: ChaCha12Rng,
 }
 
 #[derive(Clone, Copy, PartialEq)]
-struct Tmp {
+struct Node {
+    /// id into the dataset
     idx: usize,
+    /// median distance of children of this node
     dist: Float,
 }
 
-impl Debug for Tmp {
+impl Debug for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("")
             .field(&self.idx)
@@ -51,58 +50,82 @@ impl Debug for Tmp {
     }
 }
 
-impl<'a, D: DistanceT> VpTreeBuilder<'a, D> {
-    pub fn new(seed: u64, data: &'a dyn DatasetT, _distance: D) -> Self {
-        let rng = ChaCha12Rng::seed_from_u64(seed);
-        let len = data.len();
-        let mut tmp: Vec<Tmp> = Vec::with_capacity(len);
-        for idx in 0..len {
-            tmp.push(Tmp { idx, dist: 0.0 });
+impl<D: DistanceT> VpTreeBuilder<D> {
+    pub fn new(seed: u64, data: Box<dyn DatasetT>, _distance: D) -> Self {
+        let mut tmp: Vec<Node> = Vec::with_capacity(data.len());
+        for idx in 0..data.len() {
+            tmp.push(Node { idx, dist: 0.0 });
         }
         VpTreeBuilder {
-            rng,
-            tmp,
+            nodes: tmp,
             data,
             distance: PhantomData,
+            rng: ChaCha12Rng::seed_from_u64(seed),
         }
     }
 
     pub fn build(mut self) -> VpTree {
-        // select a random pt from tmp storage,
-        let vp_t_i = self.select_random_point(0..self.tmp.len());
-        let vp_idx = self.tmp[vp_t_i].idx;
-        let vp_pt = self.data.get(vp_idx);
-        // swap the vp in tmp storage with first pt.
-        self.tmp.swap(vp_t_i, 0);
-
-        // calc distance for all points in tmp:
-        let d_range = 1..self.tmp.len();
-        for t_i in d_range {
-            let t = &mut self.tmp[t_i];
-            let t_pt = self.data.get(t.idx);
-            t.dist = D::distance(vp_pt, t_pt);
+        // arrange items in self.tmp into a vp tree
+        arrange_into_vp_tree::<D>(&mut self.nodes, &*self.data);
+        VpTree {
+            nodes: self.nodes,
+            data: self.data,
         }
-
-        // quick select the point with the median distance:
-
-        todo!()
-    }
-
-    fn select_random_point(&mut self, range: std::ops::Range<usize>) -> usize {
-        assert!(range.start < range.end);
-        // right now this is very simple, todo! make configurable later.
-        self.rng.gen_range(range)
     }
 }
 
-/// returns the index at which the median can be found:
-fn quick_select_median_dist(tmp: &mut [Tmp]) -> usize {
+fn arrange_into_vp_tree<D: DistanceT>(tmp: &mut [Node], data: &dyn DatasetT) {
+    // early return if there are only 0,1 or 2 elements left
+    match tmp.len() {
+        0 => return,
+        1 => {
+            tmp[0].dist = 0.0;
+            return;
+        }
+        2 => {
+            let pt_0 = data.get(tmp[0].idx);
+            let pt_1 = data.get(tmp[1].idx);
+            tmp[0].dist = D::distance(pt_0, pt_1);
+            tmp[1].dist = 0.0;
+            return;
+        }
+        _ => {}
+    }
+    // select a random index and swap it with the first element:
+    tmp.swap(select_random_point(tmp, data), 0);
+    let vp_pt = data.get(tmp[0].idx);
+    // calculate distances to each other element:
+    for i in 1..tmp.len() {
+        let other = &mut tmp[i];
+        let other_pt = data.get(other.idx);
+        other.dist = D::distance(vp_pt, other_pt);
+    }
+    // partition into points closer and further to median:
+    let median_i = quick_select_median_dist(&mut tmp[1..]) + 1;
+    assert!(median_i >= 2);
+    // set the median distance on the root node, then build left and right sub-trees
+    let median_dist = tmp[median_i].dist;
+    tmp[0].dist = median_dist;
+    arrange_into_vp_tree::<D>(&mut tmp[1..median_i], data);
+    arrange_into_vp_tree::<D>(&mut tmp[median_i..], data);
+}
+
+fn select_random_point(tmp: &[Node], _data: &dyn DatasetT) -> usize {
+    let mut rng = thread_rng();
+    // right now this is very simple, todo! make configurable later, use data to find good points
+    rng.gen_range(0..tmp.len())
+}
+
+/// Modifies the slice to have two paritions: smaller than median and larger than median.
+/// Returns the index at which the median can be found (len/2).
+/// This index always points at the first element of the second half of the slice.
+fn quick_select_median_dist(tmp: &mut [Node]) -> usize {
     let rank = tmp.len() / 2;
     _quick_select(tmp, rank);
     return rank;
 
     /// l and r both inclusive
-    fn _quick_select(tmp: &mut [Tmp], rank: usize) {
+    fn _quick_select(tmp: &mut [Node], rank: usize) {
         if tmp.len() <= 1 {
             return;
         }
@@ -118,7 +141,7 @@ fn quick_select_median_dist(tmp: &mut [Tmp]) -> usize {
     }
 
     /// the i returned here is the last index of the first partition
-    fn _partition(tmp: &mut [Tmp]) -> usize {
+    fn _partition(tmp: &mut [Node]) -> usize {
         let pivot_i = 0;
         let pivot_dist = tmp[pivot_i].dist;
         let mut i: i32 = -1;
@@ -145,9 +168,9 @@ pub mod tests {
     use rand::{thread_rng, Rng, SeedableRng};
     use rand_chacha::ChaCha12Rng;
 
-    use super::{quick_select_median_dist, Tmp};
+    use super::{quick_select_median_dist, Node};
 
-    fn slow_select_median_dist(tmp: &mut [Tmp]) -> usize {
+    fn slow_select_median_dist(tmp: &mut [Node]) -> usize {
         tmp.sort_by(|a, b| a.dist.total_cmp(&b.dist));
         tmp.len() / 2
     }
@@ -157,10 +180,10 @@ pub mod tests {
         let mut rng = thread_rng();
 
         for _ in 0..100 {
-            let mut tmp: Vec<Tmp> = vec![];
+            let mut tmp: Vec<Node> = vec![];
             let n = rng.gen_range(1..4000);
             for i in 0..n {
-                tmp.push(Tmp {
+                tmp.push(Node {
                     idx: i,
                     dist: rng.gen(),
                 })
@@ -171,7 +194,7 @@ pub mod tests {
             let mut tmp_cloned = tmp.clone();
             let quick_i = quick_select_median_dist(&mut tmp);
             let quick_e = &tmp[quick_i];
-            let slow_i = quick_select_median_dist(&mut tmp_cloned);
+            let slow_i = slow_select_median_dist(&mut tmp_cloned);
             let slow_e = &tmp_cloned[slow_i];
             assert_eq!(quick_e, slow_e);
         }
@@ -180,31 +203,44 @@ pub mod tests {
     #[test]
     fn quick_select_test_1() {
         let mut tmp = vec![
-            Tmp { idx: 1, dist: 1.0 },
-            Tmp { idx: 2, dist: 2.0 },
-            Tmp { idx: 3, dist: 3.0 },
-            Tmp { idx: 4, dist: 4.0 },
-            Tmp { idx: 5, dist: 5.0 },
-            Tmp { idx: 6, dist: 6.0 },
-            Tmp { idx: 7, dist: 7.0 },
-            Tmp { idx: 8, dist: 8.0 },
-            Tmp { idx: 9, dist: 9.0 },
+            Node { idx: 1, dist: 1.0 },
+            Node { idx: 2, dist: 2.0 },
+            Node { idx: 3, dist: 3.0 },
+            Node { idx: 4, dist: 4.0 },
+            Node { idx: 5, dist: 5.0 },
+            Node { idx: 6, dist: 6.0 },
+            Node { idx: 7, dist: 7.0 },
+            Node { idx: 8, dist: 8.0 },
         ];
+        let mut tmp2 = tmp.clone();
+        tmp2.push(Node { idx: 9, dist: 9.0 });
 
         let mut rng = ChaCha12Rng::seed_from_u64(0);
 
         use rand::seq::SliceRandom;
         for _ in 0..1000 {
             tmp.shuffle(&mut rng);
-            // let max = |s: &[Tmp]| -> f32 {
-            //     s.iter().map(|e| (e.dist * 100000.0) as i32).max().unwrap() as f32
-            // };
-            // let i = partition(&mut tmp);
-            // assert!(max(&tmp[..=i]) < max(&tmp[(i + 1)..]));
+            tmp2.shuffle(&mut rng);
+
+            // even number of elements (should return index to first element of second half):
             let i = quick_select_median_dist(&mut tmp);
-            assert_eq!(tmp[i], Tmp { idx: 5, dist: 5.0 });
+            assert_eq!(i, 4);
+            assert_eq!(tmp[i], Node { idx: 5, dist: 5.0 });
+
+            // uneven number of elements:
+            let i = quick_select_median_dist(&mut tmp2);
+            assert_eq!(i, 4);
+            assert_eq!(tmp[i], Node { idx: 5, dist: 5.0 });
         }
     }
+
+    // #[test]
+    // fn trailing_zeros() {
+    //     for e in 0u64..100 {
+    //         // let z = e.();
+    //         println!("{e}: {z}");
+    //     }
+    // }
 }
 
 /*
