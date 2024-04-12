@@ -1,8 +1,8 @@
 [workspace]
 name = "vecnn"
 package.authors = ["Tadeo Hepperle"]
-members = ["vptree"]
 package.version = "0.0.1"
+members = ["vecnnpy", "vptree"]
 resolver = "2"
 
 [workspace.dependencies]

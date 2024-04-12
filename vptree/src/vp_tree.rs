@@ -1,4 +1,4 @@
-use std::{fmt::Debug, marker::PhantomData};
+use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
 use rand::{thread_rng, Rng, RngCore, SeedableRng};
 use rand_chacha::ChaCha12Rng;
@@ -6,8 +6,8 @@ use rand_chacha::ChaCha12Rng;
 use crate::{dataset::DatasetT, distance::DistanceT, Float};
 
 pub struct VpTree {
-    nodes: Vec<Node>,
-    data: Box<dyn DatasetT>,
+    pub nodes: Vec<Node>,
+    pub data: Arc<dyn DatasetT>,
 }
 
 impl VpTree {}
@@ -19,26 +19,47 @@ pub struct VpTreeConfig {
 }
 
 impl VpTree {
-    pub fn new(data: Box<dyn DatasetT>, distance_fn: impl DistanceT) -> Self {
+    pub fn new(data: Arc<dyn DatasetT>, distance_fn: impl DistanceT) -> Self {
         let seed: u64 = thread_rng().gen();
         let builder = VpTreeBuilder::new(seed, data, distance_fn);
         builder.build()
+    }
+
+    pub fn iter_levels(&self, f: &mut impl FnMut(usize, &Node)) {
+        fn slice_iter(nodes: &[Node], level: usize, f: &mut impl FnMut(usize, &Node)) {
+            // match nodes.len() {
+            //     0 => return,
+            //     1 => f(level, &nodes[0]),
+            //     _ => {}
+            // }
+            if nodes.len() == 0 {
+                return;
+            }
+            f(level, &nodes[0]);
+            if nodes.len() > 1 {
+                let half = (nodes.len() - 1) / 2 + 1;
+
+                slice_iter(&nodes[1..half], level + 1, f);
+                slice_iter(&nodes[half..], level + 1, f);
+            }
+        }
+        slice_iter(&self.nodes, 0, f);
     }
 }
 
 struct VpTreeBuilder<D: DistanceT> {
     nodes: Vec<Node>,
-    data: Box<dyn DatasetT>,
+    data: Arc<dyn DatasetT>,
     distance: PhantomData<D>,
     rng: ChaCha12Rng,
 }
 
 #[derive(Clone, Copy, PartialEq)]
-struct Node {
+pub struct Node {
     /// id into the dataset
-    idx: usize,
+    pub idx: usize,
     /// median distance of children of this node
-    dist: Float,
+    pub dist: Float,
 }
 
 impl Debug for Node {
@@ -51,7 +72,7 @@ impl Debug for Node {
 }
 
 impl<D: DistanceT> VpTreeBuilder<D> {
-    pub fn new(seed: u64, data: Box<dyn DatasetT>, _distance: D) -> Self {
+    pub fn new(seed: u64, data: Arc<dyn DatasetT>, _distance: D) -> Self {
         let mut tmp: Vec<Node> = Vec::with_capacity(data.len());
         for idx in 0..data.len() {
             tmp.push(Node { idx, dist: 0.0 });

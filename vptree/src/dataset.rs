@@ -6,7 +6,7 @@ use crate::Float;
 ///
 /// The points are indexed from `0..len`.
 /// Each point is a slice of `dims` floats.
-pub trait DatasetT {
+pub trait DatasetT: Send + Sync + 'static {
     /// Number of points in this dataset
     fn len(&self) -> usize;
     /// Number of dimensions (each a f32) each point has.
