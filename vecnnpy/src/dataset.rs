@@ -14,6 +14,7 @@ pub type Arr2d = ArrayBase<OwnedRepr<f32>, Dim<[usize; 2]>>;
 #[pyclass]
 pub struct Dataset(Arc<DatasetInner>);
 
+#[derive(Debug, Clone)]
 pub struct DatasetInner {
     data: Arr2d,
     len: usize,

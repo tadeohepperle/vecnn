@@ -1,3 +1,5 @@
+use std::{fmt::Debug, ops::Deref, sync::Arc};
+
 use rand::{thread_rng, Rng};
 
 use crate::Float;
@@ -6,7 +8,7 @@ use crate::Float;
 ///
 /// The points are indexed from `0..len`.
 /// Each point is a slice of `dims` floats.
-pub trait DatasetT: Send + Sync + 'static {
+pub trait DatasetT: Send + Sync + 'static + Debug {
     /// Number of points in this dataset
     fn len(&self) -> usize;
     /// Number of dimensions (each a f32) each point has.
@@ -18,42 +20,46 @@ pub trait DatasetT: Send + Sync + 'static {
 }
 
 const RANDOM_DATA_SET_DIMS: usize = 768;
-pub struct RandomDataset {
-    inner: Vec<[Float; RANDOM_DATA_SET_DIMS]>,
-}
-
-impl std::fmt::Debug for RandomDataset {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct(&format!("RandomDataset ({})", self.len()))
-            .finish()
-    }
-}
-
-impl RandomDataset {
-    pub fn new(count: usize) -> Self {
-        let mut inner: Vec<[Float; RANDOM_DATA_SET_DIMS]> = Vec::with_capacity(count);
-        let mut rng = thread_rng();
-        for _ in 0..count {
-            let mut p: [Float; RANDOM_DATA_SET_DIMS] = [0.0; RANDOM_DATA_SET_DIMS];
-            for f in p.iter_mut() {
-                *f = rng.gen();
-            }
-            inner.push(p);
+pub fn random_data_set_768(count: usize) -> Arc<dyn DatasetT> {
+    let mut data: Vec<[Float; RANDOM_DATA_SET_DIMS]> = Vec::with_capacity(count);
+    let mut rng = thread_rng();
+    for _ in 0..count {
+        let mut p: [Float; RANDOM_DATA_SET_DIMS] = [0.0; RANDOM_DATA_SET_DIMS];
+        for f in p.iter_mut() {
+            *f = rng.gen();
         }
-        Self { inner }
+        data.push(p);
     }
+    Arc::new(data)
 }
 
-impl DatasetT for RandomDataset {
+impl<T, const D: usize> DatasetT for T
+where
+    T: Deref<Target = [[Float; D]]> + Send + Sync + 'static + Debug,
+{
     fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    fn get(&self, idx: usize) -> &[Float] {
-        &self.inner[idx]
+        self.deref().len()
     }
 
     fn dims(&self) -> usize {
-        RANDOM_DATA_SET_DIMS
+        D
+    }
+
+    fn get(&self, idx: usize) -> &[Float] {
+        &self[idx]
+    }
+}
+
+impl<const D: usize> DatasetT for [[Float; D]] {
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn dims(&self) -> usize {
+        D
+    }
+
+    fn get(&self, idx: usize) -> &[Float] {
+        &self[idx]
     }
 }

@@ -1,50 +1,161 @@
-use std::{fmt::Debug, marker::PhantomData, sync::Arc};
+use std::{collections::BinaryHeap, fmt::Debug, marker::PhantomData, sync::Arc};
 
-use rand::{thread_rng, Rng, RngCore, SeedableRng};
-use rand_chacha::ChaCha12Rng;
+use rand::{thread_rng, Rng, SeedableRng};
+use rand_chacha::{rand_core::impls, ChaCha12Rng};
 
-use crate::{dataset::DatasetT, distance::DistanceT, Float};
+use crate::{
+    dataset::DatasetT,
+    distance::{DistanceFn, DistanceT},
+    Float,
+};
 
+/// # VpTree
+///
+/// # Memory layout:
+///
+/// All nodes are kept next to each other in a big vec:
+///
+/// example eight nodes:
+/// ```txt
+/// X l l l h h h h
+///   Y l h Y l h h
+///     Z Z   Z Z h
+///               T
+///    |   |   |
+///   
+/// ```
+///
+/// example seven nodes:
+/// ```txt
+/// X l l h h h h
+///   Y l h Y l h
+///     Z Z   Z Z
+///             
+/// ```
+///
+/// example 14 nodes:
+/// ```txt
+/// X l l l l l l h h h h h h h
+///   Y l l h h h Y l l l h h h
+///     Z h Z l h   Z l h Z l h
+///       T   T T     T T   T T
+///        |     |       |
+///
+///
+/// X h
+/// X h h
+/// X l h h
+/// X l h h h
+/// X l l h h h
+/// X l l h h h h
+/// X l l l h h h h
+#[derive(Debug, Clone)]
 pub struct VpTree {
     pub nodes: Vec<Node>,
     pub data: Arc<dyn DatasetT>,
+    pub distance_fn: DistanceFn,
 }
 
 impl VpTree {}
 
-pub struct VpTreeConfig {
-    // todo!
-    // - how to select random split point,
-    // - max depth...
-}
-
 impl VpTree {
-    pub fn new(data: Arc<dyn DatasetT>, distance_fn: impl DistanceT) -> Self {
+    pub fn new(data: Arc<dyn DatasetT>, distance: impl DistanceT) -> Self {
         let seed: u64 = thread_rng().gen();
-        let builder = VpTreeBuilder::new(seed, data, distance_fn);
+        let builder = VpTreeBuilder::new(seed, data, distance);
         builder.build()
     }
 
     pub fn iter_levels(&self, f: &mut impl FnMut(usize, &Node)) {
         fn slice_iter(nodes: &[Node], level: usize, f: &mut impl FnMut(usize, &Node)) {
-            // match nodes.len() {
-            //     0 => return,
-            //     1 => f(level, &nodes[0]),
-            //     _ => {}
-            // }
             if nodes.len() == 0 {
                 return;
             }
             f(level, &nodes[0]);
             if nodes.len() > 1 {
-                let half = (nodes.len() - 1) / 2 + 1;
-
-                slice_iter(&nodes[1..half], level + 1, f);
-                slice_iter(&nodes[half..], level + 1, f);
+                slice_iter(left(nodes), level + 1, f);
+                slice_iter(right(nodes), level + 1, f);
             }
         }
         slice_iter(&self.nodes, 0, f);
     }
+
+    pub fn knn_search(&self, q: &[Float], k: usize) -> Vec<Node> {
+        assert_eq!(q.len(), self.data.dims());
+        struct Ctx<F: Fn(usize) -> Float> {
+            heap: BinaryHeap<Node>,
+            tau: Float, // only nodes with dist < tau can be still fitted into the heap
+            dist_to_q: F,
+            k: usize,
+        }
+        fn search_slice<F: Fn(usize) -> Float>(nodes: &[Node], ctx: &mut Ctx<F>) {
+            if nodes.len() == 0 {
+                return;
+            }
+            let Node { idx, dist: radius } = nodes[0];
+            let dist = (ctx.dist_to_q)(idx);
+            if dist < ctx.tau {
+                if ctx.heap.len() == ctx.k {
+                    ctx.heap.pop();
+                }
+                ctx.heap.push(Node { idx, dist }); // store the node and its dist to q
+                if ctx.heap.len() == ctx.k {
+                    ctx.tau = ctx.heap.peek().unwrap().dist
+                }
+            }
+            if nodes.len() == 1 {
+                return;
+            }
+
+            if dist < radius {
+                // search inside the nodes radius first, then outside
+                if dist - ctx.tau <= radius {
+                    search_slice(left(nodes), ctx)
+                }
+                if dist + ctx.tau >= radius {
+                    search_slice(right(nodes), ctx)
+                }
+            } else {
+                // search outside first then inside
+                if dist + ctx.tau >= radius {
+                    search_slice(right(nodes), ctx)
+                }
+                if dist - ctx.tau <= radius {
+                    search_slice(left(nodes), ctx)
+                }
+            }
+        }
+
+        let dist_to_q = |idx| {
+            let p = self.data.get(idx);
+            (self.distance_fn)(p, q)
+        };
+        let mut ctx = Ctx {
+            heap: BinaryHeap::new(),
+            tau: Float::MAX,
+            dist_to_q,
+            k,
+        };
+        search_slice(&self.nodes, &mut ctx);
+
+        Vec::from(ctx.heap)
+    }
+}
+
+#[inline(always)]
+fn first_element_idx_of_second_part(len: usize) -> usize {
+    // len / 2
+    (len - 1) / 2
+}
+
+#[inline(always)]
+fn left(nodes: &[Node]) -> &[Node] {
+    let end_idx_excl = first_element_idx_of_second_part(nodes.len() - 1) + 1;
+    &nodes[1..end_idx_excl]
+}
+#[inline(always)]
+fn right(nodes: &[Node]) -> &[Node] {
+    let start_idx = first_element_idx_of_second_part(nodes.len() - 1) + 1;
+    &nodes[start_idx..]
 }
 
 struct VpTreeBuilder<D: DistanceT> {
@@ -61,6 +172,18 @@ pub struct Node {
     /// median distance of children of this node
     pub dist: Float,
 }
+
+impl PartialOrd for Node {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.dist.partial_cmp(&other.dist)
+    }
+}
+impl Ord for Node {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.dist.total_cmp(&other.dist)
+    }
+}
+impl Eq for Node {}
 
 impl Debug for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -91,6 +214,7 @@ impl<D: DistanceT> VpTreeBuilder<D> {
         VpTree {
             nodes: self.nodes,
             data: self.data,
+            distance_fn: D::distance,
         }
     }
 }
@@ -123,7 +247,7 @@ fn arrange_into_vp_tree<D: DistanceT>(tmp: &mut [Node], data: &dyn DatasetT) {
     }
     // partition into points closer and further to median:
     let median_i = quick_select_median_dist(&mut tmp[1..]) + 1;
-    assert!(median_i >= 2);
+    // assert!(median_i >= 2);
     // set the median distance on the root node, then build left and right sub-trees
     let median_dist = tmp[median_i].dist;
     tmp[0].dist = median_dist;
@@ -138,14 +262,15 @@ fn select_random_point(tmp: &[Node], _data: &dyn DatasetT) -> usize {
 }
 
 /// Modifies the slice to have two paritions: smaller than median and larger than median.
-/// Returns the index at which the median can be found (len/2).
-/// This index always points at the first element of the second half of the slice.
+/// Returns an index into the second partition.
+///
+/// Second partition's size is always >= first partition.
 fn quick_select_median_dist(tmp: &mut [Node]) -> usize {
-    let rank = tmp.len() / 2;
+    let rank = first_element_idx_of_second_part(tmp.len());
     _quick_select(tmp, rank);
     return rank;
 
-    /// l and r both inclusive
+    /// Note: idx rank will be part of second partition.
     fn _quick_select(tmp: &mut [Node], rank: usize) {
         if tmp.len() <= 1 {
             return;
@@ -186,10 +311,32 @@ fn quick_select_median_dist(tmp: &mut [Node]) -> usize {
 
 #[cfg(test)]
 pub mod tests {
+
+    #[test]
+    fn nums() {
+        println!("{}", 5 / 2);
+        let n = 11;
+        let p = 4;
+        for i in 0..p {
+            let start = (i * n) / p;
+            let end = ((i + 1) * n) / p;
+            println!("{start}..{end} / {n}")
+        }
+    }
+
+    use std::{collections::BinaryHeap, sync::Arc};
+
     use rand::{thread_rng, Rng, SeedableRng};
     use rand_chacha::ChaCha12Rng;
 
-    use super::{quick_select_median_dist, Node};
+    use crate::{
+        dataset::{random_data_set_768, DatasetT},
+        distance::SquaredDiffSum,
+        vp_tree::{left, right},
+        Float,
+    };
+
+    use super::{quick_select_median_dist, Node, VpTree};
 
     fn slow_select_median_dist(tmp: &mut [Node]) -> usize {
         tmp.sort_by(|a, b| a.dist.total_cmp(&b.dist));
@@ -217,6 +364,7 @@ pub mod tests {
             let quick_e = &tmp[quick_i];
             let slow_i = slow_select_median_dist(&mut tmp_cloned);
             let slow_e = &tmp_cloned[slow_i];
+            assert_eq!(quick_i, slow_i);
             assert_eq!(quick_e, slow_e);
         }
     }
@@ -255,139 +403,92 @@ pub mod tests {
         }
     }
 
-    // #[test]
-    // fn trailing_zeros() {
-    //     for e in 0u64..100 {
-    //         // let z = e.();
-    //         println!("{e}: {z}");
-    //     }
-    // }
+    /// just draw numbers 0..X where X <=9 into the grid to test stuff:
+    fn test_set() -> Arc<dyn DatasetT> {
+        let str = "
+          3
+        4
+                                7 
+                       2
+            9
+        6                      0
+                  5
+                         8  1   
+        ";
+
+        let mut pts: Vec<(usize, [f32; 2])> = vec![];
+        let mut y = 0.0;
+        for line in str.lines() {
+            let mut x = 0.0;
+            for ch in line.chars() {
+                if let Some(idx) = ch.to_digit(10) {
+                    pts.push((idx as usize, [x, y]))
+                }
+                x += 1.0;
+            }
+            y += 2.0;
+        }
+        pts.sort_by(|a, b| a.0.cmp(&b.0));
+        for (i, (e, _)) in pts.iter().enumerate() {
+            assert_eq!(i, *e)
+        }
+        let pts: Vec<[f32; 2]> = pts.into_iter().map(|e| e.1).collect();
+        Arc::new(pts)
+    }
+
+    fn knn_slow(data: &dyn DatasetT, q: &[Float]) {
+        assert_eq!(q.len(), data.dims());
+
+        let heap = BinaryHeap::<Node>::new();
+    }
+
+    /// cargo test knn_1 --release
+    #[test]
+    fn knn_1() {
+        let random_set = random_data_set_768(1000);
+        let test_set = test_set();
+
+        for data in [test_set, random_set] {
+            for _ in 0..20 {
+                let query_idx = thread_rng().gen_range(0..data.len());
+                let query = data.get(query_idx);
+                let vp_tree = VpTree::new(data.clone(), SquaredDiffSum);
+                let nn = vp_tree.knn_search(query, 1)[0];
+                assert_eq!(nn.idx, query_idx);
+                assert_eq!(nn.dist, 0.0);
+            }
+        }
+    }
+
+    #[test]
+    fn print_is() {
+        for i in 0..100 {
+            let s = i / 2;
+            let s2 = ((i - 1) / 2) + 1;
+            println!("i: {i}   s: {s}   s2:{s2}")
+        }
+
+        let nodes = (0..7)
+            .map(|e| Node { idx: e, dist: 0.0 })
+            .collect::<Vec<_>>();
+
+        println!(
+            "nodes: {nodes:?}   left: {:?}    right: {:?}",
+            left(&nodes),
+            right(&nodes)
+        );
+    }
 }
 
 /*
 
-// Sorts a (portion of an) array, divides it into partitions, then sorts those
-algorithm quicksort(A, lo, hi) is
-  if lo >= 0 && hi >= 0 && lo < hi then
-    p := partition(A, lo, hi)
-    quicksort(A, lo, p) // Note: the pivot is now included
-    quicksort(A, p + 1, hi)
-
-// Divides array into two partitions
-algorithm partition(A, lo, hi) is
-  // Pivot value
-  pivot := A[lo] // Choose the first element as the pivot
-
-  // Left index
-  i := lo - 1
-
-  // Right index
-  j := hi + 1
-
-  loop forever
-    // Move the left index to the right at least once and while the element at
-    // the left index is less than the pivot
-    do i := i + 1 while A[i] < pivot
-
-    // Move the right index to the left at least once and while the element at
-    // the right index is greater than the pivot
-    do j := j - 1 while A[j] > pivot
-
-    // If the indices crossed, return
-    if i >= j then return j
-
-    // Swap the elements at the left and right indices
-    swap A[i] with A[j]
 
 
-
-*/
-
-/*
-
-http://stevehanov.ca/blog/index.php?id=130
-Buildtree(left, right)
-http://stevehanov.ca/blog/index.php?id=130
-https://johnnysswlab.com/performance-through-memory-layout/#:~:text=Binary%20Tree%20Memory%20Layout,-For%20the%20binary&text=Left%20Child%20Neighbor%20Layout%20%E2%80%93%20for,neighboring%20memory%20chunks%20in%20memory.
-
-for each element one node slot in a big vec
-
-[                                    ]
-
-
-
-the index of the node can already determine its position in the tree:
-
-          root
-      l          r
-
- ll     lr    rl    rr
-
-
-binary heap:
-
-root | l, r | ll, lr, rl, rr
-
-
-
-
-
-
-
-root | l  ll lr lll llr ...                  |  r
-
-here all the subtrees are continous in memory
-
-
-Node{
-
+pub struct VpTreeConfig {
+    // todo!
+    // - how to select random split point,
+    // - max depth...
 }
-
-
-
-
-Node{
-    left: Option<usize>,
-    right: Option<usize>,
-}
-
-
-select one pt from the data.
-determine for each
-
-
-
-given some value, find the median: O(n) (quickselect)
-
-lets have a memory region called scratch space at first,
-where we compute distances every time.
-
-
-So first, we can just init this space to zeros.
-
-Now when choosing the first vantage point, we can compute distances from this point to each other
-
-
-
-
-steps to build the vp tree:
-
-
-memory needed:
-
-a scratchpad for organizing the nodes by their distance.
-
-[ (id: usize,  )]
-
-this is just a vec where each element has idx and
-
-
-the result of the tree should
-
-
-
-
-
 
 
 */

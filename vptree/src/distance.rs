@@ -6,7 +6,7 @@ pub struct AbsoluteDiffSum;
 /// L2 distance
 pub struct SquaredDiffSum;
 
-// pub type DistanceFn = fn(&[Float], &[Float]) -> Float;
+pub type DistanceFn = fn(&[Float], &[Float]) -> Float;
 
 pub trait DistanceT: Sized {
     fn distance(a: &[Float], b: &[Float]) -> Float;
