@@ -1,9 +1,11 @@
 use std::{
+    cmp::Reverse,
     collections::{BinaryHeap, HashSet},
     sync::Arc,
 };
 
 use arrayvec::ArrayVec;
+use heapless::binary_heap::{Max, Min};
 use rand::{thread_rng, Rng};
 use rand_chacha::ChaChaRng;
 
@@ -20,6 +22,18 @@ pub struct Params {
     ef_construction: usize,
     m_max: usize,
     m_max_0: usize,
+}
+
+impl Params {
+    /// Returns max number of connections allowed on layer l
+    #[inline(always)]
+    fn m_max_on_level(&self, l: usize) -> usize {
+        if l == 0 {
+            self.m_max_0
+        } else {
+            self.m_max
+        }
+    }
 }
 
 pub struct Hnsw {
@@ -40,14 +54,15 @@ struct LayerEntry {
     /// pos where we can find this entry at a lower level.
     /// insignificat on level 0, just set to u32::MAX.
     lower_level_idx: u32,
-    neighbors: ArrayVec<u32, M>, // the u32 stores the index in the layer
+    /// a Max-Heap, such that we can easily pop off the item with the largest distance to make space.
+    neighbors: heapless::BinaryHeap<IdxAndDist, Max, M>, // the u32 stores the index in the layer
 }
 impl LayerEntry {
     fn new(id: u32, lower_level_idx: u32) -> LayerEntry {
         LayerEntry {
             id,
             lower_level_idx,
-            neighbors: ArrayVec::new(),
+            neighbors: Default::default(),
         }
     }
 }
@@ -75,7 +90,7 @@ fn new_hnsw(data: Arc<dyn DatasetT>, params: Params) -> Hnsw {
     entries.push(LayerEntry {
         id: 0,
         lower_level_idx: u32::MAX,
-        neighbors: ArrayVec::new(),
+        neighbors: Default::default(),
     });
     hnsw.layers.push(Layer { entries });
 
@@ -129,7 +144,7 @@ fn insert(hnsw: &mut Hnsw, q: ID) {
     let ep_l = top_l.min(insert_l);
     let mut ep_idx_at_ep_l = 0;
     for l in (insert_l + 1..=top_l).rev() {
-        let res = closest_point_in_layer(&hnsw.layers[l], q_data, ep_idx_at_ep_l);
+        let res = closest_point_in_layer(&hnsw.layers[l], &*hnsw.data, q_data, ep_idx_at_ep_l);
         ep_idx_at_ep_l = res.idx_in_lower_layer;
     }
 
@@ -151,71 +166,52 @@ fn insert(hnsw: &mut Hnsw, q: ID) {
             hnsw.params.ef_construction,
             &mut search_buffers,
         );
-        select_neighbors(
-            layer,
-            q_data,
-            search_buffers.found.as_slice(),
-            &mut neighbors_out,
-        );
+        select_neighbors(layer, &mut search_buffers.found, M, &mut neighbors_out);
         // add bidirectional connections from neighbors to q at layer l:
         let idx_of_q_in_l = layer.entries.len() as u32 - 1;
+        let m_max = hnsw.params.m_max_on_level(l);
         for n in neighbors_out.iter() {
-            layer.entries[n.idx_in_layer].neighbors.push(idx_of_q_in_l);
-            layer.entries[n.idx_in_layer].neighbors.push(idx_of_q_in_l);
+            // add connection from q to n:
+            layer.entries[idx_of_q_in_l as usize]
+                .neighbors
+                .push(IdxAndDist {
+                    idx_in_layer: n.idx_in_layer,
+                    dist: n.d_to_q,
+                })
+                .expect("should have space.");
+
+            // add connection from n to q:
+            let n_neighbors = &mut layer.entries[n.idx_in_layer as usize].neighbors;
+            if n_neighbors.len() < m_max {
+                n_neighbors
+                    .push(IdxAndDist {
+                        idx_in_layer: idx_of_q_in_l,
+                        dist: n.d_to_q,
+                    })
+                    .expect("should have space too");
+            } else {
+                // if all neighbors in n_neighbors are closer already, dont add connection from n to q:
+                let max_d = n_neighbors.peek().unwrap().dist;
+                if max_d > n.d_to_q {
+                    // because this is a max heap, pop removes the item with the greatest distance.
+                    n_neighbors.pop().unwrap();
+                    n_neighbors
+                        .push(IdxAndDist {
+                            idx_in_layer: idx_of_q_in_l,
+                            dist: n.d_to_q,
+                        })
+                        .unwrap();
+                }
+            }
         }
-        for n in neighbors_out.iter() {}
+
+        // set new ep_idxs_in_layer:
+        ep_idxs_in_layer.clear();
+        for e in search_buffers.found.iter() {
+            ep_idxs_in_layer.push(e.idx_in_layer)
+        }
     }
-
-    // add additional layers if necessary:
-    // if insert_l > top_l {
-    //     let mut lower_level_i = hnsw.layers[top_l].entries.len() as u32;
-    //     for _ in 0..(insert_l - top_l) {
-    //         hnsw.layers.push(Layer {
-    //             entries: vec![LayerEntry {
-    //                 id,
-    //                 lower_level_idx,
-    //                 neighbors: ArrayVec::new(),
-    //             }],
-    //         });
-    //         lower_level_i = 0;
-    //     }
-    // }
-
-    // for l in (0..=insert_l).rev() {}
-
-    todo!()
-
-    // for lc in (l+1..=L).rev() {
-    //     W = search_layer(hnsw, q, ep, ef = 1, lc)
-    //     ep = [get_nearest_element(W, q)]
-    // }
-
-    // for lc in (0..=min(l,L)).rev() {
-    //     let Mmax = if lc == 0 {  Mmax_0 } else { Mmax }
-    //     W : [ID]  = search_layer(hnsw, q, ep, efConstruction, lc);
-    //     neighbors = select_neighbors(hnsw, q, W, M, lc);
-
-    //     // add bidirectional connections from neighbors to q at layer lc:
-
-    //     for e in neighbors {
-    //         // shrink connections if needed
-    //         e_conn: [ID] = neighbourhood(hnsw, e, lc)
-    //         if e_conn.len() > Mmax {
-    //             // shrink connections of e:
-    //             eNewConn = select_neighbors(hnsw, e, eConn, Mmax, lc);
-    //             set_connections(hnsw, e, lc, eNewConn);
-    //         }
-    //     }
-
-    //     ep = W
-    // }
-
-    // if l > L
-    //     // set enter point for hnsw to q
-    //     set_new_enter_point(hnsw, q, l)
 }
-
-// fn insert_phase_1()
 
 fn pick_level(level_norm_param: f32) -> usize {
     let f = thread_rng().gen::<f32>();
@@ -229,45 +225,20 @@ fn testlevel() {
     }
 }
 
-struct HnswEp {
-    top_l: usize,
-    ep: PtInLayer,
-}
-
-struct PtInLayer {
-    idx_in_layer: usize,
-    id: ID,
-}
-
-/// panics if no point present. returns the points id,
-fn get_entry(hnsw: &Hnsw) -> HnswEp {
-    let top_l = hnsw.layers.len() - 1;
-    let idx_in_layer = 0;
-    let id = hnsw.layers[top_l].entries[idx_in_layer].id;
-    HnswEp {
-        top_l,
-        ep: PtInLayer { idx_in_layer, id },
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 struct SearchLayerRes {
-    idx_in_layer: usize,
-    idx_in_lower_layer: usize,
+    idx_in_layer: u32,
+    idx_in_lower_layer: u32,
     id: ID,
     d_to_q: f32,
 }
 
-fn closest_point_in_layer(layer: &Layer, q_data: &[f32], ep_idx_in_layer: usize) -> SearchLayerRes {
-    todo!()
-}
-
 struct SearchBuffers {
-    visited_idxs: HashSet<usize>,
-    /// we need to be able to extract the closest element from this.
-    candidates: BinaryHeap<ClosestIsRoot>,
-    /// we need to be able to extract the furthest element from this.
-    found: BinaryHeap<FurthestIsRoot>,
+    visited_idxs: HashSet<u32>,
+    /// we need to be able to extract the closest element from this (so we use Reverse<IdxAndDist> to have a min-heap)
+    candidates: BinaryHeap<Reverse<IdxAndDist>>,
+    /// we need to be able to extract the furthest element from this: this is a max heap, the root is the max distance.
+    found: BinaryHeap<IdxAndDist>,
 }
 
 impl SearchBuffers {
@@ -279,68 +250,80 @@ impl SearchBuffers {
         }
     }
 
-    fn initialize(&mut self, ep_idxs_in_layer: &[usize], idx_to_dist: impl Fn(usize) -> f32) {
+    fn initialize(&mut self, ep_idxs_in_layer: &[u32], idx_to_dist: impl Fn(u32) -> f32) {
         self.visited_idxs.clear();
         self.candidates.clear();
         self.found.clear();
-        for idx in ep_idxs_in_layer {
-            let d = idx_to_dist(*idx);
-            self.visited_idxs.insert(*idx);
-            self.candidates.push(ClosestIsRoot {
-                idx_in_layer: *idx,
-                dist: d,
-            });
-            self.found.push(FurthestIsRoot {
-                idx_in_layer: *idx,
-                dist: d,
-            })
+        for idx_in_layer in ep_idxs_in_layer.iter().copied() {
+            let dist = idx_to_dist(idx_in_layer);
+            self.visited_idxs.insert(idx_in_layer);
+            self.candidates
+                .push(Reverse(IdxAndDist { idx_in_layer, dist }));
+            self.found.push(IdxAndDist { idx_in_layer, dist })
         }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-struct FurthestIsRoot {
-    idx_in_layer: usize,
+struct IdxAndDist {
+    idx_in_layer: u32,
     dist: f32, // distance
 }
 
-impl PartialEq for FurthestIsRoot {
+impl PartialEq for IdxAndDist {
     fn eq(&self, other: &Self) -> bool {
         self.idx_in_layer == other.idx_in_layer && self.dist == other.dist
     }
 }
-impl Eq for FurthestIsRoot {}
-impl PartialOrd for FurthestIsRoot {
+impl Eq for IdxAndDist {}
+impl PartialOrd for IdxAndDist {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.dist.partial_cmp(&other.dist)
     }
 }
-impl Ord for FurthestIsRoot {
+impl Ord for IdxAndDist {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.dist.total_cmp(&other.dist)
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct ClosestIsRoot {
-    idx_in_layer: usize,
-    dist: f32, // distance
-}
+/// greedy routing trough the graph, going to the closest neighbor all the time.
+fn closest_point_in_layer(
+    layer: &Layer,
+    data: &dyn DatasetT,
+    q_data: &[f32],
+    ep_idx_in_layer: u32,
+) -> SearchLayerRes {
+    let distance = SquaredDiffSum::distance;
+    // let visited_idxs: HashSet<usize> = HashSet::new(); // prob. not needed???
 
-impl PartialEq for ClosestIsRoot {
-    fn eq(&self, other: &Self) -> bool {
-        self.idx_in_layer == other.idx_in_layer && self.dist == other.dist
-    }
-}
-impl Eq for ClosestIsRoot {}
-impl PartialOrd for ClosestIsRoot {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        other.dist.partial_cmp(&self.dist)
-    }
-}
-impl Ord for ClosestIsRoot {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.dist.total_cmp(&self.dist)
+    // initialize best entry to the entry point (at ep_idx_in_layer)
+    let mut best_entry_idx_in_layer = ep_idx_in_layer;
+    let mut best_entry = &layer.entries[best_entry_idx_in_layer as usize];
+    let mut best_entry_d = distance(data.get(best_entry.id as usize), q_data);
+
+    // iterate over all neighbors of best_entry, go to the one with lowest distance to q.
+    // if none of them better than current best entry return (greedy routing).
+    loop {
+        let mut found_a_better_neighbor = false;
+        for idx_and_dist in best_entry.neighbors.iter() {
+            let n = &layer.entries[idx_and_dist.idx_in_layer as usize];
+            let n_d = distance(data.get(n.id as usize), q_data);
+            if n_d < best_entry_d {
+                best_entry_d = n_d;
+                best_entry = n;
+                found_a_better_neighbor = true;
+                best_entry_idx_in_layer = idx_and_dist.idx_in_layer;
+            }
+        }
+        if !found_a_better_neighbor {
+            return SearchLayerRes {
+                idx_in_layer: best_entry_idx_in_layer,
+                idx_in_lower_layer: best_entry.lower_level_idx,
+                id: best_entry.id,
+                d_to_q: best_entry_d,
+            };
+        }
     }
 }
 
@@ -349,38 +332,42 @@ fn closests_points_in_layer(
     layer: &Layer,
     data: &dyn DatasetT,
     q_data: &[f32],
-    ep_idxs_in_layer: &[usize],
+    ep_idxs_in_layer: &[u32],
     ef: usize, // max number of found items
     out: &mut SearchBuffers,
 ) {
     let distance = SquaredDiffSum::distance;
-    out.initialize(ep_idxs_in_layer, |idx| distance(data.get(idx), q_data));
+    out.initialize(ep_idxs_in_layer, |idx| {
+        let id = layer.entries[idx as usize].id;
+        distance(data.get(id as usize), q_data)
+    });
 
     while out.candidates.len() > 0 {
         let c = out.candidates.pop().unwrap(); // remove closest element.
         let mut f = *out.found.peek().unwrap();
-        if c.dist > f.dist {
+        if c.0.dist > f.dist {
             break; // all elements in found are evaluated (see paper).
         }
-        let c_entry = &layer.entries[c.idx_in_layer];
-        for idx_in_layer in c_entry.neighbors.iter() {
-            let idx_in_layer = *idx_in_layer as usize;
+        let c_entry = &layer.entries[c.0.idx_in_layer as usize];
+        for idx_and_dist in c_entry.neighbors.iter() {
+            let idx_in_layer = idx_and_dist.idx_in_layer;
             if out.visited_idxs.insert(idx_in_layer) {
-                let n_entry = &layer.entries[idx_in_layer];
+                let n_entry = &layer.entries[idx_in_layer as usize];
                 let n_data = data.get(n_entry.id as usize);
                 let dist = distance(q_data, n_data);
                 f = *out.found.peek().unwrap();
                 if dist < f.dist || out.found.len() < ef {
-                    out.candidates.push(ClosestIsRoot { idx_in_layer, dist });
+                    out.candidates
+                        .push(Reverse(IdxAndDist { idx_in_layer, dist }));
 
                     if out.found.len() < ef {
-                        out.found.push(FurthestIsRoot { idx_in_layer, dist });
+                        out.found.push(IdxAndDist { idx_in_layer, dist });
                     } else {
                         // compare dist to the currently furthest away,
                         // if further than this dist, kick it out and insert the new one instead.
                         if dist < f.dist {
                             out.found.pop().unwrap();
-                            out.found.push(FurthestIsRoot { idx_in_layer, dist });
+                            out.found.push(IdxAndDist { idx_in_layer, dist });
                         }
                     }
                 }
@@ -389,13 +376,29 @@ fn closests_points_in_layer(
     }
 }
 
+/// todo! what if less neighbors there? will fail??
 fn select_neighbors(
     layer: &Layer,
-    q_data: &[f32],
-    candidates: &[FurthestIsRoot],
+    candidates: &mut BinaryHeap<IdxAndDist>, // a max-heap where the root is the largest-dist element.
+    n: usize,
     out: &mut Vec<SearchLayerRes>,
 ) {
-    out.clear()
+    // assert!(candidates.len() >= n);
+    for _ in 0..(candidates.len() - n) {
+        // removes the furthest element from candidates, leaving only the n closest ones in it.
+        candidates.pop();
+    }
+
+    out.clear();
+    for c in candidates.iter() {
+        let entry = &layer.entries[c.idx_in_layer as usize];
+        out.push(SearchLayerRes {
+            idx_in_layer: c.idx_in_layer,
+            idx_in_lower_layer: entry.lower_level_idx,
+            id: entry.id,
+            d_to_q: c.dist,
+        })
+    }
 }
 
 /*

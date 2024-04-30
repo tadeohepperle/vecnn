@@ -16,7 +16,7 @@ pub trait DatasetT: Send + Sync + 'static + Debug {
     /// Returns the point at index idx.
     /// - The returned slice is expected to have `len == self.dims()`;
     /// - Calling [`DataSetT::get()`] for any index 0..len is valid, higher idx values will panic.
-    fn get(&self, idx: usize) -> &[Float];
+    fn get(&self, id: usize) -> &[Float];
 }
 
 const RANDOM_DATA_SET_DIMS: usize = 768;
