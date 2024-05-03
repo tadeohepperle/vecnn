@@ -14,17 +14,17 @@ use crate::{
     distance::{DistanceT, SquaredDiffSum},
 };
 
-#[derive(Debug, Clone, Copy)]
-pub struct Params {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HnswParams {
     /// normalization factor for level generation
     /// Influences the chance of at which level a point is interted.
-    level_norm_param: f32,
-    ef_construction: usize,
-    m_max: usize,
-    m_max_0: usize,
+    pub level_norm_param: f32,
+    pub ef_construction: usize,
+    pub m_max: usize,
+    pub m_max_0: usize,
 }
 
-impl Params {
+impl HnswParams {
     /// Returns max number of connections allowed on layer l
     #[inline(always)]
     fn m_max_on_level(&self, l: usize) -> usize {
@@ -36,26 +36,29 @@ impl Params {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Hnsw {
-    params: Params,
-    data: Arc<dyn DatasetT>,
-    layers: Vec<Layer>,
+    pub params: HnswParams,
+    pub data: Arc<dyn DatasetT>,
+    pub layers: Vec<Layer>,
 }
 
-struct Layer {
-    entries: Vec<LayerEntry>,
+#[derive(Debug, Clone)]
+pub struct Layer {
+    pub entries: Vec<LayerEntry>,
 }
 
 type ID = u32;
 const M: usize = 40;
 
-struct LayerEntry {
-    id: ID,
+#[derive(Debug, Clone)]
+pub struct LayerEntry {
+    pub id: ID,
     /// pos where we can find this entry at a lower level.
     /// insignificat on level 0, just set to u32::MAX.
-    lower_level_idx: u32,
+    pub lower_level_idx: u32,
     /// a Max-Heap, such that we can easily pop off the item with the largest distance to make space.
-    neighbors: heapless::BinaryHeap<IdxAndDist, Max, M>, // the u32 stores the index in the layer
+    pub neighbors: heapless::BinaryHeap<IdxAndDist, Max, M>, // the u32 stores the index in the layer
 }
 impl LayerEntry {
     fn new(id: u32, lower_level_idx: u32) -> LayerEntry {
@@ -68,18 +71,46 @@ impl LayerEntry {
 }
 
 impl Hnsw {
-    pub fn new(data: Arc<dyn DatasetT>, params: Params) -> Self {
-        new_hnsw(data, params)
+    pub fn new(data: Arc<dyn DatasetT>, params: HnswParams) -> Self {
+        construct_hnsw(data, params)
+    }
+    pub fn new_empty(data: Arc<dyn DatasetT>, params: HnswParams) -> Self {
+        Hnsw {
+            params,
+            data,
+            layers: vec![],
+        }
+    }
+
+    pub fn knn_search(&self, q_data: &[f32], k: usize) -> Vec<SearchLayerRes> {
+        assert_eq!(q_data.len(), self.data.dims());
+
+        let mut ep_idx_in_layer = 0;
+
+        for i in (1..self.layers.len()).rev() {
+            let layer = &self.layers[i];
+            let res = closest_point_in_layer(layer, &*self.data, q_data, ep_idx_in_layer);
+            ep_idx_in_layer = res.idx_in_lower_layer;
+        }
+
+        let ef = self.params.ef_construction.max(k);
+        let mut out = SearchBuffers::new(ef);
+        closests_points_in_layer(
+            &self.layers[0],
+            &*self.data,
+            q_data,
+            &[ep_idx_in_layer],
+            ef, // todo! maybe not right?
+            &mut out,
+        );
+        let mut results: Vec<SearchLayerRes> = vec![];
+        select_neighbors(&self.layers[0], &mut out.found, k, &mut results);
+        results
     }
 }
 
-fn new_hnsw(data: Arc<dyn DatasetT>, params: Params) -> Hnsw {
-    let mut hnsw = Hnsw {
-        params,
-        data,
-        layers: vec![],
-    };
-
+fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams) -> Hnsw {
+    let mut hnsw = Hnsw::new_empty(data, params);
     let len = hnsw.data.len();
     if len == 0 {
         return hnsw;
@@ -102,10 +133,8 @@ fn new_hnsw(data: Arc<dyn DatasetT>, params: Params) -> Hnsw {
     hnsw
 }
 
-struct Idk;
-
 fn insert(hnsw: &mut Hnsw, q: ID) {
-    let Params {
+    let HnswParams {
         level_norm_param,
         ef_construction,
         m_max,
@@ -226,11 +255,11 @@ fn testlevel() {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct SearchLayerRes {
-    idx_in_layer: u32,
-    idx_in_lower_layer: u32,
-    id: ID,
-    d_to_q: f32,
+pub struct SearchLayerRes {
+    pub idx_in_layer: u32,
+    pub idx_in_lower_layer: u32,
+    pub id: ID,
+    pub d_to_q: f32,
 }
 
 struct SearchBuffers {
@@ -265,9 +294,9 @@ impl SearchBuffers {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct IdxAndDist {
-    idx_in_layer: u32,
-    dist: f32, // distance
+pub struct IdxAndDist {
+    pub idx_in_layer: u32,
+    pub dist: f32, // distance
 }
 
 impl PartialEq for IdxAndDist {
@@ -383,8 +412,7 @@ fn select_neighbors(
     n: usize,
     out: &mut Vec<SearchLayerRes>,
 ) {
-    // assert!(candidates.len() >= n);
-    for _ in 0..(candidates.len() - n) {
+    while candidates.len() > n {
         // removes the furthest element from candidates, leaving only the n closest ones in it.
         candidates.pop();
     }
@@ -398,6 +426,37 @@ fn select_neighbors(
             id: entry.id,
             d_to_q: c.dist,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::Hnsw;
+
+    #[test]
+    fn build_hnsw() {
+        let data = Arc::new(vec![
+            [0.0, 0.0],
+            [2.0, 1.0],
+            [2.0, 6.0],
+            [3.0, 6.0],
+            [4.0, 6.0],
+            [7.0, 7.0],
+        ]);
+
+        let hnsw = Hnsw::new(
+            data,
+            super::HnswParams {
+                level_norm_param: 2.0,
+                ef_construction: 4,
+                m_max: 2,
+                m_max_0: 3,
+            },
+        );
+
+        dbg!(hnsw);
     }
 }
 
