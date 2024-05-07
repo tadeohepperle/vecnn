@@ -19,20 +19,6 @@ pub trait DatasetT: Send + Sync + 'static + Debug {
     fn get(&self, id: usize) -> &[Float];
 }
 
-const RANDOM_DATA_SET_DIMS: usize = 768;
-pub fn random_data_set_768(count: usize) -> Arc<dyn DatasetT> {
-    let mut data: Vec<[Float; RANDOM_DATA_SET_DIMS]> = Vec::with_capacity(count);
-    let mut rng = thread_rng();
-    for _ in 0..count {
-        let mut p: [Float; RANDOM_DATA_SET_DIMS] = [0.0; RANDOM_DATA_SET_DIMS];
-        for f in p.iter_mut() {
-            *f = rng.gen();
-        }
-        data.push(p);
-    }
-    Arc::new(data)
-}
-
 impl<T, const D: usize> DatasetT for T
 where
     T: Deref<Target = [[Float; D]]> + Send + Sync + 'static + Debug,

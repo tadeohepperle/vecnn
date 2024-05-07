@@ -6,6 +6,7 @@ use rand_chacha::{rand_core::impls, ChaCha12Rng};
 use crate::{
     dataset::DatasetT,
     distance::{DistanceFn, DistanceT},
+    hnsw::DistAnd,
     Float,
 };
 
@@ -185,6 +186,12 @@ impl Ord for Node {
 }
 impl Eq for Node {}
 
+impl PartialEq<DistAnd<u32>> for Node {
+    fn eq(&self, other: &DistAnd<u32>) -> bool {
+        self.dist == other.dist && self.idx as u32 == other.i
+    }
+}
+
 impl Debug for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("")
@@ -330,17 +337,18 @@ pub mod tests {
     use rand_chacha::ChaCha12Rng;
 
     use crate::{
-        dataset::{random_data_set_768, DatasetT},
+        dataset::DatasetT,
         distance::SquaredDiffSum,
+        utils::{linear_knn_search, random_data_point, random_data_set, simple_test_set},
         vp_tree::{left, right},
         Float,
     };
 
-    use super::{quick_select_median_dist, Node, VpTree};
+    use super::{first_element_idx_of_second_part, quick_select_median_dist, Node, VpTree};
 
     fn slow_select_median_dist(tmp: &mut [Node]) -> usize {
         tmp.sort_by(|a, b| a.dist.total_cmp(&b.dist));
-        tmp.len() / 2
+        first_element_idx_of_second_part(tmp.len())
     }
 
     #[test]
@@ -393,60 +401,21 @@ pub mod tests {
 
             // even number of elements (should return index to first element of second half):
             let i = quick_select_median_dist(&mut tmp);
-            assert_eq!(i, 4);
-            assert_eq!(tmp[i], Node { idx: 5, dist: 5.0 });
+            assert_eq!(i, 3);
+            assert_eq!(tmp[i], Node { idx: 4, dist: 4.0 });
 
             // uneven number of elements:
             let i = quick_select_median_dist(&mut tmp2);
             assert_eq!(i, 4);
-            assert_eq!(tmp[i], Node { idx: 5, dist: 5.0 });
+            assert_eq!(tmp2[i], Node { idx: 5, dist: 5.0 });
         }
-    }
-
-    /// just draw numbers 0..X where X <=9 into the grid to test stuff:
-    fn test_set() -> Arc<dyn DatasetT> {
-        let str = "
-          3
-        4
-                                7 
-                       2
-            9
-        6                      0
-                  5
-                         8  1   
-        ";
-
-        let mut pts: Vec<(usize, [f32; 2])> = vec![];
-        let mut y = 0.0;
-        for line in str.lines() {
-            let mut x = 0.0;
-            for ch in line.chars() {
-                if let Some(idx) = ch.to_digit(10) {
-                    pts.push((idx as usize, [x, y]))
-                }
-                x += 1.0;
-            }
-            y += 2.0;
-        }
-        pts.sort_by(|a, b| a.0.cmp(&b.0));
-        for (i, (e, _)) in pts.iter().enumerate() {
-            assert_eq!(i, *e)
-        }
-        let pts: Vec<[f32; 2]> = pts.into_iter().map(|e| e.1).collect();
-        Arc::new(pts)
-    }
-
-    fn knn_slow(data: &dyn DatasetT, q: &[Float]) {
-        assert_eq!(q.len(), data.dims());
-
-        let heap = BinaryHeap::<Node>::new();
     }
 
     /// cargo test knn_1 --release
     #[test]
     fn knn_1() {
-        let random_set = random_data_set_768(1000);
-        let test_set = test_set();
+        let random_set = random_data_set::<768>(1000);
+        let test_set = simple_test_set();
 
         for data in [test_set, random_set] {
             for _ in 0..20 {
@@ -477,6 +446,20 @@ pub mod tests {
             left(&nodes),
             right(&nodes)
         );
+    }
+
+    #[test]
+    fn vptree_knn_compare() {
+        // todo! this test currently fails
+        let random_set = random_data_set::<3>(300);
+        for i in 0..10 {
+            let q = random_data_point::<3>();
+            let tree = VpTree::new(random_set.clone(), SquaredDiffSum);
+            let mut tree_res = tree.knn_search(&q, 20);
+            tree_res.sort();
+            let lin_res = linear_knn_search(&*random_set, &q, 20);
+            assert_eq!(tree_res, lin_res);
+        }
     }
 }
 
