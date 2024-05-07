@@ -1,0 +1,9 @@
+import typing
+
+class DataSet(): 
+    def __init__():
+        pass
+
+class VpTree(): 
+    def __init__(data: DataSet):
+        pass

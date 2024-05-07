@@ -1,6 +1,8 @@
-use ndarray::{Array1, Array2, ArrayBase, Dim, OwnedRepr};
-use numpy::{array, IntoPyArray, PyArray, PyArray1, PyArray2};
-use pyo3::prelude::*;
+use ndarray::{Array1, Array2, ArrayBase, ArrayView1, Dim, OwnedRepr};
+use numpy::{
+    array, IntoPyArray, PyArray, PyArray1, PyArray2, PyArrayMethods, PyUntypedArrayMethods,
+};
+use pyo3::{exceptions::PyTypeError, prelude::*};
 
 use crate::dataset::Arr2d;
 
@@ -16,6 +18,37 @@ impl VpTree {
             vecnn_vptree::distance::SquaredDiffSum,
         );
         Self(tree)
+    }
+
+    fn knn<'py>(
+        &self,
+        py: Python<'py>,
+        query: Py<PyArray1<f32>>,
+        k: usize,
+    ) -> PyResult<(Bound<'py, PyArray1<usize>>, Bound<'py, PyArray1<f32>>)> {
+        let arr_ref = query.bind(py);
+        if !arr_ref.is_contiguous() {
+            return Err(PyTypeError::new_err("Array is not contigous"));
+        }
+        let view: ArrayView1<'static, f32> = unsafe { std::mem::transmute(arr_ref.as_array()) };
+        if !view.is_standard_layout() {
+            return Err(PyTypeError::new_err("Array is not standard layout"));
+        }
+
+        let q = view.as_slice().unwrap();
+        if q.len() != self.0.data.dims() {
+            return Err(PyTypeError::new_err(
+                "Query has not the right number of elements",
+            ));
+        }
+
+        let res = self.0.knn_search(q, k);
+
+        let idices = ndarray::Array::from_iter(res.iter().map(|e| e.idx)).into_pyarray_bound(py);
+        let distances =
+            ndarray::Array::from_iter(res.iter().map(|e| e.dist)).into_pyarray_bound(py);
+
+        Ok((idices, distances))
     }
 
     fn distances<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray2<f32>> {

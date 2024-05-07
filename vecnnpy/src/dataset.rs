@@ -3,9 +3,10 @@ use std::{ops::Deref, sync::Arc};
 use ndarray::{ArrayBase, Dim, OwnedRepr};
 use numpy::{
     ndarray::{Array2, ArrayView2},
-    IntoPyArray, PyArray, PyArray2, PyReadonlyArray2, PyReadonlyArrayDyn, ToPyArray,
+    IntoPyArray, PyArray, PyArray2, PyArrayMethods, PyReadonlyArray2, PyReadonlyArrayDyn,
+    PyUntypedArrayMethods, ToPyArray,
 };
-use pyo3::prelude::*;
+use pyo3::{exceptions::PyTypeError, prelude::*};
 use vecnn_vptree::dataset::DatasetT;
 
 pub type Arr2d = ArrayBase<OwnedRepr<f32>, Dim<[usize; 2]>>;
@@ -16,7 +17,8 @@ pub struct Dataset(Arc<DatasetInner>);
 
 #[derive(Debug, Clone)]
 pub struct DatasetInner {
-    data: Arr2d,
+    data: Py<PyArray2<f32>>,
+    view: ArrayView2<'static, f32>,
     len: usize,
     dims: usize,
 }
@@ -31,42 +33,60 @@ impl Deref for Dataset {
     }
 }
 
-impl Deref for DatasetInner {
-    type Target = Arr2d;
-
-    fn deref(&self) -> &Self::Target {
-        &self.data
-    }
-}
-
 #[pymethods]
 impl Dataset {
     #[new]
-    fn new<'py>(arr: PyReadonlyArray2<'py, f32>) -> PyResult<Self> {
-        let arr_ref = arr.as_array();
-        let data = arr_ref.as_standard_layout().to_owned();
+    fn new<'py>(py: Python<'py>, py_obj: Py<PyArray2<f32>>) -> PyResult<Self> {
+        let arr_ref = py_obj.bind(py);
+        if !arr_ref.is_contiguous() {
+            return Err(PyTypeError::new_err("Array is not contigous"));
+        }
+        let view: ArrayView2<'static, f32> = unsafe { std::mem::transmute(arr_ref.as_array()) };
+        if !view.is_standard_layout() {
+            return Err(PyTypeError::new_err("Array is not standard layout"));
+        }
 
-        let [len, dims] = *data.shape() else {
-            panic!("Expected array with two dimensitons!")
-        };
+        let [len, dims] = unsafe { std::mem::transmute::<_, [usize; 2]>(arr_ref.dims()) };
+        Ok(Dataset(Arc::new(DatasetInner {
+            data: py_obj,
+            view,
+            len,
+            dims,
+        })))
+        // let arr_ref = arr.as_array();
+        // let data = arr_ref.as_standard_layout().to_owned();
 
-        Ok(Self(Arc::new(DatasetInner { data, len, dims })))
+        // let [len, dims] = *data.shape() else {
+        //     panic!("Expected array with two dimensitons!")
+        // };
+
+        // Ok(Self(Arc::new(DatasetInner { data, len, dims })))
     }
 
     fn __len__(&self) -> usize {
         self.0.len
     }
 
-    fn desc(&self) -> String {
-        format!("DATA: {:?}", self.0.data.shape())
+    fn len(&self) -> usize {
+        self.0.len
     }
+
+    fn dims(&self) -> usize {
+        self.0.dims
+    }
+
+    fn to_numpy<'py>(&self, python: Python<'py>) -> Py<PyArray2<f32>> {
+        self.0.data.clone_ref(python)
+    }
+
+    // fn desc(&self) -> String {
+
+    //     todo!()
+    //     format!("DATA: {:?}", self.0.data.shape())
+    // }
 
     fn row(&self, idx: usize) -> String {
         format!("{:?}", self.get(idx))
-    }
-
-    fn to_numpy<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray2<f32>> {
-        self.data.to_pyarray_bound(py)
     }
 }
 
@@ -80,6 +100,15 @@ impl Dataset {
     }
 }
 
+impl DatasetInner {
+    // #[inline(always)]
+    // fn data<'a>(&'a self) -> &'a PyArray2<f32> {
+    //     let python: Python<'a> = unsafe { std::mem::transmute(()) };
+    //     let row: &Bound<PyArray<f32, Dim<[usize; 2]>>> = self.data.bind(python);
+    //     row.as_gil_ref()
+    // }
+}
+
 impl DatasetT for DatasetInner {
     fn len(&self) -> usize {
         self.len
@@ -90,12 +119,8 @@ impl DatasetT for DatasetInner {
     }
 
     fn get<'a>(&'a self, idx: usize) -> &'a [vecnn_vptree::Float] {
-        let row = self.data.row(idx);
-        let slice = row
-            .as_slice()
-            .expect("we converted it into `as_standard_layout` when constructing the Dataset");
-        // std::fs::write("./log.txt", format!("{:?}", slice));
-        // extend the lifetime of the row:
-        unsafe { std::mem::transmute(slice) }
+        let row = self.view.row(idx);
+        let slice = row.as_slice().unwrap();
+        unsafe { &*(slice as *const [f32]) }
     }
 }
