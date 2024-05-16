@@ -35,6 +35,7 @@ impl Deref for Dataset {
 
 #[pymethods]
 impl Dataset {
+    // PyReadOnlyArray1<'py, Ty>
     #[new]
     fn new<'py>(py: Python<'py>, py_obj: Py<PyArray2<f32>>) -> PyResult<Self> {
         let arr_ref = py_obj.bind(py);
@@ -45,7 +46,6 @@ impl Dataset {
         if !view.is_standard_layout() {
             return Err(PyTypeError::new_err("Array is not standard layout"));
         }
-
         let [len, dims] = unsafe { std::mem::transmute::<_, [usize; 2]>(arr_ref.dims()) };
         Ok(Dataset(Arc::new(DatasetInner {
             data: py_obj,
@@ -53,14 +53,6 @@ impl Dataset {
             len,
             dims,
         })))
-        // let arr_ref = arr.as_array();
-        // let data = arr_ref.as_standard_layout().to_owned();
-
-        // let [len, dims] = *data.shape() else {
-        //     panic!("Expected array with two dimensitons!")
-        // };
-
-        // Ok(Self(Arc::new(DatasetInner { data, len, dims })))
     }
 
     fn __len__(&self) -> usize {

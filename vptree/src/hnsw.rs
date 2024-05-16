@@ -263,7 +263,7 @@ fn insert(hnsw: &mut Hnsw, q: ID) {
     }
 }
 
-fn pick_level(level_norm_param: f32) -> usize {
+pub fn pick_level(level_norm_param: f32) -> usize {
     let f = thread_rng().gen::<f32>();
     (-f.ln() * level_norm_param).floor() as usize
 }

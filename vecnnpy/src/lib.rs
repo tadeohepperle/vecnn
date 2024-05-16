@@ -8,6 +8,8 @@ mod vp_tree;
 pub use dataset::Dataset;
 pub use vp_tree::VpTree;
 
+// fn foo() {}
+
 /// This module is implemented in Rust.
 #[pymodule]
 fn vecnnpy(m: &Bound<'_, PyModule>) -> PyResult<()> {

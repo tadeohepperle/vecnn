@@ -1,11 +1,17 @@
-use std::{collections::BinaryHeap, fmt::Debug, marker::PhantomData, sync::Arc};
+use std::{
+    collections::BinaryHeap,
+    fmt::Debug,
+    marker::PhantomData,
+    sync::{atomic::AtomicUsize, Arc},
+    time::{Duration, Instant},
+};
 
 use rand::{thread_rng, Rng, SeedableRng};
 use rand_chacha::{rand_core::impls, ChaCha12Rng};
 
 use crate::{
     dataset::DatasetT,
-    distance::{DistanceFn, DistanceT},
+    distance::{DistanceFn, DistanceT, DistanceTracker},
     hnsw::DistAnd,
     Float,
 };
@@ -55,14 +61,21 @@ pub struct VpTree {
     pub nodes: Vec<Node>,
     pub data: Arc<dyn DatasetT>,
     pub distance_fn: DistanceFn,
+    pub build_stats: Stats,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Stats {
+    pub num_distance_calculations: usize,
+    pub duration: Duration,
 }
 
 impl VpTree {}
 
 impl VpTree {
-    pub fn new(data: Arc<dyn DatasetT>, distance: impl DistanceT) -> Self {
+    pub fn new(data: Arc<dyn DatasetT>, distance_fn: DistanceFn) -> Self {
         let seed: u64 = thread_rng().gen();
-        let builder = VpTreeBuilder::new(seed, data, distance);
+        let builder = VpTreeBuilder::new(seed, data, distance_fn);
         builder.build()
     }
 
@@ -80,15 +93,20 @@ impl VpTree {
         slice_iter(&self.nodes, 0, f);
     }
 
-    pub fn knn_search(&self, q: &[Float], k: usize) -> Vec<Node> {
+    pub fn knn_search(&self, q: &[Float], k: usize) -> (Vec<Node>, Stats) {
         assert_eq!(q.len(), self.data.dims());
+
         struct Ctx<F: Fn(usize) -> Float> {
             heap: BinaryHeap<Node>,
             tau: Float, // only nodes with dist < tau can be still fitted into the heap
             dist_to_q: F,
             k: usize,
         }
-        fn search_slice<F: Fn(usize) -> Float>(nodes: &[Node], ctx: &mut Ctx<F>) {
+        fn search_slice<F: Fn(usize) -> Float>(
+            nodes: &[Node],
+            ctx: &mut Ctx<F>,
+            tracker: &DistanceTracker,
+        ) {
             if nodes.len() == 0 {
                 return;
             }
@@ -110,25 +128,27 @@ impl VpTree {
             if dist < radius {
                 // search inside the nodes radius first, then outside
                 if dist - ctx.tau <= radius {
-                    search_slice(left(nodes), ctx)
+                    search_slice(left(nodes), ctx, tracker)
                 }
                 if dist + ctx.tau >= radius {
-                    search_slice(right(nodes), ctx)
+                    search_slice(right(nodes), ctx, tracker)
                 }
             } else {
                 // search outside first then inside
                 if dist + ctx.tau >= radius {
-                    search_slice(right(nodes), ctx)
+                    search_slice(right(nodes), ctx, tracker)
                 }
                 if dist - ctx.tau <= radius {
-                    search_slice(left(nodes), ctx)
+                    search_slice(left(nodes), ctx, tracker)
                 }
             }
         }
 
+        let tracker = DistanceTracker::new(self.distance_fn);
+        let start = Instant::now();
         let dist_to_q = |idx| {
             let p = self.data.get(idx);
-            (self.distance_fn)(p, q)
+            tracker.distance(p, q)
         };
         let mut ctx = Ctx {
             heap: BinaryHeap::new(),
@@ -136,9 +156,14 @@ impl VpTree {
             dist_to_q,
             k,
         };
-        search_slice(&self.nodes, &mut ctx);
+        search_slice(&self.nodes, &mut ctx, &tracker);
 
-        Vec::from(ctx.heap)
+        let stats = Stats {
+            num_distance_calculations: tracker.num_calculations(),
+            duration: start.elapsed(),
+        };
+
+        (Vec::from(ctx.heap), stats)
     }
 }
 
@@ -159,11 +184,11 @@ fn right(nodes: &[Node]) -> &[Node] {
     &nodes[start_idx..]
 }
 
-struct VpTreeBuilder<D: DistanceT> {
+struct VpTreeBuilder {
     nodes: Vec<Node>,
     data: Arc<dyn DatasetT>,
-    distance: PhantomData<D>,
     rng: ChaCha12Rng,
+    distance_fn: DistanceFn,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -201,8 +226,8 @@ impl Debug for Node {
     }
 }
 
-impl<D: DistanceT> VpTreeBuilder<D> {
-    pub fn new(seed: u64, data: Arc<dyn DatasetT>, _distance: D) -> Self {
+impl VpTreeBuilder {
+    pub fn new(seed: u64, data: Arc<dyn DatasetT>, distance_fn: DistanceFn) -> Self {
         let mut tmp: Vec<Node> = Vec::with_capacity(data.len());
         for idx in 0..data.len() {
             tmp.push(Node { idx, dist: 0.0 });
@@ -210,23 +235,31 @@ impl<D: DistanceT> VpTreeBuilder<D> {
         VpTreeBuilder {
             nodes: tmp,
             data,
-            distance: PhantomData,
+            distance_fn,
             rng: ChaCha12Rng::seed_from_u64(seed),
         }
     }
 
     pub fn build(mut self) -> VpTree {
+        let tracker = DistanceTracker::new(self.distance_fn);
+        let start = Instant::now();
         // arrange items in self.tmp into a vp tree
-        arrange_into_vp_tree::<D>(&mut self.nodes, &*self.data);
+        arrange_into_vp_tree(&mut self.nodes, &*self.data, &tracker);
+
+        let build_stats = Stats {
+            num_distance_calculations: tracker.num_calculations(),
+            duration: start.elapsed(),
+        };
         VpTree {
             nodes: self.nodes,
             data: self.data,
-            distance_fn: D::distance,
+            distance_fn: self.distance_fn,
+            build_stats,
         }
     }
 }
 
-fn arrange_into_vp_tree<D: DistanceT>(tmp: &mut [Node], data: &dyn DatasetT) {
+fn arrange_into_vp_tree(tmp: &mut [Node], data: &dyn DatasetT, tracker: &DistanceTracker) {
     // early return if there are only 0,1 or 2 elements left
     match tmp.len() {
         0 => return,
@@ -237,7 +270,7 @@ fn arrange_into_vp_tree<D: DistanceT>(tmp: &mut [Node], data: &dyn DatasetT) {
         2 => {
             let pt_0 = data.get(tmp[0].idx);
             let pt_1 = data.get(tmp[1].idx);
-            tmp[0].dist = D::distance(pt_0, pt_1);
+            tmp[0].dist = tracker.distance(pt_0, pt_1);
             tmp[1].dist = 0.0;
             return;
         }
@@ -250,7 +283,7 @@ fn arrange_into_vp_tree<D: DistanceT>(tmp: &mut [Node], data: &dyn DatasetT) {
     for i in 1..tmp.len() {
         let other = &mut tmp[i];
         let other_pt = data.get(other.idx);
-        other.dist = D::distance(vp_pt, other_pt);
+        other.dist = tracker.distance(vp_pt, other_pt);
     }
     // partition into points closer and further to median:
     let median_i = quick_select_median_dist(&mut tmp[1..]) + 1;
@@ -258,8 +291,8 @@ fn arrange_into_vp_tree<D: DistanceT>(tmp: &mut [Node], data: &dyn DatasetT) {
     // set the median distance on the root node, then build left and right sub-trees
     let median_dist = tmp[median_i].dist;
     tmp[0].dist = median_dist;
-    arrange_into_vp_tree::<D>(&mut tmp[1..median_i], data);
-    arrange_into_vp_tree::<D>(&mut tmp[median_i..], data);
+    arrange_into_vp_tree(&mut tmp[1..median_i], data, tracker);
+    arrange_into_vp_tree(&mut tmp[median_i..], data, tracker);
 }
 
 fn select_random_point(tmp: &[Node], _data: &dyn DatasetT) -> usize {
@@ -338,7 +371,7 @@ pub mod tests {
 
     use crate::{
         dataset::DatasetT,
-        distance::SquaredDiffSum,
+        distance::{DistanceT, SquaredDiffSum},
         utils::{linear_knn_search, random_data_point, random_data_set, simple_test_set},
         vp_tree::{left, right},
         Float,
@@ -421,8 +454,8 @@ pub mod tests {
             for _ in 0..20 {
                 let query_idx = thread_rng().gen_range(0..data.len());
                 let query = data.get(query_idx);
-                let vp_tree = VpTree::new(data.clone(), SquaredDiffSum);
-                let nn = vp_tree.knn_search(query, 1)[0];
+                let vp_tree = VpTree::new(data.clone(), SquaredDiffSum::distance);
+                let nn = vp_tree.knn_search(query, 1).0[0];
                 assert_eq!(nn.idx, query_idx);
                 assert_eq!(nn.dist, 0.0);
             }
@@ -454,8 +487,8 @@ pub mod tests {
         let random_set = random_data_set::<3>(300);
         for i in 0..10 {
             let q = random_data_point::<3>();
-            let tree = VpTree::new(random_set.clone(), SquaredDiffSum);
-            let mut tree_res = tree.knn_search(&q, 20);
+            let tree = VpTree::new(random_set.clone(), SquaredDiffSum::distance);
+            let mut tree_res = tree.knn_search(&q, 20).0;
             tree_res.sort();
             let lin_res = linear_knn_search(&*random_set, &q, 20);
             assert_eq!(tree_res, lin_res);

@@ -1,0 +1,20 @@
+
+
+
+
+python:
+
+
+data = DataSet(arr);
+vp_tree = VpTree(data, args: ...);
+hnsw = VpTree(data, args: ...);
+
+
+
+construct the vptree and hnsw on the entire 300k dataset.
+write a naive knn that can be used from python
+
+
+do a nearest neighbor search on the first 100 nn.
+show number of distance calculations + time.
+show accuracy (numpy)

@@ -3,6 +3,7 @@ use numpy::{
     array, IntoPyArray, PyArray, PyArray1, PyArray2, PyArrayMethods, PyUntypedArrayMethods,
 };
 use pyo3::{exceptions::PyTypeError, prelude::*};
+use vecnn_vptree::distance::DistanceT;
 
 use crate::dataset::Arr2d;
 
@@ -15,9 +16,14 @@ impl VpTree {
     fn new(data: crate::Dataset) -> Self {
         let tree = vecnn_vptree::vp_tree::VpTree::new(
             data.as_dyn_dataset(),
-            vecnn_vptree::distance::SquaredDiffSum,
+            vecnn_vptree::distance::SquaredDiffSum::distance,
         );
         Self(tree)
+    }
+
+    #[getter]
+    fn num_distance_calculations_in_build(&self) -> PyResult<i32> {
+        Ok(self.0.build_stats.num_distance_calculations as i32)
     }
 
     fn knn<'py>(
@@ -42,8 +48,7 @@ impl VpTree {
             ));
         }
 
-        let res = self.0.knn_search(q, k);
-
+        let (res, stats) = self.0.knn_search(q, k);
         let idices = ndarray::Array::from_iter(res.iter().map(|e| e.idx)).into_pyarray_bound(py);
         let distances =
             ndarray::Array::from_iter(res.iter().map(|e| e.dist)).into_pyarray_bound(py);

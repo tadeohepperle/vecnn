@@ -3,6 +3,7 @@
 
 pub mod dataset;
 pub mod distance;
+pub mod transition;
 pub mod utils;
 pub mod vp_tree;
 
