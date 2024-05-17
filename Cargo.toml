@@ -2,8 +2,8 @@
 name = "vecnn"
 package.authors = ["Tadeo Hepperle"]
 package.version = "0.0.1"
-members = ["vecnnpy", "vptree"]
+members = ["vecnnpy", "vecnn"]
 resolver = "2"
 
 [workspace.dependencies]
-vecnn-vptree = { path = "vptree" }
+vecnn = { path = "vecnn" }

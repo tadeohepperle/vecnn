@@ -385,7 +385,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7de7d73e1754487cb58364ee906a499937a0dfabd86bcb980fa99ec8c8fa2ce"
 
 [[package]]
-name = "vecnn-vptree"
+name = "vecnn"
 version = "0.0.1"
 dependencies = [
  "arrayvec",
@@ -402,7 +402,7 @@ dependencies = [
  "numpy",
  "pyo3",
  "rand",
- "vecnn-vptree",
+ "vecnn",
 ]
 
 [[package]]
