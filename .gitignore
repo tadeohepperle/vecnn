@@ -1,3 +1,4 @@
 /target
 /data
 /vecnnpy/.venv
+/vecnnpy/scripts/mlruns/*

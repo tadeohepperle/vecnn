@@ -3,7 +3,7 @@ use std::{
     cmp::Reverse,
     collections::{BinaryHeap, HashMap, HashSet},
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use arrayvec::ArrayVec;
@@ -23,7 +23,7 @@ macro_rules! track {
 
 use crate::{
     dataset::DatasetT,
-    distance::{DistanceT, SquaredDiffSum},
+    distance::{DistanceT, DistanceTracker, SquaredDiffSum},
     vp_tree::Stats,
 };
 
@@ -102,11 +102,14 @@ impl Hnsw {
     pub fn knn_search(&self, q_data: &[f32], k: usize) -> (Vec<SearchLayerRes>, Stats) {
         assert_eq!(q_data.len(), self.data.dims());
 
-        let mut ep_idx_in_layer = 0;
+        let distance = DistanceTracker::new(SquaredDiffSum::distance);
+        let start = Instant::now();
 
+        let mut ep_idx_in_layer = 0;
         for i in (1..self.layers.len()).rev() {
             let layer = &self.layers[i];
-            let res = closest_point_in_layer(layer, &*self.data, q_data, ep_idx_in_layer);
+            let res =
+                closest_point_in_layer(layer, &*self.data, q_data, ep_idx_in_layer, &distance);
             ep_idx_in_layer = res.idx_in_lower_layer;
             track!(EdgeDown {
                 from: res.id,
@@ -123,21 +126,22 @@ impl Hnsw {
             &[ep_idx_in_layer],
             ef, // todo! maybe not right?
             &mut out,
+            &distance,
         );
         let mut results: Vec<SearchLayerRes> = vec![];
         select_neighbors(&self.layers[0], &mut out.found, k, &mut results);
-
-        (
-            results,
-            Stats {
-                num_distance_calculations: 0,
-                duration: Duration::ZERO,
-            },
-        )
+        let stats = Stats {
+            num_distance_calculations: distance.num_calculations(),
+            duration: start.elapsed(),
+        };
+        (results, stats)
     }
 }
 
 fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams) -> Hnsw {
+    let tracker = DistanceTracker::new(SquaredDiffSum::distance);
+    let start = Instant::now();
+
     let mut hnsw = Hnsw::new_empty(data, params);
     let len = hnsw.data.len();
     if len == 0 {
@@ -155,16 +159,20 @@ fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams) -> Hnsw {
         level: hnsw.layers.len(),
         entries,
     });
-
     // insert the rest of the points one by one
     for id in 1..len as u32 {
-        insert(&mut hnsw, id);
+        insert(&mut hnsw, id, &tracker);
     }
+
+    hnsw.build_stats = Stats {
+        num_distance_calculations: tracker.num_calculations(),
+        duration: start.elapsed(),
+    };
 
     hnsw
 }
 
-fn insert(hnsw: &mut Hnsw, q: ID) {
+fn insert(hnsw: &mut Hnsw, q: ID, distance: &DistanceTracker) {
     let HnswParams {
         level_norm_param,
         ef_construction,
@@ -179,7 +187,6 @@ fn insert(hnsw: &mut Hnsw, q: ID) {
 
     let top_l = hnsw.layers.len() - 1; // (previous top l)
     let insert_l = pick_level(level_norm_param);
-    let mut levels_added: usize = 0;
     let mut lower_level_idx: u32 = u32::MAX;
     for l in 0..=insert_l {
         let entry = LayerEntry::new(q, lower_level_idx);
@@ -193,7 +200,6 @@ fn insert(hnsw: &mut Hnsw, q: ID) {
             };
             hnsw.layers.push(layer);
             lower_level_idx = 0;
-            levels_added += 1;
         }
     }
 
@@ -205,7 +211,13 @@ fn insert(hnsw: &mut Hnsw, q: ID) {
     let ep_l = top_l.min(insert_l);
     let mut ep_idx_at_ep_l = 0;
     for l in (insert_l + 1..=top_l).rev() {
-        let res = closest_point_in_layer(&hnsw.layers[l], &*hnsw.data, q_data, ep_idx_at_ep_l);
+        let res = closest_point_in_layer(
+            &hnsw.layers[l],
+            &*hnsw.data,
+            q_data,
+            ep_idx_at_ep_l,
+            distance,
+        );
         ep_idx_at_ep_l = res.idx_in_lower_layer;
     }
 
@@ -226,6 +238,7 @@ fn insert(hnsw: &mut Hnsw, q: ID) {
             &ep_idxs_in_layer,
             hnsw.params.ef_construction,
             &mut search_buffers,
+            distance,
         );
         select_neighbors(layer, &mut search_buffers.found, M, &mut neighbors_out);
         // add bidirectional connections from neighbors to q at layer l:
@@ -359,14 +372,14 @@ fn closest_point_in_layer(
     data: &dyn DatasetT,
     q_data: &[f32],
     ep_idx_in_layer: u32,
+    distance: &DistanceTracker,
 ) -> SearchLayerRes {
-    let distance = SquaredDiffSum::distance;
     // let visited_idxs: HashSet<usize> = HashSet::new(); // prob. not needed???
 
     // initialize best entry to the entry point (at ep_idx_in_layer)
     let mut best_entry_idx_in_layer = ep_idx_in_layer;
     let mut best_entry = &layer.entries[best_entry_idx_in_layer as usize];
-    let mut best_entry_d = distance(data.get(best_entry.id as usize), q_data);
+    let mut best_entry_d = distance.distance(data.get(best_entry.id as usize), q_data);
 
     // iterate over all neighbors of best_entry, go to the one with lowest distance to q.
     // if none of them better than current best entry return (greedy routing).
@@ -381,7 +394,7 @@ fn closest_point_in_layer(
         let mut found_a_better_neighbor = false;
         for idx_and_dist in best_entry.neighbors.iter() {
             let n = &layer.entries[idx_and_dist.i as usize];
-            let n_d = distance(data.get(n.id as usize), q_data);
+            let n_d = distance.distance(data.get(n.id as usize), q_data);
             if n_d < best_entry_d {
                 best_entry_d = n_d;
                 best_entry = n;
@@ -413,14 +426,13 @@ fn closests_points_in_layer(
     ep_idxs_in_layer: &[u32],
     ef: usize, // max number of found items
     out: &mut SearchBuffers,
+    distance: &DistanceTracker,
 ) {
     // #[cfg(feature = "tracking")]
     // let mut track_to_idx_from_idx: HashMap<u32, u32> = HashMap::new();
-
-    let distance = SquaredDiffSum::distance;
     out.initialize(ep_idxs_in_layer, |idx| {
         let id = layer.entries[idx as usize].id;
-        distance(data.get(id as usize), q_data)
+        distance.distance(data.get(id as usize), q_data)
     });
 
     while out.candidates.len() > 0 {
@@ -435,7 +447,7 @@ fn closests_points_in_layer(
             if out.visited_idxs.insert(idx_in_layer) {
                 let n_entry = &layer.entries[idx_in_layer as usize];
                 let n_data = data.get(n_entry.id as usize);
-                let dist = distance(q_data, n_data);
+                let dist = distance.distance(q_data, n_data);
                 f = *out.found.peek().unwrap();
                 if dist < f.dist || out.found.len() < ef {
                     out.candidates.push(Reverse(DistAnd {
