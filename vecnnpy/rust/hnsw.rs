@@ -62,7 +62,7 @@ impl Hnsw {
     }
 
     fn knn<'py>(&self, py: Python<'py>, query: Py<PyArray1<f32>>, k: usize) -> PyResult<KnnResult> {
-        let q = pyarray1_to_slice(query, self.0.data.dims())?;
+        let q = pyarray1_to_slice(query, Some(self.0.data.dims()))?;
         let (res, stats) = self.0.knn_search(q, k);
         let indices = ndarray::Array::from_iter(res.iter().map(|e| e.id as usize))
             .into_pyarray_bound(py)

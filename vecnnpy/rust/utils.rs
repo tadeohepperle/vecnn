@@ -10,23 +10,25 @@ pub fn static_python() -> Python<'static> {
     unsafe { std::mem::transmute(()) }
 }
 
-pub fn pyarray1_to_slice(
-    query: Py<PyArray1<f32>>,
-    expected_len: usize,
-) -> PyResult<&'static [f32]> {
+pub fn pyarray1_to_slice<T: numpy::Element>(
+    query: Py<PyArray1<T>>,
+    expected_len: Option<usize>,
+) -> PyResult<&'static [T]> {
     let arr_ref = query.bind(static_python());
     if !arr_ref.is_contiguous() {
         return Err(PyTypeError::new_err("Array is not contigous"));
     }
-    let view: ArrayView1<'_, f32> = unsafe { arr_ref.as_array() }; //unsafe { std::mem::transmute(arr_ref.as_array()) };
+    let view: ArrayView1<'_, T> = unsafe { arr_ref.as_array() }; //unsafe { std::mem::transmute(arr_ref.as_array()) };
     if !view.is_standard_layout() {
         return Err(PyTypeError::new_err("Array is not standard layout"));
     }
     let q = view.as_slice().unwrap();
-    if q.len() != expected_len {
-        return Err(PyTypeError::new_err(
-            "Query has not the right number of elements",
-        ));
+    if let Some(expected_len) = expected_len {
+        if q.len() != expected_len {
+            return Err(PyTypeError::new_err(
+                "Query has not the right number of elements",
+            ));
+        }
     }
     Ok(extend_lifetime(q))
 }

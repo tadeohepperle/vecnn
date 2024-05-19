@@ -56,6 +56,16 @@ def linear_knn(data: Dataset, query: np.ndarray, k: int) -> KnnResult:
     pass
 
 
+
+def knn_recall(truth: np.ndarray, reported: np.ndarray) -> float:
+    """returns fraction of truth, that was found in reported. From 0.0 to 1.0.
+    truth and reported can have different sizes
+
+    truth: 1-dimensional numpy array of type uint64 containing the true indices of the k neighrest neighbors
+    reported: 1-dimensional numpy array of type uint64 containing the indices found in knn"""
+
+
+
 class HnswParams:
     """Params used for building the Hnsw"""
     level_norm_param: float
