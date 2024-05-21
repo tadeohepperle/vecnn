@@ -1,7 +1,7 @@
 use rand::{thread_rng, Rng};
 
 use crate::{
-    dataset::DatasetT,
+    dataset::{DatasetT, FlatDataSet},
     distance::{DistanceT, SquaredDiffSum},
     hnsw::DistAnd,
     Float,
@@ -66,14 +66,8 @@ pub fn simple_test_set() -> Arc<dyn DatasetT> {
     Arc::new(pts)
 }
 
-pub fn random_data_set<const DIMS: usize>(count: usize) -> Arc<dyn DatasetT> {
-    let mut data: Vec<[Float; DIMS]> = Vec::with_capacity(count);
-
-    for _ in 0..count {
-        let p = random_data_point();
-        data.push(p);
-    }
-    Arc::new(data)
+pub fn random_data_set(len: usize, dims: usize) -> Arc<dyn DatasetT> {
+    FlatDataSet::new_random(len, dims)
 }
 
 pub fn random_data_point<const DIMS: usize>() -> [Float; DIMS] {

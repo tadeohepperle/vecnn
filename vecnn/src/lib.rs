@@ -1,5 +1,6 @@
 #![feature(const_trait_impl)]
 #![feature(binary_heap_as_slice)]
+#![feature(iter_array_chunks)]
 
 pub mod dataset;
 pub mod distance;

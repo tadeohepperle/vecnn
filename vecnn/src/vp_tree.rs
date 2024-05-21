@@ -447,7 +447,7 @@ pub mod tests {
     /// cargo test knn_1 --release
     #[test]
     fn knn_1() {
-        let random_set = random_data_set::<768>(1000);
+        let random_set = random_data_set(10000, 768);
         let test_set = simple_test_set();
 
         for data in [test_set, random_set] {
@@ -484,7 +484,7 @@ pub mod tests {
     #[test]
     fn vptree_knn_compare() {
         // todo! this test currently fails
-        let random_set = random_data_set::<3>(300);
+        let random_set = random_data_set(300, 3);
         for i in 0..10 {
             let q = random_data_point::<3>();
             let tree = VpTree::new(random_set.clone(), SquaredDiffSum::distance);

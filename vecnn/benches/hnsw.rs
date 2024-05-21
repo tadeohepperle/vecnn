@@ -5,7 +5,7 @@ use vecnn::{
 };
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    let data = random_data_set::<768>(500);
+    let data = random_data_set(500, 768);
 
     c.bench_function("build_hnsw", |b| {
         b.iter(|| {
