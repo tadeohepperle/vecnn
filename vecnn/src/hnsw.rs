@@ -1,7 +1,7 @@
 use std::{
     cell::UnsafeCell,
     cmp::Reverse,
-    collections::{BinaryHeap, HashMap, HashSet},
+    collections::BinaryHeap,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -308,7 +308,7 @@ pub struct SearchLayerRes {
 }
 
 struct SearchBuffers {
-    visited_idxs: HashSet<u32>,
+    visited_idxs: ahash::AHashSet<u32>,
     /// we need to be able to extract the closest element from this (so we use Reverse<IdxAndDist> to have a min-heap)
     candidates: BinaryHeap<Reverse<DistAnd<u32>>>,
     /// we need to be able to extract the furthest element from this: this is a max heap, the root is the max distance.
@@ -318,7 +318,7 @@ struct SearchBuffers {
 impl SearchBuffers {
     fn new(capacity: usize) -> Self {
         SearchBuffers {
-            visited_idxs: HashSet::with_capacity(capacity),
+            visited_idxs: ahash::AHashSet::with_capacity(capacity),
             candidates: BinaryHeap::with_capacity(capacity),
             found: BinaryHeap::with_capacity(capacity),
         }

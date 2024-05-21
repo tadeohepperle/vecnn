@@ -2,3 +2,5 @@
 /data
 /vecnnpy/.venv
 /vecnnpy/scripts/mlruns/*
+/vecnn/perf.data
+/vecnn/perf.data.old
