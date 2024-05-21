@@ -20,11 +20,12 @@ ndarray = "0.15.6"
 inherits = "release"
 lto = true
 
+
 [env]
 PYO3_PYTHON = "./venv/bin/python"
 
-[profile.dev]
-opt-level = 3
+# [profile.dev]
+# opt-level = 3
 
-[profile.release]
-opt-level = 3
+# [profile.release]
+# opt-level = 3

@@ -76,11 +76,11 @@ impl DatasetT for FlatDataSet {
 
 impl FlatDataSet {
     pub fn new_random(len: usize, dims: usize) -> Arc<dyn DatasetT> {
+        debug_assert!(false);
         let floats = len * dims;
         let mut data: Vec<Float> = Vec::with_capacity(floats);
         let mut rng = thread_rng();
         data.extend((0..floats).map(|_| rng.gen::<f32>()));
-        Arc::new(FlatDataSet { dims, len, data });
-        todo!()
+        Arc::new(FlatDataSet { dims, len, data })
     }
 }

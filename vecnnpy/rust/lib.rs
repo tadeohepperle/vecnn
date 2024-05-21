@@ -49,7 +49,7 @@ fn linear_knn<'py>(
     k: usize,
 ) -> PyResult<KnnResult> {
     let q = pyarray1_to_slice(query, Some(data.dims()))?;
-    let results = vecnn::utils::linear_knn_search(&*data, q, k);
+    let results = vecnn::utils::linear_knn_search(data.as_dyn_dataset_ref(), q, k);
     let indices: Py<PyArray1<usize>> =
         ndarray::Array::from_iter(results.iter().map(|e| e.i as usize))
             .into_pyarray_bound(py)

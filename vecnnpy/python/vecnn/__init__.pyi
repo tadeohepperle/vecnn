@@ -13,8 +13,14 @@ class Dataset():
         """
         pass
 
-    def to_numpy(self) -> np.ndarray:
+
+    @staticmethod
+    def new_random(len: int, dims: int) -> Dataset:
+        """Creates a dataset that lives in Rust memory 
+        (creates a FlatDataSet, this is just a Vec<f32> that can be indexed returning slices of length `dims`)"""
         pass
+    # def to_numpy(self) -> np.ndarray:
+    #     pass
 
     def len(self) -> int:
         pass

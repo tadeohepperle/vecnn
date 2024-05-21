@@ -7,7 +7,7 @@ use vecnn::{
 
 fn main() {
     let data = random_data_set(1000, 768);
-    // for i in 0..10 {
+
     let hnsw = Hnsw::new(
         data.clone(),
         HnswParams {
@@ -19,5 +19,4 @@ fn main() {
     );
     dbg!(hnsw.build_stats.duration.as_secs_f32());
     dbg!(hnsw.build_stats);
-    // }
 }

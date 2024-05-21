@@ -7,16 +7,16 @@ use numpy::{
     PyUntypedArrayMethods, ToPyArray,
 };
 use pyo3::{exceptions::PyTypeError, prelude::*};
-use vecnn::dataset::DatasetT;
+use vecnn::dataset::{DatasetT, FlatDataSet};
 
 use crate::utils::extend_lifetime;
 
 #[derive(Clone)]
 #[pyclass]
-pub struct Dataset(Arc<DatasetInner>);
+pub struct Dataset(Arc<dyn DatasetT>);
 
 #[derive(Debug, Clone)]
-pub struct DatasetInner {
+pub struct NumpyDataSet {
     data: Py<PyArray2<f32>>,
     view: ArrayView2<'static, f32>,
     len: usize,
@@ -24,14 +24,6 @@ pub struct DatasetInner {
 }
 
 unsafe impl Send for Dataset {}
-
-impl Deref for Dataset {
-    type Target = DatasetInner;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
 
 #[pymethods]
 impl Dataset {
@@ -46,7 +38,7 @@ impl Dataset {
             return Err(PyTypeError::new_err("Array is not standard layout"));
         }
         let [len, dims] = unsafe { std::mem::transmute::<_, [usize; 2]>(arr_ref.dims()) };
-        Ok(Dataset(Arc::new(DatasetInner {
+        Ok(Dataset(Arc::new(NumpyDataSet {
             data: py_obj,
             view,
             len,
@@ -54,30 +46,39 @@ impl Dataset {
         })))
     }
 
+    #[staticmethod]
+    fn new_random(len: usize, dims: usize) -> PyResult<Self> {
+        Ok(Dataset(FlatDataSet::new_random(len, dims)))
+    }
+
     fn __len__(&self) -> usize {
-        self.0.len
+        self.0.len()
     }
 
     pub fn len(&self) -> usize {
-        self.0.len
+        self.0.len()
     }
 
     pub fn dims(&self) -> usize {
-        self.0.dims
+        self.0.dims()
     }
 
-    fn to_numpy<'py>(&self, python: Python<'py>) -> Py<PyArray2<f32>> {
-        self.0.data.clone_ref(python)
-    }
+    // fn to_numpy<'py>(&self, python: Python<'py>) -> Py<PyArray2<f32>> {
+    //     self.0.data().clone_ref(python)
+    // }
 }
 
 impl Dataset {
     pub fn as_dyn_dataset(&self) -> Arc<dyn DatasetT> {
         self.0.clone()
     }
+
+    pub fn as_dyn_dataset_ref(&self) -> &dyn DatasetT {
+        &*self.0
+    }
 }
 
-impl DatasetT for DatasetInner {
+impl DatasetT for NumpyDataSet {
     fn len(&self) -> usize {
         self.len
     }
