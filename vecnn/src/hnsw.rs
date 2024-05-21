@@ -2,6 +2,7 @@ use std::{
     cell::UnsafeCell,
     cmp::Reverse,
     collections::BinaryHeap,
+    fmt::Debug,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -343,10 +344,19 @@ impl SearchBuffers {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct DistAnd<T: PartialEq + Copy> {
     pub dist: f32,
     pub i: T,
+}
+
+impl<T: PartialEq + Copy> std::fmt::Debug for DistAnd<T>
+where
+    T: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}: {:.3}", self.i, self.dist)
+    }
 }
 
 impl<T: PartialEq + Copy> PartialEq for DistAnd<T> {

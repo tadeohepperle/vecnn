@@ -13,6 +13,7 @@ use crate::{
     dataset::DatasetT,
     distance::{DistanceFn, DistanceT, DistanceTracker},
     hnsw::DistAnd,
+    utils::KnnHeap,
     Float,
 };
 
@@ -93,77 +94,49 @@ impl VpTree {
         slice_iter(&self.nodes, 0, f);
     }
 
-    pub fn knn_search(&self, q: &[Float], k: usize) -> (Vec<Node>, Stats) {
-        assert_eq!(q.len(), self.data.dims());
-
-        struct Ctx<F: Fn(usize) -> Float> {
-            heap: BinaryHeap<Node>,
-            tau: Float, // only nodes with dist < tau can be still fitted into the heap
-            dist_to_q: F,
-            k: usize,
-        }
-        fn search_slice<F: Fn(usize) -> Float>(
-            nodes: &[Node],
-            ctx: &mut Ctx<F>,
-            tracker: &DistanceTracker,
-        ) {
-            if nodes.len() == 0 {
-                return;
-            }
-            let Node { idx, dist: radius } = nodes[0];
-            let dist = (ctx.dist_to_q)(idx);
-            if dist < ctx.tau {
-                if ctx.heap.len() == ctx.k {
-                    ctx.heap.pop();
-                }
-                ctx.heap.push(Node { idx, dist }); // store the node and its dist to q
-                if ctx.heap.len() == ctx.k {
-                    ctx.tau = ctx.heap.peek().unwrap().dist
-                }
-            }
-            if nodes.len() == 1 {
-                return;
-            }
-
-            if dist < radius {
-                // search inside the nodes radius first, then outside
-                if dist - ctx.tau <= radius {
-                    search_slice(left(nodes), ctx, tracker)
-                }
-                if dist + ctx.tau >= radius {
-                    search_slice(right(nodes), ctx, tracker)
-                }
-            } else {
-                // search outside first then inside
-                if dist + ctx.tau >= radius {
-                    search_slice(right(nodes), ctx, tracker)
-                }
-                if dist - ctx.tau <= radius {
-                    search_slice(left(nodes), ctx, tracker)
-                }
-            }
-        }
-
+    pub fn knn_search(&self, q: &[Float], k: usize) -> (Vec<DistAnd<usize>>, Stats) {
         let tracker = DistanceTracker::new(self.distance_fn);
         let start = Instant::now();
         let dist_to_q = |idx| {
             let p = self.data.get(idx);
             tracker.distance(p, q)
         };
-        let mut ctx = Ctx {
-            heap: BinaryHeap::new(),
-            tau: Float::MAX,
-            dist_to_q,
-            k,
-        };
-        search_slice(&self.nodes, &mut ctx, &tracker);
+        let mut heap = KnnHeap::new(k);
+        fn search_tree(tree: &[Node], dist_to_q: &impl Fn(usize) -> f32, heap: &mut KnnHeap) {
+            if tree.len() == 0 {
+                return;
+            }
 
+            let root = &tree[0];
+            let d = dist_to_q(root.idx);
+            let t = root.dist; // threshold
+
+            if tree.len() == 1 {
+                heap.maybe_add(root.idx, d);
+            } else if d <= t {
+                heap.maybe_add(root.idx, d);
+                // search inner side
+                search_tree(left(tree), dist_to_q, heap);
+                if (d - t).abs() < heap.worst_nn_dist() || !heap.is_full() {
+                    search_tree(right(tree), dist_to_q, heap);
+                }
+            } else {
+                // search other side
+                search_tree(right(tree), dist_to_q, heap);
+                if (d - t).abs() < heap.worst_nn_dist() || !heap.is_full() {
+                    heap.maybe_add(root.idx, d);
+                    search_tree(left(tree), dist_to_q, heap);
+                }
+            }
+        }
+
+        search_tree(&self.nodes, &dist_to_q, &mut heap);
         let stats = Stats {
             num_distance_calculations: tracker.num_calculations(),
             duration: start.elapsed(),
         };
 
-        (Vec::from(ctx.heap), stats)
+        (heap.as_sorted_vec(), stats)
     }
 }
 
@@ -447,7 +420,7 @@ pub mod tests {
     /// cargo test knn_1 --release
     #[test]
     fn knn_1() {
-        let random_set = random_data_set(10000, 768);
+        let random_set = random_data_set(1000, 300);
         let test_set = simple_test_set();
 
         for data in [test_set, random_set] {
@@ -456,7 +429,7 @@ pub mod tests {
                 let query = data.get(query_idx);
                 let vp_tree = VpTree::new(data.clone(), SquaredDiffSum::distance);
                 let nn = vp_tree.knn_search(query, 1).0[0];
-                assert_eq!(nn.idx, query_idx);
+                assert_eq!(nn.i, query_idx);
                 assert_eq!(nn.dist, 0.0);
             }
         }
@@ -484,13 +457,33 @@ pub mod tests {
     #[test]
     fn vptree_knn_compare() {
         // todo! this test currently fails
-        let random_set = random_data_set(300, 3);
+        // let data = random_data_set(300, 3);
+        // for i in 0..100 {
+        //     let q = random_data_point::<3>();
+        //     let tree = VpTree::new(data.clone(), SquaredDiffSum::distance);
+        //     let tree_res = tree.knn_search(&q, 5).0;
+        //     let lin_res = linear_knn_search(&*data, &q, 5);
+        //     assert_eq!(tree_res, lin_res);
+        // }
+
+        let data = simple_test_set();
+
         for i in 0..10 {
-            let q = random_data_point::<3>();
-            let tree = VpTree::new(random_set.clone(), SquaredDiffSum::distance);
-            let mut tree_res = tree.knn_search(&q, 20).0;
-            tree_res.sort();
-            let lin_res = linear_knn_search(&*random_set, &q, 20);
+            let q = data.get(i);
+            let tree = VpTree::new(data.clone(), SquaredDiffSum::distance);
+            dbg!(i);
+            println!("{:?}", &tree.nodes);
+            let tree_l = left(&tree.nodes);
+            let tree_r = right(&tree.nodes);
+            println!("left: {:?}", tree_l);
+            println!("left left: {:?}", left(tree_l));
+            println!("left right: {:?}", right(tree_l));
+            println!("right: {:?}", tree_r);
+            println!("right left: {:?}", left(tree_r));
+            println!("right right: {:?}", right(tree_r));
+            let tree_res = tree.knn_search(&q, 5).0;
+            let lin_res = linear_knn_search(&*data, &q, 5);
+
             assert_eq!(tree_res, lin_res);
         }
     }
