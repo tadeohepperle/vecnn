@@ -92,10 +92,28 @@ class Hnsw():
         """constructs a new hnsw on the dataset."""
         pass
 
-    def knn(self, query: np.ndarray, k: int) -> Tuple[np.ndarray, np.ndarray, int]:
+    def knn(self, query: np.ndarray, k: int) -> KnnResult:
         """performs knn search on the hnsw
 
         query: 1-dimensional numpy array of type float32.
         k: number of nearest neighbors to find.
+        """
+        pass
+
+
+class RustCvHnsw():
+    '''An HNSW, from the rust-cv/hnsw crate.'''
+
+    
+    def __init__(self, data: Dataset, ef_construction: int):
+        """constructs a new hnsw on the dataset."""
+        pass
+
+    def knn(self, query: np.ndarray, k: int, ef: int) -> KnnResult:
+        """performs knn search on the hnsw
+
+        query: 1-dimensional numpy array of type float32.
+        k: number of nearest neighbors to find.
+        ef: number of candidates in candidate set.
         """
         pass

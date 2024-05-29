@@ -8,6 +8,8 @@ pub struct AbsoluteDiffSum;
 /// L2 distance
 pub struct SquaredDiffSum;
 
+pub struct SquaredDiffSumSIMD;
+
 pub type DistanceFn = fn(&[Float], &[Float]) -> Float;
 
 pub struct DistanceTracker {
@@ -73,41 +75,14 @@ impl DistanceT for SquaredDiffSum {
             sum += unsafe { sq(a.get_unchecked(i) - b.get_unchecked(i)) }
         }
 
-        sum
+        sum.sqrt()
     }
+}
 
-    // fn distance(a: &[Float], b: &[Float]) -> Float {
-    //     assert_eq!(a.len(), b.len());
-    //     let mut sum: Float = 0.0;
-
-    //     #[inline(always)]
-    //     fn sq(x: Float) -> Float {
-    //         x * x
-    //     }
-
-    //     let mut iter = a.iter().zip(b.iter()).array_chunks::<8>();
-    //     while let Some(
-    //         [(a1, b1), (a2, b2), (a3, b3), (a4, b4), (a5, b5), (a6, b6), (a7, b7), (a8, b8)],
-    //     ) = iter.next()
-    //     {
-    //         let e1 = sq(a1 - b1);
-    //         let e2 = sq(a2 - b2);
-    //         let e3 = sq(a3 - b3);
-    //         let e4 = sq(a4 - b4);
-    //         let e5 = sq(a5 - b5);
-    //         let e6 = sq(a6 - b6);
-    //         let e7 = sq(a7 - b7);
-    //         let e8 = sq(a8 - b8);
-    //         sum += e1 + e2 + e3 + e4 + e5 + e6 + e7 + e8;
-    //     }
-    //     if let Some(rem) = iter.into_remainder() {
-    //         for (a, b) in rem {
-    //             sum += sq(*a - *b);
-    //         }
-    //     }
-
-    //     sum
-    // }
+impl DistanceT for SquaredDiffSumSIMD {
+    fn distance(a: &[Float], b: &[Float]) -> Float {
+        lance_linalg::distance::l2(a, b)
+    }
 }
 
 impl DistanceT for AbsoluteDiffSum {
@@ -122,3 +97,41 @@ impl DistanceT for AbsoluteDiffSum {
         sum
     }
 }
+
+// #[inline]
+// pub(crate) fn l2_f32(from: &[f32], to: &[f32]) -> f32 {
+//     use std::arch::x86_64::*;
+//     unsafe {
+//         // Get the potion of the vector that is aligned to 32 bytes.
+//         let len = from.len() / 8 * 8;
+//         let mut sums = _mm256_setzero_ps();
+//         for i in (0..len).step_by(8) {
+//             let left = _mm256_loadu_ps(from.as_ptr().add(i));
+//             let right = _mm256_loadu_ps(to.as_ptr().add(i));
+//             let sub = _mm256_sub_ps(left, right);
+//             // sum = sub * sub + sum
+//             sums = _mm256_fmadd_ps(sub, sub, sums);
+//         }
+//         // Shift and add vector, until only 1 value left.
+//         // sums = [x0-x7], shift = [x4-x7]
+//         let mut shift = _mm256_permute2f128_ps(sums, sums, 1);
+//         // [x0+x4, x1+x5, ..]
+//         sums = _mm256_add_ps(sums, shift);
+//         shift = _mm256_permute_ps(sums, 14);
+//         sums = _mm256_add_ps(sums, shift);
+//         sums = _mm256_hadd_ps(sums, sums);
+//         let mut results: [f32; 8] = [0f32; 8];
+//         _mm256_storeu_ps(results.as_mut_ptr(), sums);
+
+//         // Remaining unaligned values
+//         results[0] += l2_scalar(&from[len..], &to[len..]);
+//         results[0]
+//     }
+// }
+
+// fn l2_scalar(from: &[f32], to: &[f32]) -> f32{
+
+//     for i in from.len(){
+
+//     }
+// }

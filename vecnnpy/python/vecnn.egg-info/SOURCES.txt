@@ -11,5 +11,6 @@ python/vecnn.egg-info/top_level.txt
 rust/dataset.rs
 rust/hnsw.rs
 rust/lib.rs
+rust/rust_cv.rs
 rust/utils.rs
 rust/vp_tree.rs

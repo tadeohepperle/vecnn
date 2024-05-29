@@ -138,6 +138,133 @@ impl VpTree {
 
         (heap.as_sorted_vec(), stats)
     }
+
+    // pub fn knn_search(&self, q: &[Float], k: usize) -> (Vec<DistAnd<usize>>, Stats) {
+    //     let tracker = DistanceTracker::new(self.distance_fn);
+    //     let start = Instant::now();
+    //     let dist_to_q = |idx| {
+    //         let p = self.data.get(idx);
+    //         tracker.distance(p, q)
+    //     };
+
+    //     fn search_tree(
+    //         tree: &[Node],
+    //         k: usize,
+    //         t: Float,
+    //         heap: &mut BinaryHeap<DistAnd<usize>>,
+    //         dist_to_q: &impl Fn(usize) -> Float,
+    //     ) {
+    //         if tree.len() == 0 {
+    //             return;
+    //         }
+    //         let mut tau = t;
+    //         let root = &tree[0];
+    //         let dist = dist_to_q(root.idx);
+
+    //         if dist < tau {
+    //             heap.push(DistAnd { dist, i: root.idx });
+    //             if heap.len() > k {
+    //                 heap.pop();
+    //             }
+    //             if heap.len() == k {
+    //                 tau = heap.peek().unwrap().dist;
+    //             }
+
+    //             if tree.len() == 1 {
+    //                 return;
+    //             }
+
+    //             if dist < root.dist {
+    //                 search_tree(left(tree), k, tau, heap, dist_to_q);
+    //                 if dist + tau >= root.dist {
+    //                     search_tree(right(tree), k, t, heap, dist_to_q);
+    //                 }
+    //             } else {
+    //                 search_tree(right(tree), k, t, heap, dist_to_q);
+    //                 if (dist - tau) <= root.dist {
+    //                     search_tree(left(tree), k, t, heap, dist_to_q);
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //     let mut heap: BinaryHeap<DistAnd<usize>> = BinaryHeap::new();
+    //     search_tree(&self.nodes, k, 10000000.0, &mut heap, &dist_to_q);
+    //     let mut res = Vec::from(heap);
+    //     res.sort();
+
+    //     let stats = Stats {
+    //         num_distance_calculations: tracker.num_calculations(),
+    //         duration: start.elapsed(),
+    //     };
+
+    //     (res, stats)
+    // }
+    /*
+
+
+
+    void VPTreeknnSearch(int query, vptree* node, int k, std::priority_queue<HeapItem>* heap, double t, int threadID, int* numNodesVP) {
+        if (node == NULL) return;
+
+        // numNodes contains the number of number of nodes each thread has visited
+        numNodesVP[threadID]++;
+
+        int d = node->D;
+        int n = node->N;
+        double tau = t;
+
+        // Find the distance of query point and vantage point
+        double dist = 0.0;
+        int vantagePointIdx = node->ivp;
+        double* queryCoords = (double*)malloc(d * sizeof(double));
+
+        for (int i = 0; i < d; i++) {
+            queryCoords[i] = node->A[query * d + i];
+
+            dist += pow(queryCoords[i] - node->VPCords[i], 2);
+        }
+        dist = sqrt(dist);
+
+        free(queryCoords);
+
+        if (dist < tau) {
+            heap->push(HeapItem(vantagePointIdx, dist));
+            if (heap->size() == k + 1) {
+                heap->pop();
+            }
+            if (heap->size() == k) {
+                tau = heap->top().dist;
+            }
+        }
+
+        if (node->inner == NULL && node->outer == NULL) {
+            return;
+        }
+
+        if (dist < node->median) {
+            // Search inner subtree first
+            VPTreeknnSearch(query, node->inner, k, heap, tau, threadID, numNodesVP);
+            if (dist + tau >= node->median) {
+                VPTreeknnSearch(query, node->outer, k, heap, tau, threadID, numNodesVP);
+            }
+
+        }
+        else {
+            // Search outer subtree first
+            VPTreeknnSearch(query, node->outer, k, heap, tau, threadID, numNodesVP);
+            if (dist - tau <= node->median) {
+                VPTreeknnSearch(query, node->inner, k, heap, tau, threadID, numNodesVP);
+            }
+
+        }
+    }
+
+
+
+
+
+         */
 }
 
 #[inline(always)]

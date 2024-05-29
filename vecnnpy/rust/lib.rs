@@ -8,6 +8,7 @@ use pyo3::{pymodule, types::PyModule, Bound, PyResult, Python};
 
 mod dataset;
 mod hnsw;
+mod rust_cv;
 mod utils;
 mod vp_tree;
 
