@@ -269,17 +269,23 @@ impl VpTree {
 
 #[inline(always)]
 fn first_element_idx_of_second_part(len: usize) -> usize {
-    // len / 2
     (len - 1) / 2
 }
 
 #[inline(always)]
-fn left(nodes: &[Node]) -> &[Node] {
+pub fn left_with_root(nodes: &[Node]) -> &[Node] {
+    let end_idx_excl = first_element_idx_of_second_part(nodes.len() - 1) + 1;
+    &nodes[0..end_idx_excl]
+}
+
+#[inline(always)]
+pub fn left(nodes: &[Node]) -> &[Node] {
     let end_idx_excl = first_element_idx_of_second_part(nodes.len() - 1) + 1;
     &nodes[1..end_idx_excl]
 }
+
 #[inline(always)]
-fn right(nodes: &[Node]) -> &[Node] {
+pub fn right(nodes: &[Node]) -> &[Node] {
     let start_idx = first_element_idx_of_second_part(nodes.len() - 1) + 1;
     &nodes[start_idx..]
 }
@@ -328,12 +334,12 @@ impl Debug for Node {
 
 impl VpTreeBuilder {
     pub fn new(seed: u64, data: Arc<dyn DatasetT>, distance_fn: DistanceFn) -> Self {
-        let mut tmp: Vec<Node> = Vec::with_capacity(data.len());
+        let mut nodes: Vec<Node> = Vec::with_capacity(data.len());
         for idx in 0..data.len() {
-            tmp.push(Node { idx, dist: 0.0 });
+            nodes.push(Node { idx, dist: 0.0 });
         }
         VpTreeBuilder {
-            nodes: tmp,
+            nodes,
             data,
             distance_fn,
             rng: ChaCha12Rng::seed_from_u64(seed),
@@ -359,7 +365,7 @@ impl VpTreeBuilder {
     }
 }
 
-fn arrange_into_vp_tree(tmp: &mut [Node], data: &dyn DatasetT, tracker: &DistanceTracker) {
+pub fn arrange_into_vp_tree(tmp: &mut [Node], data: &dyn DatasetT, tracker: &DistanceTracker) {
     // early return if there are only 0,1 or 2 elements left
     match tmp.len() {
         0 => return,
@@ -473,7 +479,7 @@ pub mod tests {
         dataset::DatasetT,
         distance::{DistanceT, SquaredDiffSum},
         utils::{linear_knn_search, random_data_point, random_data_set, simple_test_set},
-        vp_tree::{left, right},
+        vp_tree::{left, left_with_root, right},
         Float,
     };
 
@@ -563,22 +569,16 @@ pub mod tests {
     }
 
     #[test]
-    fn print_is() {
-        for i in 0..100 {
-            let s = i / 2;
-            let s2 = ((i - 1) / 2) + 1;
-            println!("i: {i}   s: {s}   s2:{s2}")
-        }
-
-        let nodes = (0..7)
+    fn left_right() {
+        let nodes = (0..100)
             .map(|e| Node { idx: e, dist: 0.0 })
             .collect::<Vec<_>>();
-
-        println!(
-            "nodes: {nodes:?}   left: {:?}    right: {:?}",
-            left(&nodes),
-            right(&nodes)
-        );
+        for i in 2..100 {
+            let sub = &nodes[0..i];
+            assert!(left(sub).len() < right(sub).len());
+            assert!(left_with_root(sub).len() <= right(sub).len());
+            assert!(right(sub).len() - left_with_root(sub).len() <= 1); // right side max 1 bigger than entire left tree with root.
+        }
     }
 
     #[test]

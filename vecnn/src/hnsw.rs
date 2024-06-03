@@ -38,6 +38,17 @@ pub struct HnswParams {
     pub m_max_0: usize,
 }
 
+impl Default for HnswParams {
+    fn default() -> Self {
+        Self {
+            level_norm_param: 0.5,
+            ef_construction: 20,
+            m_max: 10,
+            m_max_0: 10,
+        }
+    }
+}
+
 impl HnswParams {
     /// Returns max number of connections allowed on layer l
     #[inline(always)]
@@ -121,7 +132,7 @@ impl Hnsw {
         let ef = self.params.ef_construction.max(k);
         let mut out = SearchBuffers::new(ef);
         closests_points_in_layer(
-            &self.layers[0],
+            &self.layers[0].entries,
             &*self.data,
             q_data,
             &[ep_idx_in_layer],
@@ -233,7 +244,7 @@ fn insert(hnsw: &mut Hnsw, q: ID, distance: &DistanceTracker) {
     for l in (0..=ep_l).rev() {
         let layer = &mut hnsw.layers[l];
         closests_points_in_layer(
-            layer,
+            &layer.entries,
             &*hnsw.data,
             q_data,
             &ep_idxs_in_layer,
@@ -430,7 +441,7 @@ fn closest_point_in_layer(
 
 /// after doing this, out.found will contain the relevant found points.
 fn closests_points_in_layer(
-    layer: &Layer,
+    entries: &[LayerEntry],
     data: &dyn DatasetT,
     q_data: &[f32],
     ep_idxs_in_layer: &[u32],
@@ -441,7 +452,7 @@ fn closests_points_in_layer(
     // #[cfg(feature = "tracking")]
     // let mut track_to_idx_from_idx: HashMap<u32, u32> = HashMap::new();
     out.initialize(ep_idxs_in_layer, |idx| {
-        let id = layer.entries[idx as usize].id;
+        let id = entries[idx as usize].id;
         distance.distance(data.get(id as usize), q_data)
     });
 
@@ -451,11 +462,11 @@ fn closests_points_in_layer(
         if c.0.dist > f.dist {
             break; // all elements in found are evaluated (see paper).
         }
-        let c_entry = &layer.entries[c.0.i as usize];
+        let c_entry = &entries[c.0.i as usize];
         for idx_and_dist in c_entry.neighbors.iter() {
             let idx_in_layer = idx_and_dist.i;
             if out.visited_idxs.insert(idx_in_layer) {
-                let n_entry = &layer.entries[idx_in_layer as usize];
+                let n_entry = &entries[idx_in_layer as usize];
                 let n_data = data.get(n_entry.id as usize);
                 let dist = distance.distance(q_data, n_data);
                 f = *out.found.peek().unwrap();

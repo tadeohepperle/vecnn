@@ -5,6 +5,7 @@ use numpy::ndarray::{ArrayD, ArrayViewD, ArrayViewMutD};
 use numpy::{IntoPyArray, PyArray1, PyArrayDyn, PyArrayMethods, PyReadonlyArrayDyn};
 use pyo3::prelude::*;
 use pyo3::{pymodule, types::PyModule, Bound, PyResult, Python};
+use rust_cv::RustCvHnsw;
 
 mod dataset;
 mod hnsw;
@@ -30,6 +31,7 @@ fn _lib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<KnnResult>()?;
     m.add_class::<Hnsw>()?;
     m.add_class::<HnswParams>()?;
+    m.add_class::<RustCvHnsw>()?;
     m.add_function(wrap_pyfunction!(linear_knn, m)?)?;
     m.add_function(wrap_pyfunction!(knn_recall, m)?)?;
     m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
