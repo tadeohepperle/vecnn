@@ -3,7 +3,7 @@ use numpy::{
     array, IntoPyArray, PyArray, PyArray1, PyArray2, PyArrayMethods, PyUntypedArrayMethods,
 };
 use pyo3::{exceptions::PyTypeError, prelude::*};
-use vecnn::distance::DistanceT;
+use vecnn::distance::l2;
 
 use crate::utils::{pyarray1_to_slice, KnnResult};
 
@@ -14,10 +14,7 @@ pub struct VpTree(vecnn::vp_tree::VpTree);
 impl VpTree {
     #[new]
     fn new(data: crate::Dataset) -> Self {
-        let tree = vecnn::vp_tree::VpTree::new(
-            data.as_dyn_dataset(),
-            vecnn::distance::SquaredDiffSum::distance,
-        );
+        let tree = vecnn::vp_tree::VpTree::new(data.as_dyn_dataset(), l2);
         Self(tree)
     }
 

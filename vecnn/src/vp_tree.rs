@@ -11,8 +11,8 @@ use rand_chacha::{rand_core::impls, ChaCha12Rng};
 
 use crate::{
     dataset::DatasetT,
-    distance::{DistanceFn, DistanceT, DistanceTracker},
-    hnsw::DistAnd,
+    distance::{DistanceFn, DistanceTracker},
+    hnsw::IAndDist,
     utils::KnnHeap,
     Float,
 };
@@ -94,7 +94,7 @@ impl VpTree {
         slice_iter(&self.nodes, 0, f);
     }
 
-    pub fn knn_search(&self, q: &[Float], k: usize) -> (Vec<DistAnd<usize>>, Stats) {
+    pub fn knn_search(&self, q: &[Float], k: usize) -> (Vec<IAndDist<usize>>, Stats) {
         let tracker = DistanceTracker::new(self.distance_fn);
         let start = Instant::now();
         let dist_to_q = |idx| {
@@ -317,8 +317,8 @@ impl Ord for Node {
 }
 impl Eq for Node {}
 
-impl PartialEq<DistAnd<u32>> for Node {
-    fn eq(&self, other: &DistAnd<u32>) -> bool {
+impl PartialEq<IAndDist<u32>> for Node {
+    fn eq(&self, other: &IAndDist<u32>) -> bool {
         self.dist == other.dist && self.idx as u32 == other.i
     }
 }
@@ -477,7 +477,7 @@ pub mod tests {
 
     use crate::{
         dataset::DatasetT,
-        distance::{DistanceT, SquaredDiffSum},
+        distance::l2,
         utils::{linear_knn_search, random_data_point, random_data_set, simple_test_set},
         vp_tree::{left, left_with_root, right},
         Float,
@@ -560,7 +560,7 @@ pub mod tests {
             for _ in 0..20 {
                 let query_idx = thread_rng().gen_range(0..data.len());
                 let query = data.get(query_idx);
-                let vp_tree = VpTree::new(data.clone(), SquaredDiffSum::distance);
+                let vp_tree = VpTree::new(data.clone(), l2);
                 let nn = vp_tree.knn_search(query, 1).0[0];
                 assert_eq!(nn.i, query_idx);
                 assert_eq!(nn.dist, 0.0);
@@ -597,7 +597,7 @@ pub mod tests {
 
         for i in 0..10 {
             let q = data.get(i);
-            let tree = VpTree::new(data.clone(), SquaredDiffSum::distance);
+            let tree = VpTree::new(data.clone(), l2);
             dbg!(i);
             println!("{:?}", &tree.nodes);
             let tree_l = left(&tree.nodes);

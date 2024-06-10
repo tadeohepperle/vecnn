@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use vecnn::{
+    distance::l2,
     hnsw::{Hnsw, HnswParams},
     utils::random_data_set,
 };
@@ -14,6 +15,7 @@ fn main() {
             ef_construction: 40,
             m_max: 20,
             m_max_0: 20,
+            distance_fn: l2,
         },
     );
     for _ in 0..10 {

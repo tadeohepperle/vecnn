@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Literal, Optional, Callable, Tuple
 import numpy as np
 
 def sum_as_string(a: int, b: int) -> str:
@@ -78,6 +78,7 @@ class HnswParams:
     ef_construction: int
     m_max: int
     m_max_0: int
+    distance_fn: Literal['l1', 'l2', 'cos', 'cos_for_spherical']
 
     def __init__(self, level_norm_param: float, ef_construction: int, m_max: int, m_max_0: int):
         pass

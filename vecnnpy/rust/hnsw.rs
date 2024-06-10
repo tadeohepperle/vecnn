@@ -1,5 +1,6 @@
 use numpy::{IntoPyArray, PyArray1};
 use pyo3::{exceptions::PyTypeError, pyclass, pymethods, Bound, Py, PyResult, Python};
+use vecnn::distance::{cos, cos_for_spherical, l1, l2};
 
 use crate::utils::{pyarray1_to_slice, KnnResult};
 
@@ -13,16 +14,27 @@ pub struct HnswParams {
     pub m_max: usize,
     #[pyo3(get, set)]
     pub m_max_0: usize,
+    #[pyo3(get, set)]
+    pub distance_fn: String,
 }
 
-impl Into<vecnn::hnsw::HnswParams> for HnswParams {
-    fn into(self) -> vecnn::hnsw::HnswParams {
-        vecnn::hnsw::HnswParams {
+impl HnswParams {
+    pub fn to_vecnn_hnsw_params(&self) -> PyResult<vecnn::hnsw::HnswParams> {
+        let distance_fn: vecnn::distance::DistanceFn = match self.distance_fn.as_str() {
+            "l1" => l1,
+            "l2" => l2,
+            "cos" => cos,
+            "cos_for_spherical" => cos_for_spherical,
+            _ => return Err(PyTypeError::new_err("Array is not standard layout")),
+        };
+
+        Ok(vecnn::hnsw::HnswParams {
             level_norm_param: self.level_norm_param,
             ef_construction: self.ef_construction,
             m_max: self.m_max,
             m_max_0: self.m_max_0,
-        }
+            distance_fn,
+        })
     }
 }
 
@@ -35,6 +47,7 @@ impl HnswParams {
             ef_construction,
             m_max,
             m_max_0,
+            distance_fn: String::from("l2"),
         }
     }
 }
@@ -45,15 +58,9 @@ pub struct Hnsw(vecnn::hnsw::Hnsw);
 #[pymethods]
 impl Hnsw {
     #[new]
-    fn new<'py>(py: Python<'py>, data: crate::Dataset, params: &'py HnswParams) -> Self {
-        let params = vecnn::hnsw::HnswParams {
-            level_norm_param: params.level_norm_param,
-            ef_construction: params.ef_construction,
-            m_max: params.m_max,
-            m_max_0: params.m_max_0,
-        };
-        let hnsw = vecnn::hnsw::Hnsw::new(data.as_dyn_dataset(), params);
-        Hnsw(hnsw)
+    fn new<'py>(py: Python<'py>, data: crate::Dataset, params: &'py HnswParams) -> PyResult<Self> {
+        let hnsw = vecnn::hnsw::Hnsw::new(data.as_dyn_dataset(), params.to_vecnn_hnsw_params()?);
+        Ok(Hnsw(hnsw))
     }
 
     #[getter]

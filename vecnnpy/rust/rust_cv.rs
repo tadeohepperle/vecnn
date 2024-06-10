@@ -5,17 +5,13 @@ use numpy::{IntoPyArray, PyArray1};
 use pyo3::{exceptions::PyTypeError, pyclass, pymethods, Bound, Py, PyResult, Python};
 use rust_cv_hnsw::Searcher;
 use space::Neighbor;
-use vecnn::{
-    dataset::DatasetT,
-    distance::{DistanceT, SquaredDiffSum},
-    vp_tree::Stats,
-};
+use vecnn::{dataset::DatasetT, distance::l2, vp_tree::Stats};
 
 struct Euclidean;
 impl space::Metric<&[f32]> for Euclidean {
     type Unit = u32;
     fn distance(&self, a: &&[f32], b: &&[f32]) -> u32 {
-        SquaredDiffSum::distance(a, b).to_bits()
+        l2(a, b).to_bits()
     }
 }
 type MyHnsw = rust_cv_hnsw::Hnsw<Euclidean, &'static [f32], rand_chacha::ChaCha20Rng, 10, 10>;

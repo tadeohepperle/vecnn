@@ -2,19 +2,19 @@ use rand::{thread_rng, Rng};
 
 use crate::{
     dataset::{DatasetT, FlatDataSet},
-    distance::{DistanceT, SquaredDiffSum},
-    hnsw::DistAnd,
+    distance::l2,
+    hnsw::IAndDist,
     Float,
 };
 use std::{collections::BinaryHeap, sync::Arc};
 
-pub fn linear_knn_search(data: &dyn DatasetT, q_data: &[f32], k: usize) -> Vec<DistAnd<usize>> {
+pub fn linear_knn_search(data: &dyn DatasetT, q_data: &[f32], k: usize) -> Vec<IAndDist<usize>> {
     assert_eq!(q_data.len(), data.dims());
     // this stores the item with the greatest distance in the root (first element)
     let mut knn_heap = KnnHeap::new(k);
     for id in 0..data.len() {
         let i_data = data.get(id);
-        let dist = SquaredDiffSum::distance(q_data, i_data);
+        let dist = l2(q_data, i_data);
         knn_heap.maybe_add(id, dist)
     }
     knn_heap.as_sorted_vec()
@@ -68,7 +68,7 @@ pub fn random_data_point<const DIMS: usize>() -> [Float; DIMS] {
 
 pub struct KnnHeap {
     k: usize,
-    heap: BinaryHeap<DistAnd<usize>>,
+    heap: BinaryHeap<IAndDist<usize>>,
 }
 
 impl KnnHeap {
@@ -81,12 +81,12 @@ impl KnnHeap {
 
     pub fn maybe_add(&mut self, id: usize, dist: Float) {
         if self.heap.len() < self.k {
-            self.heap.push(DistAnd { dist, i: id });
+            self.heap.push(IAndDist { dist, i: id });
         } else {
             let worst_neighbor = self.heap.peek().unwrap();
             if dist < worst_neighbor.dist {
                 self.heap.pop();
-                self.heap.push(DistAnd { dist, i: id });
+                self.heap.push(IAndDist { dist, i: id });
             } else {
                 // do nothing, not inserted
             }
@@ -97,7 +97,7 @@ impl KnnHeap {
         self.heap.peek().unwrap().dist
     }
 
-    pub fn as_sorted_vec(self) -> Vec<DistAnd<usize>> {
+    pub fn as_sorted_vec(self) -> Vec<IAndDist<usize>> {
         let mut res = Vec::from(self.heap);
         res.sort();
         res
@@ -120,4 +120,9 @@ mod test {
         let res: Vec<usize> = res.into_iter().map(|e| e.i).collect();
         assert_eq!(res, vec![0, 1, 7, 8]);
     }
+}
+
+#[inline(always)]
+pub fn extend_lifetime<T: ?Sized>(e: &T) -> &'static T {
+    unsafe { &*(e as *const T) }
 }

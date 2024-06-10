@@ -4,8 +4,8 @@ use heapless::{binary_heap::Max, BinaryHeap};
 
 use crate::{
     dataset::DatasetT,
-    distance::{DistanceT, DistanceTracker, SquaredDiffSum},
-    hnsw::{self, pick_level, DistAnd, Hnsw, HnswParams, Layer, LayerEntry},
+    distance::{l2, DistanceTracker},
+    hnsw::{self, pick_level, Hnsw, HnswParams, IAndDist, Layer, LayerEntry},
     vp_tree::{self, arrange_into_vp_tree, left, left_with_root, right, Node, Stats, VpTree},
 };
 
@@ -21,17 +21,17 @@ pub fn vp_tree_to_hnsw(tree: &VpTree) -> Hnsw {
         let id = node.idx;
         let id_data = tree.data.get(id);
 
-        let mut neighbors: BinaryHeap<DistAnd<u32>, Max, 40> = Default::default();
+        let mut neighbors: BinaryHeap<IAndDist<u32>, Max, 40> = Default::default();
         // vielleicht nodes die eine hohe mittlere Distanz haben auf hoheren levels einfugen.
         let mut sum_dist = 0.0;
         for j in 1..=20 {
             let i2 = (i + j) % n;
             let other_id = tree.nodes[i2].idx;
             let other_id_data = tree.data.get(other_id);
-            let dist = SquaredDiffSum::distance(id_data, other_id_data);
+            let dist = l2(id_data, other_id_data);
             sum_dist += dist;
             neighbors
-                .push(DistAnd {
+                .push(IAndDist {
                     dist,
                     i: other_id as u32,
                 })
@@ -46,7 +46,7 @@ pub fn vp_tree_to_hnsw(tree: &VpTree) -> Hnsw {
         });
     }
 
-    let mut layers = vec![Layer { level: 0, entries }];
+    let layers = vec![Layer { level: 0, entries }];
 
     // let avg_sum_dist = sum_dists.iter().copied().sum::<f32>() / sum_dists.len() as f32;
 
@@ -76,6 +76,7 @@ pub fn vp_tree_to_hnsw(tree: &VpTree) -> Hnsw {
             ef_construction: 40,
             m_max: 40,
             m_max_0: 40,
+            distance_fn: l2,
         },
         data: tree.data.clone(),
         layers,
@@ -84,7 +85,7 @@ pub fn vp_tree_to_hnsw(tree: &VpTree) -> Hnsw {
 }
 
 pub fn build_hnsw_alternative(data: Arc<dyn DatasetT>, max_chunk_size: usize) -> Hnsw {
-    let mut tracker = DistanceTracker::new(SquaredDiffSum::distance);
+    let mut tracker = DistanceTracker::new(l2);
 
     let mut vp_tree: Vec<vp_tree::Node> = Vec::with_capacity(data.len());
     for idx in 0..data.len() {
@@ -99,6 +100,8 @@ pub fn build_hnsw_alternative(data: Arc<dyn DatasetT>, max_chunk_size: usize) ->
     let chunk_ranges = make_chunk_ranges(vp_tree.len(), max_chunk_size);
 
     let mut chunk_dst_mat: Vec<f32> = vec![0.0; max_chunk_size * max_chunk_size];
+
+    dbg!(max_chunk_size);
 
     // each chunk should now
     for range in chunk_ranges.iter() {
@@ -132,6 +135,8 @@ pub fn build_hnsw_alternative(data: Arc<dyn DatasetT>, max_chunk_size: usize) ->
             }
         }
 
+        let max_neighbors = 5; // or MAX_NEIGHBORS
+
         // connect each node in the chunk to each other node (except itself)
         for i in 0..chunk_size {
             let entry = &mut layer_entries[layer_idx_first + i];
@@ -139,26 +144,25 @@ pub fn build_hnsw_alternative(data: Arc<dyn DatasetT>, max_chunk_size: usize) ->
                 if j == i {
                     continue;
                 }
-                let neighbor = DistAnd {
+                let neighbor = IAndDist {
                     dist: chunk_dst_mat[chunk_dst_mat_idx(i, j)],
                     i: (layer_idx_first + j) as u32,
                 };
-                let peek_mut = entry.neighbors.peek_mut();
-                if let Some(mut top) = peek_mut {
+
+                if entry.neighbors.len() < max_neighbors {
+                    entry.neighbors.push(neighbor).unwrap();
+                } else {
+                    let mut top = entry.neighbors.peek_mut().unwrap();
                     if neighbor.dist < top.dist {
                         *top = neighbor;
                     }
-                } else {
-                    drop(peek_mut);
-                    entry.neighbors.push(neighbor).unwrap();
                 }
             }
         }
     }
+    // connect chunks to each other.
 
-    // now we need to decide how to
-
-    // insert each chunk into an hnsw layer:
+    // insert a representative of each cluster (first element?)
 
     Hnsw {
         params: Default::default(),
