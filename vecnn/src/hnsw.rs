@@ -4,6 +4,7 @@ use std::{
     collections::BinaryHeap,
     fmt::Debug,
     io::Write,
+    process::id,
     sync::{Arc, Barrier},
     time::{Duration, Instant},
 };
@@ -80,7 +81,7 @@ pub struct Layer {
 }
 
 type ID = u32;
-const MAX_NEIGHBORS: usize = 40;
+pub const NEIGHBORS_LIST_MAX_LEN: usize = 40;
 
 #[derive(Debug, Clone)]
 pub struct LayerEntry {
@@ -90,8 +91,60 @@ pub struct LayerEntry {
     pub lower_level_idx: u32,
     /// a Max-Heap, such that we can easily pop off the item with the largest distance to make space.
     /// DistAnd<u32> is distances to, and idx's of neighbors
-    pub neighbors: heapless::BinaryHeap<IAndDist<u32>, Max, MAX_NEIGHBORS>, // the u32 stores the index in the layer
+    pub neighbors: Neighbors, // the u32 stores the index in the layer
 }
+
+#[derive(Debug, Clone, Default)]
+pub struct Neighbors(heapless::BinaryHeap<IAndDist<u32>, Max, NEIGHBORS_LIST_MAX_LEN>);
+
+impl Neighbors {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn iter<'a>(&'a self) -> std::slice::Iter<'a, IAndDist<u32>> {
+        self.0.iter()
+    }
+
+    /// # Panics
+    ///
+    /// if no space anymore
+    #[inline]
+    pub fn insert_asserted(&mut self, idx_in_layer: u32, dist: f32) {
+        self.0
+            .push(IAndDist {
+                i: idx_in_layer,
+                dist,
+            })
+            .expect("no more space in neighbors list, use insert_if_better instead!")
+    }
+
+    #[inline]
+    pub fn insert_if_better(&mut self, idx_in_layer: u32, dist: f32, max_neighbors: usize) {
+        if self.0.len() < max_neighbors {
+            self.0
+                .push(IAndDist {
+                    i: idx_in_layer,
+                    dist,
+                })
+                .expect("should have space too");
+        } else {
+            // if all neighbors in n_neighbors are closer already, dont add connection from n to q:
+            let max_d = self.0.peek().unwrap().dist;
+            if max_d > dist {
+                // because this is a max heap, pop removes the item with the greatest distance.
+                self.0.pop().unwrap();
+                self.0
+                    .push(IAndDist {
+                        i: idx_in_layer,
+                        dist,
+                    })
+                    .unwrap();
+            }
+        }
+    }
+}
+
 impl LayerEntry {
     fn new(id: u32, lower_level_idx: u32) -> LayerEntry {
         LayerEntry {
@@ -276,7 +329,7 @@ fn insert(hnsw: &mut Hnsw, q: ID, distance: &DistanceTracker, ctx: &mut InsertCt
         select_neighbors(
             layer,
             &mut ctx.search_ctx.search_res,
-            MAX_NEIGHBORS,
+            NEIGHBORS_LIST_MAX_LEN,
             &mut ctx.select_neighbors_res,
         );
         // add bidirectional connections from neighbors to q at layer l:
@@ -284,37 +337,15 @@ fn insert(hnsw: &mut Hnsw, q: ID, distance: &DistanceTracker, ctx: &mut InsertCt
         let m_max = hnsw.params.m_max_on_level(l);
         for n in ctx.select_neighbors_res.iter() {
             // add connection from q to n:
+
             layer.entries[idx_of_q_in_l as usize]
                 .neighbors
-                .push(IAndDist {
-                    i: n.idx_in_layer,
-                    dist: n.d_to_q,
-                })
-                .expect("should have space.");
+                .insert_asserted(n.idx_in_layer, n.d_to_q);
 
             // add connection from n to q:
-            let n_neighbors = &mut layer.entries[n.idx_in_layer as usize].neighbors;
-            if n_neighbors.len() < m_max {
-                n_neighbors
-                    .push(IAndDist {
-                        i: idx_of_q_in_l,
-                        dist: n.d_to_q,
-                    })
-                    .expect("should have space too");
-            } else {
-                // if all neighbors in n_neighbors are closer already, dont add connection from n to q:
-                let max_d = n_neighbors.peek().unwrap().dist;
-                if max_d > n.d_to_q {
-                    // because this is a max heap, pop removes the item with the greatest distance.
-                    n_neighbors.pop().unwrap();
-                    n_neighbors
-                        .push(IAndDist {
-                            i: idx_of_q_in_l,
-                            dist: n.d_to_q,
-                        })
-                        .unwrap();
-                }
-            }
+            layer.entries[n.idx_in_layer as usize]
+                .neighbors
+                .insert_if_better(idx_of_q_in_l, n.d_to_q, m_max);
         }
 
         // set new ep_idxs_in_layer:

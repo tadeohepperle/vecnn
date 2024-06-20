@@ -365,7 +365,7 @@ impl VpTreeBuilder {
     }
 }
 
-pub fn arrange_into_vp_tree(tmp: &mut [Node], data: &dyn DatasetT, tracker: &DistanceTracker) {
+pub fn arrange_into_vp_tree(tmp: &mut [Node], data: &dyn DatasetT, distance: &DistanceTracker) {
     // early return if there are only 0,1 or 2 elements left
     match tmp.len() {
         0 => return,
@@ -376,7 +376,7 @@ pub fn arrange_into_vp_tree(tmp: &mut [Node], data: &dyn DatasetT, tracker: &Dis
         2 => {
             let pt_0 = data.get(tmp[0].idx);
             let pt_1 = data.get(tmp[1].idx);
-            tmp[0].dist = tracker.distance(pt_0, pt_1);
+            tmp[0].dist = distance.distance(pt_0, pt_1);
             tmp[1].dist = 0.0;
             return;
         }
@@ -389,7 +389,7 @@ pub fn arrange_into_vp_tree(tmp: &mut [Node], data: &dyn DatasetT, tracker: &Dis
     for i in 1..tmp.len() {
         let other = &mut tmp[i];
         let other_pt = data.get(other.idx);
-        other.dist = tracker.distance(vp_pt, other_pt);
+        other.dist = distance.distance(vp_pt, other_pt);
     }
     // partition into points closer and further to median:
     let median_i = quick_select_median_dist(&mut tmp[1..]) + 1;
@@ -397,8 +397,8 @@ pub fn arrange_into_vp_tree(tmp: &mut [Node], data: &dyn DatasetT, tracker: &Dis
     // set the median distance on the root node, then build left and right sub-trees
     let median_dist = tmp[median_i].dist;
     tmp[0].dist = median_dist;
-    arrange_into_vp_tree(&mut tmp[1..median_i], data, tracker);
-    arrange_into_vp_tree(&mut tmp[median_i..], data, tracker);
+    arrange_into_vp_tree(&mut tmp[1..median_i], data, distance);
+    arrange_into_vp_tree(&mut tmp[median_i..], data, distance);
 }
 
 fn select_random_point(tmp: &[Node], _data: &dyn DatasetT) -> usize {

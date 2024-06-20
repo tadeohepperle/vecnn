@@ -4,6 +4,10 @@ import numpy as np
 def sum_as_string(a: int, b: int) -> str:
     "adds two numbers and returns their sum as a string"
 
+
+def build_hnsw_by_transition(data: Dataset, params: TransitionParams) -> Hnsw:
+    pass
+
 class Dataset(): 
     '''A dataset, wrapping a 2d-numpy array'''
     def __init__(self, data: np.ndarray) -> Dataset:
@@ -84,6 +88,18 @@ class HnswParams:
         pass
 
 
+class TransitionParams:
+    """Params used for building an hnsw by transitioning from a vp-tree"""
+
+    max_chunk_size: int
+    same_chunk_max_neighbors: int
+    neg_fraction: float
+
+    def __init__(self, max_chunk_size: float, same_chunk_max_neighbors: int, neg_fraction: float,):
+        pass
+
+
+
 class Hnsw(): 
     '''An HNSW, built on a DataSet'''
     num_distance_calculations_in_build: int
@@ -118,3 +134,4 @@ class RustCvHnsw():
         ef: number of candidates in candidate set.
         """
         pass
+

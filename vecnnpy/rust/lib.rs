@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use crate::hnsw::{Hnsw, HnswParams};
+use hnsw::TransitionParams;
 use numpy::ndarray::{ArrayD, ArrayViewD, ArrayViewMutD};
 use numpy::{IntoPyArray, PyArray1, PyArrayDyn, PyArrayMethods, PyReadonlyArrayDyn};
 use pyo3::prelude::*;
@@ -14,6 +15,7 @@ mod utils;
 mod vp_tree;
 
 use crate::dataset::Dataset;
+use crate::hnsw::build_hnsw_by_transition;
 use crate::utils::{pyarray1_to_slice, static_python, KnnResult};
 use crate::vp_tree::VpTree;
 
@@ -32,9 +34,11 @@ fn _lib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Hnsw>()?;
     m.add_class::<HnswParams>()?;
     m.add_class::<RustCvHnsw>()?;
+    m.add_class::<TransitionParams>()?;
     m.add_function(wrap_pyfunction!(linear_knn, m)?)?;
     m.add_function(wrap_pyfunction!(knn_recall, m)?)?;
     m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
+    m.add_function(wrap_pyfunction!(build_hnsw_by_transition, m)?)?;
     Ok(())
 }
 
