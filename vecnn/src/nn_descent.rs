@@ -1,6 +1,7 @@
-use std::{cell::UnsafeCell, sync::Arc, time::Duration};
+use std::{cell::UnsafeCell, cmp::Reverse, collections::BinaryHeap, sync::Arc, time::Duration};
 
-use rand::{Rng, SeedableRng};
+use ahash::{HashMap, HashSet};
+use rand::{thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
 use crate::{
@@ -61,14 +62,87 @@ impl Default for RNNGraphParams {
     }
 }
 
+impl RNNGraph {
+    pub fn knn_search(
+        &self,
+        q_data: &[f32],
+        k: usize,
+        start_candidates: usize,
+    ) -> (Vec<IAndDist<usize>>, Stats) {
+        assert!(start_candidates > 0);
+        let distance = DistanceTracker::new(self.params.distance);
+
+        let dist_to_q = |idx: usize| -> f32 {
+            let idx_data = self.data.get(idx);
+            distance.distance(q_data, idx_data)
+        };
+
+        let mut visited: ahash::HashSet<usize> = Default::default();
+        let mut candidates: BinaryHeap<Reverse<IAndDist<usize>>> = Default::default(); // has min dist item in root, can be peaked
+        let mut search_res: BinaryHeap<IAndDist<usize>> = Default::default(); // has top dist in root, to pop it easily
+
+        let mut rng = thread_rng();
+
+        // initialize candidates:
+        let data_len = self.data.len();
+
+        while candidates.len() < start_candidates {
+            let idx = rng.gen_range(0..data_len);
+            if visited.insert(idx) {
+                let dist = dist_to_q(idx);
+                let item = IAndDist { i: idx, dist };
+                candidates.push(Reverse(item));
+                search_res.push(item)
+            }
+        }
+
+        while candidates.len() > 0 {
+            let closest_candidate = candidates.pop().unwrap().0;
+            let mut search_results_changed = false;
+            for neighbor in &self.nodes[closest_candidate.i] {
+                if visited.insert(neighbor.idx) {
+                    let dist = dist_to_q(neighbor.idx);
+                    let item = IAndDist {
+                        i: neighbor.idx,
+                        dist,
+                    };
+                    candidates.push(Reverse(item));
+                    if search_res.len() < k {
+                        search_res.push(item);
+                        search_results_changed = true;
+                    } else {
+                        let mut worst = search_res.peek_mut().unwrap();
+                        if dist < worst.dist {
+                            *worst = item;
+                            search_results_changed = true;
+                        } else {
+                            // ignore
+                        }
+                    }
+                }
+            }
+            if !search_results_changed {
+                break;
+            }
+        }
+
+        let mut results: Vec<IAndDist<usize>> = search_res.into_vec();
+        results.sort();
+        let stats = Stats {
+            num_distance_calculations: distance.num_calculations(),
+            duration: Duration::ZERO,
+        };
+        (results, stats)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RNNGraph {
     pub data: Arc<dyn DatasetT>,
     pub nodes: Vec<Vec<Neighbor>>,
     pub build_stats: Stats,
+    pub params: RNNGraphParams,
 }
-
-const MAX_NEIGHBORS: usize = 40;
 
 impl RNNGraph {
     pub fn new(data: Arc<dyn DatasetT>, params: RNNGraphParams) -> RNNGraph {
@@ -107,6 +181,7 @@ fn construct_relative_nn_graph(data: Arc<dyn DatasetT>, params: RNNGraphParams) 
         data,
         nodes,
         build_stats,
+        params,
     }
 }
 

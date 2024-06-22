@@ -399,24 +399,6 @@ impl SearchCtx {
             // pool: rayon::ThreadPoolBuilder::new().build().unwrap(),
         }
     }
-
-    fn initialize(&mut self, ep_idxs_in_layer: &[u32], idx_to_dist: impl Fn(u32) -> f32) {
-        self.visited_idxs.clear();
-        self.candidates.clear();
-        self.search_res.clear();
-        for idx_in_layer in ep_idxs_in_layer.iter().copied() {
-            let dist = idx_to_dist(idx_in_layer);
-            self.visited_idxs.insert(idx_in_layer);
-            self.candidates.push(Reverse(IAndDist {
-                i: idx_in_layer,
-                dist,
-            }));
-            self.search_res.push(IAndDist {
-                i: idx_in_layer,
-                dist,
-            })
-        }
-    }
 }
 
 #[repr(C)]
@@ -516,10 +498,23 @@ fn closest_points_in_layer(
 ) {
     // #[cfg(feature = "tracking")]
     // let mut track_to_idx_from_idx: HashMap<u32, u32> = HashMap::new();
-    ctx.initialize(ep_idxs_in_layer, |idx| {
-        let id = entries[idx as usize].id;
-        distance.distance(data.get(id as usize), q_data)
-    });
+
+    ctx.visited_idxs.clear();
+    ctx.candidates.clear();
+    ctx.search_res.clear();
+    for idx_in_layer in ep_idxs_in_layer.iter().copied() {
+        let id = entries[idx_in_layer as usize].id;
+        let dist = distance.distance(data.get(id as usize), q_data);
+        ctx.visited_idxs.insert(idx_in_layer);
+        ctx.candidates.push(Reverse(IAndDist {
+            i: idx_in_layer,
+            dist,
+        }));
+        ctx.search_res.push(IAndDist {
+            i: idx_in_layer,
+            dist,
+        })
+    }
 
     while ctx.candidates.len() > 0 {
         let c = ctx.candidates.pop().unwrap(); // remove closest element.
