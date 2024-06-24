@@ -2,19 +2,24 @@ use rand::{thread_rng, Rng};
 
 use crate::{
     dataset::{DatasetT, FlatDataSet},
-    distance::l2,
+    distance::{l2, DistanceFn},
     hnsw::IAndDist,
     Float,
 };
 use std::{collections::BinaryHeap, sync::Arc};
 
-pub fn linear_knn_search(data: &dyn DatasetT, q_data: &[f32], k: usize) -> Vec<IAndDist<usize>> {
+pub fn linear_knn_search(
+    data: &dyn DatasetT,
+    q_data: &[f32],
+    k: usize,
+    distance: DistanceFn,
+) -> Vec<IAndDist<usize>> {
     assert_eq!(q_data.len(), data.dims());
     // this stores the item with the greatest distance in the root (first element)
     let mut knn_heap = KnnHeap::new(k);
     for id in 0..data.len() {
         let i_data = data.get(id);
-        let dist = l2(q_data, i_data);
+        let dist = distance(q_data, i_data);
         knn_heap.maybe_add(id, dist)
     }
     knn_heap.as_sorted_vec()
@@ -110,13 +115,15 @@ impl KnnHeap {
 
 #[cfg(test)]
 mod test {
+    use crate::distance::l2;
+
     use super::{linear_knn_search, simple_test_set};
 
     #[test]
     fn linear_knn() {
         let data = simple_test_set();
 
-        let res = linear_knn_search(&*data, data.get(0), 4);
+        let res = linear_knn_search(&*data, data.get(0), 4, l2);
         let res: Vec<usize> = res.into_iter().map(|e| e.i).collect();
         assert_eq!(res, vec![0, 1, 7, 8]);
     }

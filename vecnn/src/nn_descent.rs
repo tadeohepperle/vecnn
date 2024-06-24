@@ -41,13 +41,13 @@ impl Ord for Neighbor {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RNNGraphParams {
-    outer_loops: usize,
-    inner_loops: usize,
-    max_neighbors_after_reverse_pruning: usize,
-    initial_neighbors: usize,
-    distance: DistanceFn,
+    pub outer_loops: usize,
+    pub inner_loops: usize,
+    pub max_neighbors_after_reverse_pruning: usize,
+    pub initial_neighbors: usize,
+    pub distance: DistanceFn,
 }
 
 impl Default for RNNGraphParams {
@@ -145,7 +145,16 @@ pub struct RNNGraph {
 }
 
 impl RNNGraph {
-    pub fn new(data: Arc<dyn DatasetT>, params: RNNGraphParams) -> RNNGraph {
+    pub fn new_empty(data: Arc<dyn DatasetT>, params: RNNGraphParams) -> Self {
+        RNNGraph {
+            data,
+            nodes: Default::default(),
+            build_stats: Default::default(),
+            params,
+        }
+    }
+
+    pub fn new(data: Arc<dyn DatasetT>, params: RNNGraphParams) -> Self {
         construct_relative_nn_graph(data, params)
     }
 }

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use vecnn::{
-    distance::{cos, cos_for_spherical, l2},
+    distance::{cos, dot, l2},
     hnsw::{Hnsw, HnswParams},
     utils::random_data_set,
 };
@@ -16,7 +16,7 @@ fn main() {
             ef_construction: 40,
             m_max: 20,
             m_max_0: 20,
-            distance_fn: cos_for_spherical,
+            distance_fn: dot,
         },
     );
 

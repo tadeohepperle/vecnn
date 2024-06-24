@@ -88,6 +88,7 @@ pub struct TransitionParams {
     pub max_chunk_size: usize,
     pub same_chunk_max_neighbors: usize,
     pub neg_fraction: f32,
+    pub distance_fn: DistanceFn,
 }
 
 pub fn build_hnsw_by_transition(data: Arc<dyn DatasetT>, params: TransitionParams) -> Hnsw {
@@ -95,7 +96,7 @@ pub fn build_hnsw_by_transition(data: Arc<dyn DatasetT>, params: TransitionParam
     let same_chunk_max_neighbors = params.same_chunk_max_neighbors;
     assert!(same_chunk_max_neighbors <= NEIGHBORS_LIST_MAX_LEN);
 
-    let mut distance = DistanceTracker::new(l2);
+    let mut distance = DistanceTracker::new(params.distance_fn);
 
     let mut vp_tree: Vec<vp_tree::Node> = Vec::with_capacity(data.len());
     for idx in 0..data.len() {

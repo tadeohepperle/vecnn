@@ -1,11 +1,13 @@
 from typing import Literal, Optional, Callable, Tuple
 import numpy as np
 
+type DistanceFn = Literal['l1', 'l2', 'cos', 'dot']
+
 def sum_as_string(a: int, b: int) -> str:
     "adds two numbers and returns their sum as a string"
 
 
-def build_hnsw_by_transition(data: Dataset, params: TransitionParams) -> Hnsw:
+def build_hnsw_by_transition(data: Dataset, max_chunk_size: int, same_chunk_max_neighbors: int, neg_fraction: float, distance_fn: DistanceFn) -> Hnsw:
     pass
 
 class Dataset(): 
@@ -59,7 +61,7 @@ class KnnResult():
     """how many distance calculations were performed during build."""
 
 
-def linear_knn(data: Dataset, query: np.ndarray, k: int) -> KnnResult:
+def linear_knn(data: Dataset, query: np.ndarray, k: int, distance_fn: DistanceFn) -> KnnResult:
     """performs a linear knn search thorugh the entire data.
 
     query: 1-dimensional numpy array of type float32."""
@@ -75,37 +77,12 @@ def knn_recall(truth: np.ndarray, reported: np.ndarray) -> float:
     reported: 1-dimensional numpy array of type uint64 containing the indices found in knn"""
 
 
-
-class HnswParams:
-    """Params used for building the Hnsw"""
-    level_norm_param: float
-    ef_construction: int
-    m_max: int
-    m_max_0: int
-    distance_fn: Literal['l1', 'l2', 'cos', 'cos_for_spherical']
-
-    def __init__(self, level_norm_param: float, ef_construction: int, m_max: int, m_max_0: int):
-        pass
-
-
-class TransitionParams:
-    """Params used for building an hnsw by transitioning from a vp-tree"""
-
-    max_chunk_size: int
-    same_chunk_max_neighbors: int
-    neg_fraction: float
-
-    def __init__(self, max_chunk_size: float, same_chunk_max_neighbors: int, neg_fraction: float,):
-        pass
-
-
-
 class Hnsw(): 
     '''An HNSW, built on a DataSet'''
     num_distance_calculations_in_build: int
 
     
-    def __init__(self, data: Dataset, params: HnswParams):
+    def __init__(self, data: Dataset, level_norm_param: float, ef_construction: int, m_max: int, m_max_0: int, distance_fn: DistanceFn):
         """constructs a new hnsw on the dataset."""
         pass
 
@@ -133,5 +110,14 @@ class RustCvHnsw():
         k: number of nearest neighbors to find.
         ef: number of candidates in candidate set.
         """
+        pass
+
+class RNNGraph:
+    num_distance_calculations_in_build: int
+
+    def __init__(self, data: Dataset, outer_loops: int, inner_loops: int, max_neighbors_after_reverse_pruning: int, initial_neighbors: int, distance_fn: DistanceFn):
+        pass
+
+    def knn(self, query: np.ndarray, k: int, start_candidates: int) -> KnnResult:
         pass
 

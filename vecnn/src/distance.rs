@@ -66,10 +66,11 @@ pub fn cos(a: &[Float], b: &[Float]) -> Float {
     for i in (dims - rem)..dims {
         accum!(i);
     }
-    dot / (xx * yy).sqrt()
+    let dot = dot / (xx * yy).sqrt();
+    1.0 - dot // to make it a distance not a similarity
 }
 
-pub fn cos_for_spherical(a: &[Float], b: &[Float]) -> Float {
+pub fn dot(a: &[Float], b: &[Float]) -> Float {
     let dims = a.len();
     assert_eq!(dims, b.len());
     let mut dot: Float = 0.0;
@@ -97,7 +98,7 @@ pub fn cos_for_spherical(a: &[Float], b: &[Float]) -> Float {
     for i in (dims - rem)..dims {
         accum!(i);
     }
-    dot
+    1.0 - dot // to make it a distance not a similarity
 }
 
 pub fn l2(a: &[Float], b: &[Float]) -> Float {

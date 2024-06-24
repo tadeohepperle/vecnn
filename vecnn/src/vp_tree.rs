@@ -609,7 +609,7 @@ pub mod tests {
             println!("right left: {:?}", left(tree_r));
             println!("right right: {:?}", right(tree_r));
             let tree_res = tree.knn_search(&q, 5).0;
-            let lin_res = linear_knn_search(&*data, &q, 5);
+            let lin_res = linear_knn_search(&*data, &q, 5, l2);
 
             assert_eq!(tree_res, lin_res);
         }
