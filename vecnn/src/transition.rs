@@ -1,7 +1,13 @@
-use std::{collections::HashSet, ops::Range, sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    ops::Range,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use heapless::{binary_heap::Max, BinaryHeap};
-use rand::{thread_rng, Rng};
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha20Rng;
 
 use crate::{
     dataset::DatasetT,
@@ -98,11 +104,15 @@ pub fn build_hnsw_by_transition(data: Arc<dyn DatasetT>, params: TransitionParam
 
     let mut distance = DistanceTracker::new(params.distance_fn);
 
+    let start = Instant::now();
+
     let mut vp_tree: Vec<vp_tree::Node> = Vec::with_capacity(data.len());
     for idx in 0..data.len() {
         vp_tree.push(vp_tree::Node { idx, dist: 0.0 });
     }
     arrange_into_vp_tree(&mut vp_tree, &*data, &mut distance);
+
+    let mut rng = ChaCha20Rng::seed_from_u64(42);
 
     let mut entries: Vec<hnsw::LayerEntry> = Vec::with_capacity(data.len());
     let mut chunks = make_chunks(vp_tree.len(), max_chunk_size);
@@ -163,6 +173,7 @@ pub fn build_hnsw_by_transition(data: Arc<dyn DatasetT>, params: TransitionParam
             &chunks[neg_idx],
             &mut entries,
             params.neg_fraction,
+            &mut rng,
         );
         chunks.remove(neg_idx);
         chunks[pos_idx] = merged_chunk;
@@ -179,7 +190,7 @@ pub fn build_hnsw_by_transition(data: Arc<dyn DatasetT>, params: TransitionParam
         }],
         build_stats: Stats {
             num_distance_calculations: distance.num_calculations(),
-            duration: Duration::ZERO,
+            duration: start.elapsed(),
         },
     }
 }
@@ -191,6 +202,7 @@ fn stitch_chunks(
     neg_chunk: &Chunk,
     entries: &mut [LayerEntry],
     neg_fraction: f32,
+    rng: &mut ChaCha20Rng,
 ) -> Chunk {
     let len_diff = neg_chunk.range.len() - pos_chunk.range.len();
     assert!(len_diff == 1 || len_diff == 0);
@@ -203,7 +215,6 @@ fn stitch_chunks(
     let max_candidate_count = (neg_fraction * neg_chunk.len() as f32) as usize;
     let mut searched_from_neg = HashSet::<usize>::new();
     let mut neg_candidates = HashSet::<usize>::new();
-    let mut rng = thread_rng();
 
     for _ in 0..max_candidate_count {
         let random_idx = loop {

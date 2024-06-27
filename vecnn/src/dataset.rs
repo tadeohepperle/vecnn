@@ -1,6 +1,7 @@
 use std::{alloc::Layout, fmt::Debug, ops::Deref, sync::Arc};
 
-use rand::{thread_rng, Rng};
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha20Rng;
 
 use crate::Float;
 
@@ -78,7 +79,7 @@ impl FlatDataSet {
     pub fn new_random(len: usize, dims: usize) -> Arc<dyn DatasetT> {
         let floats = len * dims;
         let mut data: Vec<Float> = Vec::with_capacity(floats);
-        let mut rng = thread_rng();
+        let mut rng = ChaCha20Rng::seed_from_u64(42);
         data.extend((0..floats).map(|_| rng.gen::<f32>()));
         Arc::new(FlatDataSet { dims, len, data })
     }

@@ -6,8 +6,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use rand::{thread_rng, Rng, SeedableRng};
-use rand_chacha::{rand_core::impls, ChaCha12Rng};
+use rand::{Rng, SeedableRng};
+use rand_chacha::{rand_core::impls, ChaCha12Rng, ChaCha20Rng};
 
 use crate::{
     dataset::DatasetT,
@@ -75,7 +75,7 @@ impl VpTree {}
 
 impl VpTree {
     pub fn new(data: Arc<dyn DatasetT>, distance_fn: DistanceFn) -> Self {
-        let seed: u64 = thread_rng().gen();
+        let seed: u64 = 42;
         let builder = VpTreeBuilder::new(seed, data, distance_fn);
         builder.build()
     }
@@ -402,7 +402,7 @@ pub fn arrange_into_vp_tree(tmp: &mut [Node], data: &dyn DatasetT, distance: &Di
 }
 
 fn select_random_point(tmp: &[Node], _data: &dyn DatasetT) -> usize {
-    let mut rng = thread_rng();
+    let mut rng = ChaCha20Rng::seed_from_u64(42);
     // right now this is very simple, todo! make configurable later, use data to find good points
     rng.gen_range(0..tmp.len())
 }
@@ -478,7 +478,7 @@ pub mod tests {
     use crate::{
         dataset::DatasetT,
         distance::l2,
-        utils::{linear_knn_search, random_data_point, random_data_set, simple_test_set},
+        utils::{linear_knn_search, random_data_set, simple_test_set},
         vp_tree::{left, left_with_root, right},
         Float,
     };

@@ -1,4 +1,4 @@
-use rand::{thread_rng, Rng};
+use rand::Rng;
 
 use crate::{
     dataset::{DatasetT, FlatDataSet},
@@ -60,15 +60,6 @@ pub fn simple_test_set() -> Arc<dyn DatasetT> {
 
 pub fn random_data_set(len: usize, dims: usize) -> Arc<dyn DatasetT> {
     FlatDataSet::new_random(len, dims)
-}
-
-pub fn random_data_point<const DIMS: usize>() -> [Float; DIMS] {
-    let mut rng = thread_rng();
-    let mut p: [Float; DIMS] = [0.0; DIMS];
-    for f in p.iter_mut() {
-        *f = rng.gen();
-    }
-    p
 }
 
 pub struct KnnHeap {

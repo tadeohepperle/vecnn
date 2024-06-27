@@ -7,7 +7,7 @@ use vecnn::{
 };
 
 fn main() {
-    let data = random_data_set(10000, 768);
+    let data = random_data_set(1000, 768);
     let hnsw = Hnsw::new(
         data.clone(),
         HnswParams {

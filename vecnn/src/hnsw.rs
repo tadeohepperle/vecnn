@@ -9,20 +9,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+use super::track;
 use arrayvec::ArrayVec;
 use heapless::binary_heap::{Max, Min};
-use rand::{thread_rng, Rng};
-use rand_chacha::ChaChaRng;
-
-macro_rules! track {
-    ($event:expr) => {{
-        #[cfg(feature = "tracking")]
-        {
-            use tracking::Event::*;
-            tracking::push_event($event)
-        }
-    }};
-}
+use rand::{Rng, SeedableRng};
+use rand_chacha::{ChaCha20Rng, ChaChaRng};
 
 use crate::{
     dataset::DatasetT,
@@ -181,7 +172,7 @@ impl Hnsw {
                 closest_point_in_layer(layer, &*self.data, q_data, ep_idx_in_layer, &distance);
             ep_idx_in_layer = res.idx_in_lower_layer;
             track!(EdgeDown {
-                from: res.id,
+                from: res.id as usize,
                 upper_level: i,
             });
         }
@@ -273,9 +264,10 @@ fn insert(hnsw: &mut Hnsw, q: ID, distance: &DistanceTracker, ctx: &mut InsertCt
     // /////////////////////////////////////////////////////////////////////////////
     // Phase 0: insert the element on all levels (with empty neighbors)
     // /////////////////////////////////////////////////////////////////////////////
+    let mut rng = ChaCha20Rng::seed_from_u64(q as u64);
 
     let top_l = hnsw.layers.len() - 1; // (previous top l)
-    let insert_l = pick_level(hnsw.params.level_norm_param);
+    let insert_l = pick_level(hnsw.params.level_norm_param, &mut rng);
     let mut lower_level_idx: u32 = u32::MAX;
     for l in 0..=insert_l {
         let entry = LayerEntry::new(q, lower_level_idx);
@@ -356,15 +348,16 @@ fn insert(hnsw: &mut Hnsw, q: ID, distance: &DistanceTracker, ctx: &mut InsertCt
     }
 }
 
-pub fn pick_level(level_norm_param: f32) -> usize {
-    let f = thread_rng().gen::<f32>();
+pub fn pick_level(level_norm_param: f32, rng: &mut ChaCha20Rng) -> usize {
+    let f = rng.gen::<f32>();
     (-f.ln() * level_norm_param).floor() as usize
 }
 
 #[test]
 fn testlevel() {
+    let rng = &mut ChaCha20Rng::seed_from_u64(42);
     for i in 0..100 {
-        println!("{}", pick_level(10.0))
+        println!("{}", pick_level(10.0, rng))
     }
 }
 
@@ -453,7 +446,7 @@ fn closest_point_in_layer(
     // if none of them better than current best entry return (greedy routing).
     loop {
         track!(Point {
-            id: best_entry.id,
+            id: best_entry.id as usize,
             level: layer.level
         });
         #[cfg(feature = "tracking")]
@@ -479,9 +472,10 @@ fn closest_point_in_layer(
             };
         }
         track!(EdgeHorizontal {
-            from: best_entry_id,
-            to: best_entry.id,
-            level: layer.level
+            from: best_entry_id as usize,
+            to: best_entry.id as usize,
+            level: layer.level,
+            comment: "search"
         });
     }
 }
@@ -814,38 +808,6 @@ mod tests {
         );
 
         dbg!(hnsw);
-    }
-}
-
-#[cfg(feature = "tracking")]
-pub mod tracking {
-    use std::cell::UnsafeCell;
-
-    use super::ID;
-
-    thread_local! {
-        pub static EVENTS: UnsafeCell<Vec<Event>> = const { UnsafeCell::new(vec![]) };
-    }
-
-    #[derive(Debug, Clone, Copy)]
-    pub enum Event {
-        Point { id: ID, level: usize },
-        EdgeHorizontal { from: ID, to: ID, level: usize },
-        EdgeDown { from: ID, upper_level: usize },
-    }
-
-    pub fn push_event(event: Event) {
-        EVENTS.with(|e| {
-            let events = unsafe { &mut *e.get() };
-            events.push(event);
-        })
-    }
-
-    pub fn clear_events() -> Vec<Event> {
-        EVENTS.with(|e| {
-            let events = unsafe { &mut *e.get() };
-            std::mem::take(events)
-        })
     }
 }
 

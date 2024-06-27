@@ -314,15 +314,16 @@ k = 10
 (truth_indices, search_time) = linear_search_true_knn(data, queries, k)
 
 model_params : list[ModelParams] = [
-    ModelParams('vecnn_rnn_descent',outer_loops=50, inner_loops=1, max_neighbors_after_reverse_pruning=4, initial_neighbors = 10, distance_fn = "l2"),
-    # ModelParams('vecnn_vptree'),
-    ModelParams('vecnn_hnsw', level_norm_param=0.5, ef_construction=20, m_max=10, m_max_0=10, distance_fn = "l2"),
+    ModelParams('vecnn_rnn_descent',outer_loops=50, inner_loops=1, max_neighbors_after_reverse_pruning=4, initial_neighbors = 10, distance_fn = "dot"),
+    ModelParams('vecnn_vptree'),
+    ModelParams('vecnn_hnsw', level_norm_param=0.5, ef_construction=20, m_max=20, m_max_0=10, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', level_norm_param=0.5, ef_construction=20, m_max=10),
     # ModelParams('vecnn_transition', max_chunk_size = 64, same_chunk_max_neighbors = 30, neg_fraction = 0.0),
     # ModelParams('vecnn_transition', max_chunk_size = 64, same_chunk_max_neighbors = 30, neg_fraction = 0.5),
     # ModelParams('vecnn_transition', max_chunk_size = 64, same_chunk_max_neighbors = 30, neg_fraction = 1.0),
     # ModelParams('rustcv_hnsw', level_norm_param=0.5, ef_construction=20, m_max=10, m_max_0=10),
     # # # ModelParams(model='faiss_hnsw', level_norm_param=0.5, ef_construction=20, m_max=10, m_max_0=10), # currently not working! (bc of knn search type errors)
-    # ModelParams('hnswlib_hnsw', level_norm_param=0.5, ef_construction=20, m_max=10, m_max_0=10),
+    
     # ModelParams('scipy_kdtree'),
 ]
 

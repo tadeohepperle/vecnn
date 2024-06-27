@@ -1,13 +1,20 @@
-use std::{cell::UnsafeCell, cmp::Reverse, collections::BinaryHeap, sync::Arc, time::Duration};
+use std::{
+    cell::UnsafeCell,
+    cmp::Reverse,
+    collections::BinaryHeap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use ahash::{HashMap, HashSet};
-use rand::{thread_rng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
 use crate::{
     dataset::DatasetT,
     distance::{l2, DistanceFn, DistanceTracker},
     hnsw::IAndDist,
+    track,
     vp_tree::Stats,
 };
 
@@ -71,69 +78,164 @@ impl RNNGraph {
     ) -> (Vec<IAndDist<usize>>, Stats) {
         assert!(start_candidates > 0);
         let distance = DistanceTracker::new(self.params.distance);
-
         let dist_to_q = |idx: usize| -> f32 {
             let idx_data = self.data.get(idx);
             distance.distance(q_data, idx_data)
         };
 
+        let start = Instant::now();
+
         let mut visited: ahash::HashSet<usize> = Default::default();
         let mut candidates: BinaryHeap<Reverse<IAndDist<usize>>> = Default::default(); // has min dist item in root, can be peaked
         let mut search_res: BinaryHeap<IAndDist<usize>> = Default::default(); // has top dist in root, to pop it easily
 
-        let mut rng = thread_rng();
+        let i: usize = 0;
+        visited.insert(i);
+        let dist = dist_to_q(i);
+        candidates.push(Reverse(IAndDist { i, dist }));
+        search_res.push(IAndDist { i, dist });
 
-        // initialize candidates:
-        let data_len = self.data.len();
+        loop {
+            let Some(closest_to_q) = candidates.pop() else {
+                break;
+            };
 
-        while candidates.len() < start_candidates {
-            let idx = rng.gen_range(0..data_len);
-            if visited.insert(idx) {
-                let dist = dist_to_q(idx);
-                let item = IAndDist { i: idx, dist };
-                candidates.push(Reverse(item));
-                search_res.push(item)
-            }
-        }
+            let neighbors = &self.nodes[closest_to_q.0.i];
+            let mut any_neighbor_added: bool = false;
+            for n in neighbors.iter() {
+                let i = n.idx;
+                let already_seen = !visited.insert(i);
+                if already_seen {
+                    continue;
+                }
+                let added: bool;
+                let dist = dist_to_q(n.idx);
 
-        while candidates.len() > 0 {
-            let closest_candidate = candidates.pop().unwrap().0;
-            let mut search_results_changed = false;
-            for neighbor in &self.nodes[closest_candidate.i] {
-                if visited.insert(neighbor.idx) {
-                    let dist = dist_to_q(neighbor.idx);
-                    let item = IAndDist {
-                        i: neighbor.idx,
-                        dist,
-                    };
-                    candidates.push(Reverse(item));
-                    if search_res.len() < k {
-                        search_res.push(item);
-                        search_results_changed = true;
+                let space_available = search_res.len() < k;
+
+                if space_available {
+                    search_res.push(IAndDist { i, dist });
+                    added = true;
+                } else {
+                    let mut worst = search_res.peek_mut().unwrap();
+                    if dist < worst.dist {
+                        *worst = IAndDist { i, dist };
+                        added = true;
                     } else {
-                        let mut worst = search_res.peek_mut().unwrap();
-                        if dist < worst.dist {
-                            *worst = item;
-                            search_results_changed = true;
-                        } else {
-                            // ignore
-                        }
+                        added = false;
                     }
                 }
-            }
-            if !search_results_changed {
-                break;
+                if added {
+                    any_neighbor_added = true;
+                    candidates.push(Reverse(IAndDist { i, dist }));
+                }
+
+                track!(EdgeHorizontal {
+                    from: closest_to_q.0.i,
+                    to: i,
+                    level: 0,
+                    comment: if space_available {
+                        "space"
+                    } else if added {
+                        "added"
+                    } else {
+                        "not_good_enough"
+                    }
+                });
             }
         }
-
         let mut results: Vec<IAndDist<usize>> = search_res.into_vec();
         results.sort();
         let stats = Stats {
             num_distance_calculations: distance.num_calculations(),
-            duration: Duration::ZERO,
+            duration: start.elapsed(),
         };
         (results, stats)
     }
+
+    // pub fn knn_search(
+    //     &self,
+    //     q_data: &[f32],
+    //     k: usize,
+    //     start_candidates: usize,
+    // ) -> (Vec<IAndDist<usize>>, Stats) {
+    //     assert!(start_candidates > 0);
+    //     let distance = DistanceTracker::new(self.params.distance);
+
+    //     let dist_to_q = |idx: usize| -> f32 {
+    //         let idx_data = self.data.get(idx);
+    //         distance.distance(q_data, idx_data)
+    //     };
+
+    //     let start = Instant::now();
+
+    //     let mut visited: ahash::HashSet<usize> = Default::default();
+    //     let mut candidates: BinaryHeap<Reverse<IAndDist<usize>>> = Default::default(); // has min dist item in root, can be peaked
+    //     let mut search_res: BinaryHeap<IAndDist<usize>> = Default::default(); // has top dist in root, to pop it easily
+
+    //     let mut rng = ChaCha20Rng::seed_from_u64(42);
+
+    //     // initialize candidates:
+    //     let data_len = self.data.len();
+
+    //     while candidates.len() < start_candidates {
+    //         let idx = rng.gen_range(0..data_len);
+    //         if visited.insert(idx) {
+    //             let dist = dist_to_q(idx);
+    //             let item = IAndDist { i: idx, dist };
+    //             candidates.push(Reverse(item));
+    //             search_res.push(item)
+    //         }
+    //     }
+    //     while candidates.len() > 0 {
+    //         let closest_candidate = candidates.pop().unwrap().0;
+    //         let mut search_results_changed = false;
+    //         for neighbor in &self.nodes[closest_candidate.i] {
+    //             if visited.insert(neighbor.idx) {
+    //                 let dist = dist_to_q(neighbor.idx);
+    //                 let item = IAndDist {
+    //                     i: neighbor.idx,
+    //                     dist,
+    //                 };
+    //                 if search_res.len() < k {
+    //                     search_res.push(item);
+    //                     search_results_changed = true;
+    //                     candidates.push(Reverse(item));
+    //                     track!(EdgeHorizontal {
+    //                         from: closest_candidate.i,
+    //                         to: neighbor.idx,
+    //                         level: 0
+    //                     });
+    //                 } else {
+    //                     let mut worst = search_res.peek_mut().unwrap();
+    //                     if dist < worst.dist {
+    //                         *worst = item;
+    //                         search_results_changed = true;
+    //                         candidates.push(Reverse(item));
+    //                         track!(EdgeHorizontal {
+    //                             from: closest_candidate.i,
+    //                             to: neighbor.idx,
+    //                             level: 0
+    //                         });
+    //                     } else {
+    //                         // ignore
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //         if !search_results_changed {
+    //             // break;
+    //         }
+    //     }
+
+    //     let mut results: Vec<IAndDist<usize>> = search_res.into_vec();
+    //     results.sort();
+    //     let stats = Stats {
+    //         num_distance_calculations: distance.num_calculations(),
+    //         duration: start.elapsed(),
+    //     };
+    //     (results, stats)
+    // }
 }
 
 #[derive(Debug, Clone)]
@@ -164,6 +266,8 @@ fn construct_relative_nn_graph(data: Arc<dyn DatasetT>, params: RNNGraphParams) 
     let distance =
         |i: usize, j: usize| -> f32 { distance_tracker.distance(data.get(i), data.get(j)) };
 
+    let start = Instant::now();
+
     let mut nodes: Vec<Vec<Neighbor>> =
         random_nn_graph_nodes(data.len(), &distance, params.initial_neighbors);
     let mut two_sided_neighbors: Vec<Vec<Neighbor>> =
@@ -184,7 +288,7 @@ fn construct_relative_nn_graph(data: Arc<dyn DatasetT>, params: RNNGraphParams) 
 
     let build_stats = Stats {
         num_distance_calculations: distance_tracker.num_calculations(),
-        duration: Duration::ZERO, // todo
+        duration: start.elapsed(), // todo
     };
     RNNGraph {
         data,
