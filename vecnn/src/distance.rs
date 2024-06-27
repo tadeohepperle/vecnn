@@ -136,8 +136,6 @@ pub fn l2(a: &[Float], b: &[Float]) -> Float {
     sum.sqrt()
 }
 
-pub use lance_linalg::distance::l2 as lance_l2;
-
 pub fn l1(a: &[Float], b: &[Float]) -> Float {
     let dims = a.len();
     assert_eq!(dims, b.len());
