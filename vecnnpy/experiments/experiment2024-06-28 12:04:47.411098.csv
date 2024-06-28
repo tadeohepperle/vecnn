@@ -1,0 +1,3 @@
+kind,ef_construction,m_max,distance_fn,k,ef,start_candidates,data_n,data_dims,build_time,build_ndc,search_time,search_ndc,search_recall
+hnswlib_hnsw,20,10,dot,1000,20,10,2000,768,0.011505365371704102,,0.0003681769371032715,,0.9934110000000019
+hnswlib_hnsw,20,20,dot,1000,20,10,2000,768,0.009697675704956055,,0.0004949336051940918,,0.9969780000000065

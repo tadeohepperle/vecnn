@@ -3,12 +3,14 @@ import numpy as np
 from scipy.spatial import cKDTree
 import vecnn
 import time
+import datetime
 import hnswlib
 import faiss
 from typing import Any, Tuple, Literal, Optional, Callable, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 import laion
+
 
 class Table:
     runs: list[Tuple[str, Any]]
@@ -52,9 +54,11 @@ class Table:
             table.runs.append(run)
         return table
     
-    def save(self, filename: str) -> None:
+    def save(self) -> str:
         df = self.df()
+        filename = f"experiments/experiment{datetime.datetime.now()}.csv"
         df.to_csv(filename, index=False)
+        return filename
     
     @(staticmethod)
     def load(self, filename: str):
@@ -304,12 +308,15 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
         models.append(model)
 
     for s in search_params:
+        print(f"Benchmark {len(models)} for search params: {s.to_dict()}")
         (truth_indices, linear_time) = linear_search_true_knn(data, queries, s.k, s.distance_fn)
+        i = -1
         for model in models:
+            i+=1
+            print(f"    Model {i}/{len(models)}:     ({model.params.to_dict()})")
             metrics = model.knn(queries, s, truth_indices)
-
+            
             s_dict = s.to_dict().copy()
-            print(s_dict)
             del s_dict["distance_fn"]
 
             table.add(
@@ -331,7 +338,7 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
 # k = 10
 
 laion_data = laion.load_laion_data()
-data, queries = laion_data.subset(int(laion_data.data.shape[0]), 1000)
+data, queries = laion_data.subset(laion_data.data.shape[0], 1000)
 
 # (truth_indices, search_time) = linear_search_true_knn(data, queries, k, "dot")
 model_params: list[ModelParams] = [
@@ -355,6 +362,12 @@ model_params: list[ModelParams] = [
 search_params: list[SearchParams] = [
     SearchParams(1000, "dot", ef = 20, start_candidates = 10)
 ]
+
+
+start = time.time()
 table = benchmark_models(model_params, data, queries, search_params)
+total = time.time() -start
 print(table.df().to_string())
-table.save("experiment.csv")
+
+filename = table.save()
+print(f"Saved to {filename}. Total time: {int(total)}s")
