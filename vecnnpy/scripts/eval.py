@@ -8,6 +8,7 @@ import faiss
 from typing import Any, Tuple, Literal, Optional, Callable, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
+import laion
 
 class Table:
     runs: list[Tuple[str, Any]]
@@ -75,11 +76,10 @@ class SearchMetrics:
 
 
 
-type ModelKind = Literal['vecnn_hsnw', 'vecnn_transition', 'vecnn_rnn_descent' 'vecnn_vptree', 'scipy_kdtree', 'hnswlib_hnsw', 'rustcv_hnsw', 'faiss_hnsw']
-
+# type ModelKind = Literal['vecnn_hsnw', 'vecnn_transition', 'vecnn_rnn_descent' 'vecnn_vptree', 'scipy_kdtree', 'hnswlib_hnsw', 'rustcv_hnsw', 'faiss_hnsw']
 class ModelParams:
-    kind: ModelKind
-    def __init__(self, kind: ModelKind, **kwargs) -> None:
+    kind: str
+    def __init__(self, kind: str, **kwargs) -> None:
         self.kind = kind
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -87,7 +87,17 @@ class ModelParams:
     def to_dict(self) -> dict:
         return vars(self)
 
+class SearchParams:
+    k: int
+    distance_fn: str
+    def __init__(self, k: int, distance_fn: str, **kwargs) -> None:
+        self.k = k
+        self.distance_fn = distance_fn
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
+    def to_dict(self) -> dict:
+        return vars(self)
 
 
 class Model:
@@ -153,10 +163,16 @@ class Model:
         elif params.kind == 'hnswlib_hnsw':
             ids = np.arange(n)
             start = time.time()
-            hnswlib_hnsw = hnswlib.Index(space = 'l2', dim = dim) 
+            space = ''
+            if params.distance_fn == "l2":
+                space = "l2"
+            elif params.distance_fn == "dot":
+                space = "ip" # see https://github.com/nmslib/hnswlib
+            elif params.distance_fn == "cos":
+                space = 'cosine'
+            hnswlib_hnsw = hnswlib.Index(space = space, dim = dim) 
             hnswlib_hnsw.init_index(max_elements = n, ef_construction = params.ef_construction, M = params.m_max)
             hnswlib_hnsw.add_items(data, ids)
-            hnswlib_hnsw.set_ef(20) #todo!
             build_time =  time.time() - start
             self.build_metrics =  BuildMetrics(build_time=build_time)
             self.hnswlib_hnsw = hnswlib_hnsw
@@ -164,7 +180,7 @@ class Model:
             raise Exception(f"Invalid 'model' type string provided: {params.kind}")
 
 
-    def single_row_knn_fn(self) -> Callable[[np.array, int], Tuple[np.array, float, Optional[int]]]:
+    def single_row_knn_fn(self) -> Callable[[np.array, SearchParams], Tuple[np.array, float, Optional[int]]]:
         """depending on model inside this class, returns a closure with this signature:
 
         fn(q: 1-d np.array of float32, k: int) -> 
@@ -175,74 +191,77 @@ class Model:
         """
         model = self.params.kind
         if model == 'vecnn_vptree':
-            def knn(query: np.ndarray, k: int) -> Tuple[np.ndarray, float, Optional[int]]:
+            def knn(query: np.ndarray, params: SearchParams) -> Tuple[np.ndarray, float, Optional[int]]:
                 start = time.time()
-                res = self.vecnn_vptree.knn(query, k)
+                res = self.vecnn_vptree.knn(query, params.k)
                 search_time = time.time() - start
                 return (res.indices, search_time, res.num_distance_calculations)
             return knn
         elif model == 'vecnn_hnsw' or model == 'vecnn_transition':
-            def knn(query: np.ndarray, k: int) -> Tuple[np.ndarray, float, Optional[int]]:
+            def knn(query: np.ndarray, params: SearchParams) -> Tuple[np.ndarray, float, Optional[int]]:
                 start = time.time()
-                res = self.vecnn_hsnw.knn(query, k)
+                res = self.vecnn_hsnw.knn(query, params.k)
                 search_time = time.time() - start
                 return (res.indices, search_time, res.num_distance_calculations)
             return knn
         elif model == 'rustcv_hnsw':
-            def knn(query: np.ndarray, k: int) -> Tuple[np.ndarray, float, Optional[int]]:
+            def knn(query: np.ndarray, params: SearchParams) -> Tuple[np.ndarray, float, Optional[int]]:
                 start = time.time()
-                res = self.rustcv_hnsw.knn(query, k, ef=k)
+                res = self.rustcv_hnsw.knn(query, k=params.k, ef=params.ef)
                 search_time = time.time() - start
                 return (res.indices, search_time, res.num_distance_calculations)
             return knn
         elif model == 'vecnn_rnn_descent':
-            def knn(query: np.ndarray, k: int) -> Tuple[np.ndarray, float, Optional[int]]:
+            def knn(query: np.ndarray, params: SearchParams) -> Tuple[np.ndarray, float, Optional[int]]:
                 start = time.time()
-                res = self.vecnn_rnn_descent.knn(query, k, 10) # todo! not hardcode the 10 initial neighbors
+                res = self.vecnn_rnn_descent.knn(query, k=params.k, start_candidates=params.ef) # todo! not hardcode the 10 initial neighbors
                 search_time = time.time() - start
                 return (res.indices, search_time, res.num_distance_calculations)
             return knn
         elif model == 'scipy_kdtree':
-            def knn(query: np.ndarray, k: int) -> Tuple[np.ndarray, float, Optional[int]]:
+            def knn(query: np.ndarray, params: SearchParams) -> Tuple[np.ndarray, float, Optional[int]]:
                 start = time.time()
-                _, indices = self.scipy_kdtree.query(query, k=k)
+                _, indices = self.scipy_kdtree.query(query, k=params.k)
                 search_time = time.time() - start
                 return (indices.astype("uint64"), search_time, None)
             return knn
         elif model == 'faiss_hnsw':
-            def knn(query: np.ndarray, k: int) -> Tuple[np.ndarray, float, Optional[int]]:
+            def knn(query: np.ndarray, params: SearchParams) -> Tuple[np.ndarray, float, Optional[int]]:
                 # reshaped_query = np.reshape(query, (1, query.shape[0]))
                 start = time.time()
-                _, indices = self.faiss_hnsw.search(query, k=k)
+                _, indices = self.faiss_hnsw.search(query, k=params.k)
                 search_time = time.time() - start
                 return (indices.astype("uint64")[0,:], search_time, None)
             return knn
         elif model == 'hnswlib_hnsw':
-            def knn(query: np.ndarray, k: int) -> Tuple[np.ndarray, float, Optional[int]]:
+            def knn(query: np.ndarray, params: SearchParams) -> Tuple[np.ndarray, float, Optional[int]]:
                 start = time.time()
-                indices, _ = self.hnswlib_hnsw.knn_query(query, k=k)
+                indices, _ = self.hnswlib_hnsw.knn_query(query, k=params.k)
                 search_time = time.time() - start
                 return (indices[0,:], search_time, None)
             return knn
         else: 
             raise Exception(f"Invalid 'model' type string provided: {model}")
 
-    def knn(self, queries: np.ndarray, k: int, truth_indices: np.ndarray) -> SearchMetrics:
+    def knn(self, queries: np.ndarray, params: SearchParams, truth_indices: np.ndarray) -> SearchMetrics:
         """
         query: 2-d-ndarray of float32
         truth_indices: 2-d-ndarray of uint64
         """
         n_queries = queries.shape[0]
-        fn: Callable[[np.ndarray, int], Tuple[np.ndarray, float, Optional[int]]] = self.single_row_knn_fn()
+        fn = self.single_row_knn_fn()
+
+        if hasattr(self, "hnswlib_hnsw"):
+            self.hnswlib_hnsw.set_ef(params.ef)
 
         search_time = 0
         recall = 0
         num_distance_calculations = 0
         for i in range(n_queries):
             if self.params.kind == 'faiss_hnsw':
-                (indices, duration, ndc) = fn(queries[i:i+1,:], k)
+                (indices, duration, ndc) = fn(queries[i:i+1,:], params)
             else:
-                (indices, duration, ndc) = fn(queries[i,:], k)
+                (indices, duration, ndc) = fn(queries[i,:], params)
             search_time += duration
             recall += vecnn.knn_recall(truth_indices[i,:], indices)
             if ndc is not None:
@@ -276,7 +295,7 @@ def linear_search_true_knn(data: np.ndarray, queries: np.ndarray, k: int, distan
     search_time /= n_queries
     return (truth_indices, search_time)
 
-def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries: np.ndarray, knn_ks: list[int], distance_fn: str) -> Table:
+def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries: np.ndarray, search_params: list[SearchParams]) -> Table:
     table = Table()
     n, dim = data.shape  
     models: list[Model] = []
@@ -284,48 +303,58 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
         model = Model(data, params)
         models.append(model)
 
-    for k in knn_ks:
-        (truth_indices, linear_time) = linear_search_true_knn(data, queries, k, distance_fn)
+    for s in search_params:
+        (truth_indices, linear_time) = linear_search_true_knn(data, queries, s.k, s.distance_fn)
         for model in models:
-            metrics = model.knn(queries, k, truth_indices)
+            metrics = model.knn(queries, s, truth_indices)
 
-            dyn = {"hello": True, "pa1": 2}
-            dyn2 = ModelParams('faiss_hnsw', nooo= 2, faiiiii = 2192).to_dict()
+            s_dict = s.to_dict().copy()
+            print(s_dict)
+            del s_dict["distance_fn"]
 
             table.add(
-                
                 **model.params.to_dict(),
-                       data_n = n, 
-                       data_dims = dim,
-                       knn_k = k,
-                        build_time = model.build_metrics.build_time,
-                        build_ndc = model.build_metrics.num_distance_calculations,
-                      search_time = metrics.search_time,
-                      search_ndc = metrics.num_distance_calculations,
-                      search_recall = metrics.recall,
-                      
-                        )
+                **s_dict,
+                data_n = n, 
+                data_dims = dim,
+                build_time = model.build_metrics.build_time,
+                build_ndc = model.build_metrics.num_distance_calculations,
+                search_time = metrics.search_time,
+                search_ndc = metrics.num_distance_calculations,
+                search_recall = metrics.recall
+            )
     return table
 
-dims = 100
-data = np.random.random((1000,dims)).astype("float32")
-queries = np.random.random((300,dims)).astype("float32")
-k = 10
+# dims = 100
+# data = np.random.random((1000,dims)).astype("float32")
+# queries = np.random.random((300,dims)).astype("float32")
+# k = 10
+
+laion_data = laion.load_laion_data()
+data, queries = laion_data.subset(int(laion_data.data.shape[0]), 1000)
+
 # (truth_indices, search_time) = linear_search_true_knn(data, queries, k, "dot")
-
-model_params : list[ModelParams] = [
-    ModelParams('vecnn_rnn_descent',outer_loops=50, inner_loops=1, max_neighbors_after_reverse_pruning=4, initial_neighbors = 10, distance_fn = "dot"),
-    ModelParams('vecnn_vptree'),
-    ModelParams('vecnn_hnsw', level_norm_param=0.5, ef_construction=20, m_max=20, m_max_0=10, distance_fn = "dot"),
-    ModelParams('hnswlib_hnsw', level_norm_param=0.5, ef_construction=20, m_max=10),
-    # ModelParams('vecnn_transition', max_chunk_size = 64, same_chunk_max_neighbors = 30, neg_fraction = 0.0),
-    # ModelParams('vecnn_transition', max_chunk_size = 64, same_chunk_max_neighbors = 30, neg_fraction = 0.5),
-    # ModelParams('vecnn_transition', max_chunk_size = 64, same_chunk_max_neighbors = 30, neg_fraction = 1.0),
-    # ModelParams('rustcv_hnsw', level_norm_param=0.5, ef_construction=20, m_max=10, m_max_0=10),
-    # # # ModelParams(model='faiss_hnsw', level_norm_param=0.5, ef_construction=20, m_max=10, m_max_0=10), # currently not working! (bc of knn search type errors)
-    
-    # ModelParams('scipy_kdtree'),
+model_params: list[ModelParams] = [
+    # ModelParams('vecnn_rnn_descent',outer_loops=50, inner_loops=1, max_neighbors_after_reverse_pruning=4, initial_neighbors = 10, distance_fn = "dot"),
+    # ModelParams('vecnn_vptree'),
+    # ModelParams('vecnn_hnsw', level_norm_param=0.5, ef_construction=20, m_max=20, m_max_0=10, distance_fn = "dot"),
+    # ModelParams('hnswlib_hnsw', level_norm_param=0.5, ef_construction=20, m_max=10),
+    ModelParams('hnswlib_hnsw', ef_construction=20, m_max=10, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=20, m_max=20, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=20, m_max=40, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=40, m_max=10, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=40, m_max=20, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=40, m_max=40, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=100, m_max=10, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=100, m_max=20, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=100, m_max=40, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=200, m_max=10, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=200, m_max=20, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=200, m_max=40, distance_fn = "dot"),
 ]
-
-table = benchmark_models(model_params, data, queries, [k], "dot")
+search_params: list[SearchParams] = [
+    SearchParams(1000, "dot", ef = 20, start_candidates = 10)
+]
+table = benchmark_models(model_params, data, queries, search_params)
 print(table.df().to_string())
+table.save("experiment.csv")
