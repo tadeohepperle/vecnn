@@ -303,17 +303,21 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
     table = Table()
     n, dim = data.shape  
     models: list[Model] = []
+    i = 0
+    print(f"Build {len(models)} models")
     for params in model_params:
         model = Model(data, params)
         models.append(model)
+        print(f"    Built model {i}/{len(model_params)} in {int(model.build_metrics.build_time)}s:  ({params.to_dict()})")
+        i+=1
 
     for s in search_params:
-        print(f"Benchmark {len(models)} for search params: {s.to_dict()}")
+        print(f"Benchmark {len(models)} models for search params: {s.to_dict()}")
         (truth_indices, linear_time) = linear_search_true_knn(data, queries, s.k, s.distance_fn)
         i = -1
         for model in models:
             i+=1
-            print(f"    Model {i}/{len(models)}:     ({model.params.to_dict()})")
+            print(f"    Model {i}/{len(models)}")
             metrics = model.knn(queries, s, truth_indices)
             
             s_dict = s.to_dict().copy()
