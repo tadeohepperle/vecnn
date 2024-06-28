@@ -255,7 +255,7 @@ class Model:
             num_distance_calculations = None
         return SearchMetrics(search_time=search_time, recall=recall, num_distance_calculations=num_distance_calculations)
     
-def linear_search_true_knn(data: np.ndarray, queries: np.ndarray, k: int) -> Tuple[np.ndarray, float]:
+def linear_search_true_knn(data: np.ndarray, queries: np.ndarray, k: int, distance_fn: str) -> Tuple[np.ndarray, float]:
     """Args:
     data: 2-d np.ndarray of float32
     queries: 2-d np.ndarray of float32
@@ -270,13 +270,13 @@ def linear_search_true_knn(data: np.ndarray, queries: np.ndarray, k: int) -> Tup
     dataset = vecnn.Dataset(data)
     for i in range(n_queries):
         start = time.time()
-        res = vecnn.linear_knn(dataset, queries[i,:], k, "l2")
+        res = vecnn.linear_knn(dataset, queries[i,:], k, distance_fn)
         search_time += time.time() - start
         truth_indices[i:] = res.indices
     search_time /= n_queries
     return (truth_indices, search_time)
 
-def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries: np.ndarray, knn_ks: list[int]) -> Table:
+def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries: np.ndarray, knn_ks: list[int], distance_fn: str) -> Table:
     table = Table()
     n, dim = data.shape  
     models: list[Model] = []
@@ -285,7 +285,7 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
         models.append(model)
 
     for k in knn_ks:
-        (truth_indices, linear_time) = linear_search_true_knn(data, queries, k)
+        (truth_indices, linear_time) = linear_search_true_knn(data, queries, k, distance_fn)
         for model in models:
             metrics = model.knn(queries, k, truth_indices)
 
@@ -311,7 +311,7 @@ dims = 100
 data = np.random.random((1000,dims)).astype("float32")
 queries = np.random.random((300,dims)).astype("float32")
 k = 10
-(truth_indices, search_time) = linear_search_true_knn(data, queries, k)
+# (truth_indices, search_time) = linear_search_true_knn(data, queries, k, "dot")
 
 model_params : list[ModelParams] = [
     ModelParams('vecnn_rnn_descent',outer_loops=50, inner_loops=1, max_neighbors_after_reverse_pruning=4, initial_neighbors = 10, distance_fn = "dot"),
@@ -327,5 +327,5 @@ model_params : list[ModelParams] = [
     # ModelParams('scipy_kdtree'),
 ]
 
-table = benchmark_models(model_params, data, queries, [k])
+table = benchmark_models(model_params, data, queries, [k], "dot")
 print(table.df().to_string())
