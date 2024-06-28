@@ -218,7 +218,7 @@ class Model:
         elif model == 'vecnn_rnn_descent':
             def knn(query: np.ndarray, params: SearchParams) -> Tuple[np.ndarray, float, Optional[int]]:
                 start = time.time()
-                res = self.vecnn_rnn_descent.knn(query, k=params.k, start_candidates=params.ef) # todo! not hardcode the 10 initial neighbors
+                res = self.vecnn_rnn_descent.knn(query, k=params.k, start_candidates=params.start_candidates) # todo! not hardcode the 10 initial neighbors
                 search_time = time.time() - start
                 return (res.indices, search_time, res.num_distance_calculations)
             return knn
@@ -304,7 +304,7 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
     n, dim = data.shape  
     models: list[Model] = []
     i = 0
-    print(f"Build {len(models)} models")
+    print(f"Build {len(model_params)} models")
     for params in model_params:
         model = Model(data, params)
         models.append(model)
@@ -351,22 +351,21 @@ model_params: list[ModelParams] = [
     # ModelParams('vecnn_hnsw', level_norm_param=0.5, ef_construction=20, m_max=20, m_max_0=10, distance_fn = "dot"),
     # ModelParams('hnswlib_hnsw', level_norm_param=0.5, ef_construction=20, m_max=10),
     ModelParams('hnswlib_hnsw', ef_construction=20, m_max=10, distance_fn = "dot"),
-    ModelParams('hnswlib_hnsw', ef_construction=20, m_max=20, distance_fn = "dot"),
-    ModelParams('hnswlib_hnsw', ef_construction=20, m_max=40, distance_fn = "dot"),
-    ModelParams('hnswlib_hnsw', ef_construction=40, m_max=10, distance_fn = "dot"),
-    ModelParams('hnswlib_hnsw', ef_construction=40, m_max=20, distance_fn = "dot"),
-    ModelParams('hnswlib_hnsw', ef_construction=40, m_max=40, distance_fn = "dot"),
-    ModelParams('hnswlib_hnsw', ef_construction=100, m_max=10, distance_fn = "dot"),
-    ModelParams('hnswlib_hnsw', ef_construction=100, m_max=20, distance_fn = "dot"),
-    ModelParams('hnswlib_hnsw', ef_construction=100, m_max=40, distance_fn = "dot"),
-    ModelParams('hnswlib_hnsw', ef_construction=200, m_max=10, distance_fn = "dot"),
-    ModelParams('hnswlib_hnsw', ef_construction=200, m_max=20, distance_fn = "dot"),
-    ModelParams('hnswlib_hnsw', ef_construction=200, m_max=40, distance_fn = "dot"),
+    # ModelParams('hnswlib_hnsw', ef_construction=20, m_max=20, distance_fn = "dot"),
+    # ModelParams('hnswlib_hnsw', ef_construction=20, m_max=40, distance_fn = "dot"),
+    # ModelParams('hnswlib_hnsw', ef_construction=40, m_max=10, distance_fn = "dot"),
+    # ModelParams('hnswlib_hnsw', ef_construction=40, m_max=20, distance_fn = "dot"),
+    # ModelParams('hnswlib_hnsw', ef_construction=40, m_max=40, distance_fn = "dot"),
+    # ModelParams('hnswlib_hnsw', ef_construction=100, m_max=10, distance_fn = "dot"),
+    # ModelParams('hnswlib_hnsw', ef_construction=100, m_max=20, distance_fn = "dot"),
+    # ModelParams('hnswlib_hnsw', ef_construction=100, m_max=40, distance_fn = "dot"),
+    # ModelParams('hnswlib_hnsw', ef_construction=200, m_max=10, distance_fn = "dot"),
+    # ModelParams('hnswlib_hnsw', ef_construction=200, m_max=20, distance_fn = "dot"),
+    # ModelParams('hnswlib_hnsw', ef_construction=200, m_max=40, distance_fn = "dot"),
 ]
 search_params: list[SearchParams] = [
-    SearchParams(1000, "dot", ef = 20, start_candidates = 10)
+    SearchParams(1000, "dot", ef = 1000, start_candidates = 10) # make sure ef >= k
 ]
-
 
 start = time.time()
 table = benchmark_models(model_params, data, queries, search_params)
