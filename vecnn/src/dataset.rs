@@ -54,9 +54,9 @@ impl<const D: usize> DatasetT for [[Float; D]] {
 #[repr(C)]
 #[derive(Debug)]
 pub struct FlatDataSet {
-    dims: usize,
-    len: usize,
-    data: Vec<Float>,
+    pub dims: usize,
+    pub len: usize,
+    pub data: Vec<Float>,
 }
 
 impl DatasetT for FlatDataSet {

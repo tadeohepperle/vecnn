@@ -41,3 +41,11 @@ def load_laion_data() -> LaionData:
     res.gold_knns = np.array(f["knns"]).astype("uint64") # shape: (10000, 1000), same shape as dists.
 
     return res
+
+if __name__ == "__main__":
+    laion_data = load_laion_data()
+    # print(laion_data.data[124752,0:10])
+    laion_data.data.tofile(f"laion_data_{laion_data.data.shape}.bin")
+    laion_data.gold_queries.tofile(f"laion_queries_{laion_data.gold_queries.shape}.bin")
+    
+    

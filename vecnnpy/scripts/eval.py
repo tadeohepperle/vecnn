@@ -54,9 +54,10 @@ class Table:
             table.runs.append(run)
         return table
     
-    def save(self) -> str:
+    def save(self,filename: str = "") -> str:
         df = self.df()
-        filename = f"experiments/experiment{datetime.datetime.now()}.csv"
+        if filename == "":
+            filename = f"experiments/experiment{datetime.datetime.now()}.csv"
         df.to_csv(filename, index=False)
         return filename
     
@@ -372,5 +373,4 @@ table = benchmark_models(model_params, data, queries, search_params)
 total = time.time() -start
 print(table.df().to_string())
 
-filename = table.save()
-print(f"Saved to {filename}. Total time: {int(total)}s")
+filename = table.save(f"experiments/experiment{datetime.datetime.now()} Total time: {int(total)}s.csv")

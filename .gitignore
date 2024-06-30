@@ -5,3 +5,4 @@
 /vecnn/perf.data
 /vecnn/perf.data.old
 perf.data
+/vecnnpy/*.bin

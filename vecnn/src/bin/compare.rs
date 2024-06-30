@@ -4,8 +4,10 @@ use prettytable::{
     format::{FormatBuilder, LineSeparator, TableFormat},
     row, Table,
 };
+use rand::{seq::SliceRandom, thread_rng, SeedableRng};
+use rand_chacha::ChaCha20Rng;
 use vecnn::{
-    dataset::DatasetT,
+    dataset::{DatasetT, FlatDataSet},
     distance::{cos, dot, l2, DistanceFn},
     hnsw::{Hnsw, HnswParams},
     nn_descent::{RNNGraph, RNNGraphParams},
@@ -15,17 +17,24 @@ use vecnn::{
 };
 
 fn main() {
-    let mut models: Vec<ModelParams> = vec![];
-    for max_chunk_size in 60..99 {
-        models.push(ModelParams::Transition(TransitionParams {
-            max_chunk_size,
-            same_chunk_max_neighbors: 40,
-            neg_fraction: 0.2,
-            distance_fn: dot,
-        }))
-    }
+    let mut models: Vec<ModelParams> = vec![ModelParams::Hnsw(HnswParams {
+        level_norm_param: 0.5,
+        ef_construction: 40,
+        m_max: 20,
+        m_max_0: 20,
+        distance_fn: dot,
+    })];
+    // for max_chunk_size in 60..99 {
+    //     models.push(ModelParams::Transition(TransitionParams {
+    //         max_chunk_size,
+    //         same_chunk_max_neighbors: 40,
+    //         neg_fraction: 0.2,
+    //         distance_fn: dot,
+    //     }))
+    // }
 
-    eval_models(10000, 2, 200, 100, dot, &models)
+    // eval_models_random_data(10000, 2, 200, 100, dot, &models)
+    eval_models_on_laion(4000, 100, 100, dot, &models)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -104,7 +113,63 @@ impl Model {
     }
 }
 
-fn eval_models(
+fn eval_models_on_laion(
+    data_subsample_n: usize,
+    queries_subsample_n: usize,
+    k: usize,
+    truth_distance: DistanceFn,
+    params: &[ModelParams],
+) {
+    let data_path = "../vecnnpy/laion_data_(300000, 768).bin";
+    let queries_path = "../vecnnpy/laion_queries_(10000, 768).bin";
+
+    let data_len = 300000;
+    let dims = 768;
+    let queries_len = 10000;
+
+    fn data_set_from_path(
+        path: &str,
+        len: usize,
+        dims: usize,
+        subsample_n: usize,
+    ) -> Arc<dyn DatasetT> {
+        assert!(subsample_n < len);
+        let bytes = std::fs::read(path).unwrap();
+        assert_eq!(bytes.len(), len * dims * std::mem::size_of::<f32>());
+
+        let mut indices: Vec<usize> = (0..len).collect();
+        let mut rng = ChaCha20Rng::seed_from_u64(42);
+        indices.shuffle(&mut rng);
+
+        let mut flat_float_arr: Vec<f32> = vec![0.0; subsample_n * dims];
+        dbg!(indices[0]);
+        for i in 0..subsample_n {
+            let idx = indices[i];
+            let slice = &bytes[dims * idx * std::mem::size_of::<f32>()
+                ..dims * (idx + 1) * std::mem::size_of::<f32>()];
+            unsafe {
+                std::ptr::copy(
+                    slice.as_ptr(),
+                    &mut flat_float_arr[i * dims] as *mut f32 as *mut u8,
+                    slice.len(),
+                )
+            }
+        }
+        Arc::new(FlatDataSet {
+            dims,
+            len: subsample_n,
+            data: flat_float_arr,
+        })
+    }
+
+    let data = data_set_from_path(data_path, data_len, dims, data_subsample_n);
+    let queries = data_set_from_path(queries_path, queries_len, dims, queries_subsample_n);
+
+    dbg!(&data.get(0)[0..10]);
+    eval_models(data, queries, k, truth_distance, params)
+}
+
+fn eval_models_random_data(
     n_data: usize,
     dims: usize,
     n_queries: usize,
@@ -114,6 +179,17 @@ fn eval_models(
 ) {
     let data = random_data_set(n_data, dims);
     let queries = random_data_set(n_queries, dims);
+    eval_models(data, queries, k, truth_distance, params)
+}
+
+fn eval_models(
+    data: Arc<dyn DatasetT>,
+    queries: Arc<dyn DatasetT>,
+    k: usize,
+    truth_distance: DistanceFn,
+    params: &[ModelParams],
+) {
+    let n_queries = queries.len();
 
     let mut true_knns: Vec<HashSet<usize>> = vec![];
     for i in 0..n_queries {

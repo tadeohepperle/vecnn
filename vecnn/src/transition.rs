@@ -205,7 +205,7 @@ fn stitch_chunks(
     rng: &mut ChaCha20Rng,
 ) -> Chunk {
     let len_diff = neg_chunk.range.len() - pos_chunk.range.len();
-    assert!(len_diff == 1 || len_diff == 0);
+    assert!(len_diff == 1 || len_diff == 0); // todo: this assertion sometimes fails, figure out why
     assert_eq!(pos_chunk.level, neg_chunk.level);
     assert_eq!(pos_chunk.range.end, neg_chunk.range.start);
 
