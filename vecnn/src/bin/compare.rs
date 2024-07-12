@@ -8,22 +8,67 @@ use rand::{seq::SliceRandom, thread_rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use vecnn::{
     dataset::{DatasetT, FlatDataSet},
-    distance::{cos, dot, l2, DistanceFn},
+    distance::{cos, dot, l2, Distance::*, DistanceFn},
     hnsw::{Hnsw, HnswParams},
     nn_descent::{RNNGraph, RNNGraphParams},
-    transition::{build_hnsw_by_transition, TransitionParams},
+    transition::{build_hnsw_by_transition, StitchMode, TransitionParams},
     utils::{linear_knn_search, random_data_set},
     vp_tree::Stats,
 };
 
 fn main() {
-    let mut models: Vec<ModelParams> = vec![ModelParams::Hnsw(HnswParams {
-        level_norm_param: 0.5,
-        ef_construction: 40,
-        m_max: 20,
-        m_max_0: 20,
-        distance_fn: dot,
-    })];
+    let mut models: Vec<ModelParams> = vec![
+        //
+        ModelParams::Hnsw(HnswParams {
+            level_norm_param: 0.5,
+            ef_construction: 40,
+            m_max: 20,
+            m_max_0: 40,
+            distance: Dot,
+        }),
+        ModelParams::Transition(TransitionParams {
+            max_chunk_size: 100,
+            same_chunk_max_neighbors: 20,
+            neg_fraction: 0.4,
+            distance: Dot,
+            stitch_mode: StitchMode::RandomNegToPosCenterAndBack,
+        }),
+        ModelParams::Transition(TransitionParams {
+            max_chunk_size: 100,
+            same_chunk_max_neighbors: 20,
+            neg_fraction: 0.4,
+            distance: L2,
+            stitch_mode: StitchMode::RandomNegToRandomPosAndBack,
+        }),
+        // ModelParams::RNNGraph(RNNGraphParams {
+        //     outer_loops: 3,
+        //     inner_loops: 7,
+        //     max_neighbors_after_reverse_pruning: 20,
+        //     initial_neighbors: 40,
+        //     distance: dot,
+        // }),
+        // ModelParams::RNNGraph(RNNGraphParams {
+        //     outer_loops: 3,
+        //     inner_loops: 7,
+        //     max_neighbors_after_reverse_pruning: 10,
+        //     initial_neighbors: 20,
+        //     distance: dot,
+        // }),
+        // ModelParams::RNNGraph(RNNGraphParams {
+        //     outer_loops: 2,
+        //     inner_loops: 7,
+        //     max_neighbors_after_reverse_pruning: 10,
+        //     initial_neighbors: 20,
+        //     distance: dot,
+        // }),
+        // ModelParams::RNNGraph(RNNGraphParams {
+        //     outer_loops: 3,
+        //     inner_loops: 10,
+        //     max_neighbors_after_reverse_pruning: 16,
+        //     initial_neighbors: 20,
+        //     distance: dot,
+        // }),
+    ];
     // for max_chunk_size in 60..99 {
     //     models.push(ModelParams::Transition(TransitionParams {
     //         max_chunk_size,
@@ -34,7 +79,7 @@ fn main() {
     // }
 
     // eval_models_random_data(10000, 2, 200, 100, dot, &models)
-    eval_models_on_laion(4000, 100, 100, dot, &models)
+    eval_models_on_laion(3000, 100, 100, dot, &models)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -133,7 +178,7 @@ fn eval_models_on_laion(
         dims: usize,
         subsample_n: usize,
     ) -> Arc<dyn DatasetT> {
-        assert!(subsample_n < len);
+        assert!(subsample_n <= len);
         let bytes = std::fs::read(path).unwrap();
         assert_eq!(bytes.len(), len * dims * std::mem::size_of::<f32>());
 
@@ -142,7 +187,6 @@ fn eval_models_on_laion(
         indices.shuffle(&mut rng);
 
         let mut flat_float_arr: Vec<f32> = vec![0.0; subsample_n * dims];
-        dbg!(indices[0]);
         for i in 0..subsample_n {
             let idx = indices[i];
             let slice = &bytes[dims * idx * std::mem::size_of::<f32>()
@@ -164,8 +208,6 @@ fn eval_models_on_laion(
 
     let data = data_set_from_path(data_path, data_len, dims, data_subsample_n);
     let queries = data_set_from_path(queries_path, queries_len, dims, queries_subsample_n);
-
-    dbg!(&data.get(0)[0..10]);
     eval_models(data, queries, k, truth_distance, params)
 }
 

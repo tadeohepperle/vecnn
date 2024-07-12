@@ -5,7 +5,7 @@ edition = "2021"
 
 
 [features]
-default = ["tracking"]
+default = ["tracking"] # 
 tracking = []
 parallel = []
 
@@ -15,6 +15,7 @@ parallel = []
 ahash = "0.8.11"
 arrayvec = "0.7.4"
 heapless = { git = "https://github.com/tadeohepperle/heapless" }
+nanoserde = "0.1.37"
 prettytable-rs = "0.10.0"
 rand = "0.8.5"
 rand_chacha = "0.3.1"

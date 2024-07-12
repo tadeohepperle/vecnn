@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::hnsw::Hnsw;
-use hnsw::dist_fn_from_str;
+use hnsw::dist_from_str;
 use numpy::ndarray::{ArrayD, ArrayViewD, ArrayViewMutD};
 use numpy::{IntoPyArray, PyArray1, PyArrayDyn, PyArrayMethods, PyReadonlyArrayDyn};
 use pyo3::prelude::*;
@@ -58,8 +58,9 @@ fn linear_knn<'py>(
     distance_fn: String,
 ) -> PyResult<KnnResult> {
     let q = pyarray1_to_slice(query, Some(data.dims()))?;
-    let distance = dist_fn_from_str(&distance_fn)?;
-    let results = vecnn::utils::linear_knn_search(data.as_dyn_dataset_ref(), q, k, distance);
+    let distance = dist_from_str(&distance_fn)?;
+    let results =
+        vecnn::utils::linear_knn_search(data.as_dyn_dataset_ref(), q, k, distance.to_fn());
     let indices: Py<PyArray1<usize>> =
         ndarray::Array::from_iter(results.iter().map(|e| e.i as usize))
             .into_pyarray_bound(py)

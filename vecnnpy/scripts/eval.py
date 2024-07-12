@@ -177,7 +177,7 @@ class Model:
                 space = 'cosine'
             hnswlib_hnsw = hnswlib.Index(space = space, dim = dim) 
             hnswlib_hnsw.init_index(max_elements = n, ef_construction = params.ef_construction, M = params.m_max)
-            hnswlib_hnsw.add_items(data, ids)
+            hnswlib_hnsw.add_items(data, ids, num_threads = 1) # add_items(data, ids, num_threads = -1, replace_deleted = False)
             build_time =  time.time() - start
             self.build_metrics =  BuildMetrics(build_time=build_time)
             self.hnswlib_hnsw = hnswlib_hnsw
@@ -309,7 +309,7 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
     for params in model_params:
         model = Model(data, params)
         models.append(model)
-        print(f"    Built model {i}/{len(model_params)} in {int(model.build_metrics.build_time)}s:  ({params.to_dict()})")
+        print(f"    Built model {i+1}/{len(model_params)} in {int(model.build_metrics.build_time)}s:  ({params.to_dict()})")
         i+=1
 
     for s in search_params:
@@ -318,7 +318,7 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
         i = -1
         for model in models:
             i+=1
-            print(f"    Model {i}/{len(models)}")
+            print(f"    Model {i+1}/{len(models)}")
             metrics = model.knn(queries, s, truth_indices)
             
             s_dict = s.to_dict().copy()
@@ -343,15 +343,16 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
 # k = 10
 
 laion_data = laion.load_laion_data()
-data, queries = laion_data.subset(laion_data.data.shape[0], 1000)
+data, queries = laion_data.subset(100000, 20)
 
 # (truth_indices, search_time) = linear_search_true_knn(data, queries, k, "dot")
 model_params: list[ModelParams] = [
     # ModelParams('vecnn_rnn_descent',outer_loops=50, inner_loops=1, max_neighbors_after_reverse_pruning=4, initial_neighbors = 10, distance_fn = "dot"),
     # ModelParams('vecnn_vptree'),
-    # ModelParams('vecnn_hnsw', level_norm_param=0.5, ef_construction=20, m_max=20, m_max_0=10, distance_fn = "dot"),
-    # ModelParams('hnswlib_hnsw', level_norm_param=0.5, ef_construction=20, m_max=10),
-    ModelParams('hnswlib_hnsw', ef_construction=20, m_max=10, distance_fn = "dot"),
+    ModelParams('rustcv_hnsw', ef_construction=40),
+    ModelParams('vecnn_hnsw', level_norm_param=0.5, ef_construction=40, m_max=20, m_max_0=20, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=40, m_max=20, distance_fn = "dot"),
+    # ModelParams('hnswlib_hnsw', ef_construction=40, m_max=20, distance_fn = "dot"),
     # ModelParams('hnswlib_hnsw', ef_construction=20, m_max=20, distance_fn = "dot"),
     # ModelParams('hnswlib_hnsw', ef_construction=20, m_max=40, distance_fn = "dot"),
     # ModelParams('hnswlib_hnsw', ef_construction=40, m_max=10, distance_fn = "dot"),
@@ -365,7 +366,7 @@ model_params: list[ModelParams] = [
     # ModelParams('hnswlib_hnsw', ef_construction=200, m_max=40, distance_fn = "dot"),
 ]
 search_params: list[SearchParams] = [
-    SearchParams(1000, "dot", ef = 1000, start_candidates = 10) # make sure ef >= k
+    SearchParams(20, "dot", ef = 20, start_candidates = 10) # make sure ef >= k
 ]
 
 start = time.time()

@@ -1,7 +1,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use vecnn::{
-    distance::{cos, dot, l2},
+    distance::{self, cos, dot, l2, Distance},
     hnsw::{Hnsw, HnswParams},
     utils::{linear_knn_search, random_data_set},
 };
@@ -10,7 +10,7 @@ fn main() {
     let dims = 2;
     let data = random_data_set(100000, dims);
 
-    let distance_fn = dot;
+    let distance = Distance::L2;
 
     let hnsw = Hnsw::new(
         data.clone(),
@@ -19,7 +19,7 @@ fn main() {
             ef_construction: 40,
             m_max: 20,
             m_max_0: 20,
-            distance_fn,
+            distance,
         },
     );
 
@@ -36,7 +36,7 @@ fn main() {
     let mut recall = 0.0;
     for i in 0..n_queries {
         let q_data = queries.get(i);
-        let true_res = linear_knn_search(&*data, q_data, k, distance_fn)
+        let true_res = linear_knn_search(&*data, q_data, k, distance.to_fn())
             .iter()
             .map(|e| e.i)
             .collect::<HashSet<usize>>();

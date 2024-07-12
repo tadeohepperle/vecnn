@@ -7,14 +7,15 @@ use std::{
 };
 
 use ahash::{HashMap, HashSet};
+use nanoserde::{DeJson, SerJson};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
 use crate::{
     dataset::DatasetT,
-    distance::{l2, DistanceFn, DistanceTracker},
+    distance::{l2, Distance, DistanceFn, DistanceTracker},
     hnsw::IAndDist,
-    track,
+    if_tracking,
     vp_tree::Stats,
 };
 
@@ -48,13 +49,13 @@ impl Ord for Neighbor {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson)]
 pub struct RNNGraphParams {
     pub outer_loops: usize,
     pub inner_loops: usize,
     pub max_neighbors_after_reverse_pruning: usize,
     pub initial_neighbors: usize,
-    pub distance: DistanceFn,
+    pub distance: Distance,
 }
 
 impl Default for RNNGraphParams {
@@ -64,7 +65,7 @@ impl Default for RNNGraphParams {
             outer_loops: 4,
             inner_loops: 15,
             max_neighbors_after_reverse_pruning: Default::default(),
-            distance: l2,
+            distance: Distance::L2,
         }
     }
 }
@@ -129,8 +130,7 @@ impl RNNGraph {
                     any_neighbor_added = true;
                     candidates.push(Reverse(IAndDist { i, dist }));
                 }
-
-                track!(EdgeHorizontal {
+                if_tracking!(Tracking.add_event(Event::EdgeHorizontal {
                     from: closest_to_q.0.i,
                     to: i,
                     level: 0,
@@ -141,7 +141,7 @@ impl RNNGraph {
                     } else {
                         "not_good_enough"
                     }
-                });
+                }))
             }
         }
         let mut results: Vec<IAndDist<usize>> = search_res.into_vec();

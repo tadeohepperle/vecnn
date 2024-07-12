@@ -5,7 +5,11 @@ use numpy::{IntoPyArray, PyArray1};
 use pyo3::{exceptions::PyTypeError, pyclass, pymethods, Bound, Py, PyResult, Python};
 use rust_cv_hnsw::Searcher;
 use space::Neighbor;
-use vecnn::{dataset::DatasetT, distance::l2, vp_tree::Stats};
+use vecnn::{
+    dataset::DatasetT,
+    distance::{dot, l2},
+    vp_tree::Stats,
+};
 
 struct Euclidean;
 impl space::Metric<&[f32]> for Euclidean {
@@ -14,11 +18,21 @@ impl space::Metric<&[f32]> for Euclidean {
         l2(a, b).to_bits()
     }
 }
-type MyHnsw = rust_cv_hnsw::Hnsw<Euclidean, &'static [f32], rand_chacha::ChaCha20Rng, 10, 10>;
+
+struct Dot;
+impl space::Metric<&[f32]> for Dot {
+    type Unit = u32;
+    fn distance(&self, a: &&[f32], b: &&[f32]) -> u32 {
+        dot(a, b).to_bits()
+    }
+}
+
+type ParameterizedRustCvHnsw =
+    rust_cv_hnsw::Hnsw<Dot, &'static [f32], rand_chacha::ChaCha20Rng, 20, 20>;
 
 #[pyclass]
 pub struct RustCvHnsw {
-    inner: MyHnsw,
+    inner: ParameterizedRustCvHnsw,
     ds: Arc<dyn DatasetT>,
 }
 
@@ -27,7 +41,7 @@ impl RustCvHnsw {
     #[new]
     fn new<'py>(py: Python<'py>, data: crate::Dataset, ef_construction: usize) -> Self {
         let mut hnsw = rust_cv_hnsw::Hnsw::new_params(
-            Euclidean,
+            Dot,
             rust_cv_hnsw::Params::new().ef_construction(ef_construction),
         );
 

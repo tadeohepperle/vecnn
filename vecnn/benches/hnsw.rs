@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rand::Rng;
 use vecnn::{
-    distance::l2,
+    distance::Distance::*,
     hnsw::{Hnsw, HnswParams},
     utils::random_data_set,
 };
@@ -18,7 +18,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                     ef_construction: 20,
                     m_max: 10,
                     m_max_0: 10,
-                    distance_fn: l2,
+                    distance: L2,
                 },
             );
         })

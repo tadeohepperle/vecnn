@@ -1,5 +1,5 @@
 use crate::{
-    hnsw::dist_fn_from_str,
+    hnsw::dist_from_str,
     utils::{pyarray1_to_slice, KnnResult},
 };
 use numpy::{IntoPyArray, PyArray1};
@@ -29,7 +29,7 @@ impl RNNGraph {
             inner_loops,
             max_neighbors_after_reverse_pruning,
             initial_neighbors,
-            distance: dist_fn_from_str(&distance)?,
+            distance: dist_from_str(&distance)?,
         };
         let hnsw = vecnn::nn_descent::RNNGraph::new(data.as_dyn_dataset(), params);
         Ok(RNNGraph(hnsw))

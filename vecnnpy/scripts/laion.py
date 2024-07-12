@@ -19,8 +19,14 @@ class LaionData:
     gold_knns: np.ndarray
 
     def subset(self,n_data: int, n_queries: int) -> Tuple[np.ndarray,np.ndarray]:
-        data = self.data[np.random.choice(self.data.shape[0], n_data, replace=False)]
-        queries =  self.gold_queries[np.random.choice(self.gold_queries.shape[0], n_queries, replace=False)]
+        if n_data == -1:
+            data = self.data
+        else:
+            data = self.data[np.random.choice(self.data.shape[0], n_data, replace=False)]
+        if n_queries == -1:
+            queries = self.gold_queries
+        else:
+            queries =  self.gold_queries[np.random.choice(self.gold_queries.shape[0], n_queries, replace=False)]
         return (data, queries)
 
 def load_laion_data() -> LaionData:

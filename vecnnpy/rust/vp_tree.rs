@@ -14,7 +14,8 @@ pub struct VpTree(vecnn::vp_tree::VpTree);
 impl VpTree {
     #[new]
     fn new(data: crate::Dataset) -> Self {
-        let tree = vecnn::vp_tree::VpTree::new(data.as_dyn_dataset(), l2);
+        let tree =
+            vecnn::vp_tree::VpTree::new(data.as_dyn_dataset(), vecnn::distance::Distance::L2);
         Self(tree)
     }
 

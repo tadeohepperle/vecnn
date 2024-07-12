@@ -1,6 +1,25 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use nanoserde::{DeJson, SerJson};
+
 use crate::Float;
+
+#[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson)]
+pub enum Distance {
+    L2,
+    Dot,
+    Cos,
+}
+
+impl Distance {
+    pub fn to_fn(&self) -> DistanceFn {
+        match self {
+            Distance::L2 => l2,
+            Distance::Dot => dot,
+            Distance::Cos => cos,
+        }
+    }
+}
 
 pub type DistanceFn = fn(&[Float], &[Float]) -> Float;
 
@@ -10,10 +29,10 @@ pub struct DistanceTracker {
 }
 
 impl DistanceTracker {
-    pub fn new(f: DistanceFn) -> Self {
+    pub fn new(f: Distance) -> Self {
         DistanceTracker {
             num_calculations: AtomicUsize::new(0),
-            f,
+            f: f.to_fn(),
         }
     }
 
@@ -79,25 +98,24 @@ pub fn dot(a: &[Float], b: &[Float]) -> Float {
     let rem = dims % 8;
     assert_eq!(dims, chunks * 8 + rem);
 
-    macro_rules! accum {
-        ($idx:expr) => {
-            dot += unsafe { *a.get_unchecked($idx) * *b.get_unchecked($idx) };
-        };
-    }
     for c in 0..chunks {
         let i = c * 8;
-        accum!(i);
-        accum!(i + 1);
-        accum!(i + 2);
-        accum!(i + 3);
-        accum!(i + 4);
-        accum!(i + 5);
-        accum!(i + 6);
-        accum!(i + 7);
+        dot += unsafe {
+            a.get_unchecked(i) * b.get_unchecked(i)
+                + a.get_unchecked(i + 1) * b.get_unchecked(i + 1)
+                + a.get_unchecked(i + 2) * b.get_unchecked(i + 2)
+                + a.get_unchecked(i + 3) * b.get_unchecked(i + 3)
+                + a.get_unchecked(i + 4) * b.get_unchecked(i + 4)
+                + a.get_unchecked(i + 5) * b.get_unchecked(i + 5)
+                + a.get_unchecked(i + 6) * b.get_unchecked(i + 6)
+                + a.get_unchecked(i + 7) * b.get_unchecked(i + 7)
+        }
     }
+
     for i in (dims - rem)..dims {
-        accum!(i);
+        dot += unsafe { a.get_unchecked(i) * b.get_unchecked(i) }
     }
+
     1.0 - dot // to make it a distance not a similarity
 }
 

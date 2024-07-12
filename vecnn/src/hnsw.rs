@@ -9,20 +9,21 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::track;
+use super::if_tracking;
 use arrayvec::ArrayVec;
 use heapless::binary_heap::{Max, Min};
+use nanoserde::{DeJson, SerJson};
 use rand::{Rng, SeedableRng};
 use rand_chacha::{ChaCha20Rng, ChaChaRng};
 
 use crate::{
     dataset::DatasetT,
-    distance::{l2, DistanceFn, DistanceTracker},
+    distance::{l2, Distance, DistanceFn, DistanceTracker},
     utils::extend_lifetime,
     vp_tree::Stats,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson)]
 pub struct HnswParams {
     /// normalization factor for level generation
     /// Influences the chance of at which level a point is interted.
@@ -30,7 +31,7 @@ pub struct HnswParams {
     pub ef_construction: usize,
     pub m_max: usize,
     pub m_max_0: usize,
-    pub distance_fn: DistanceFn,
+    pub distance: Distance,
 }
 
 impl Default for HnswParams {
@@ -40,7 +41,7 @@ impl Default for HnswParams {
             ef_construction: 20,
             m_max: 10,
             m_max_0: 10,
-            distance_fn: l2,
+            distance: Distance::L2,
         }
     }
 }
@@ -71,29 +72,28 @@ pub struct Layer {
     pub entries: Vec<LayerEntry>,
 }
 
-type ID = u32;
 pub const NEIGHBORS_LIST_MAX_LEN: usize = 40;
 
 #[derive(Debug, Clone)]
 pub struct LayerEntry {
-    pub id: ID,
+    pub id: usize,
     /// pos where we can find this entry at a lower level.
-    /// insignificat on level 0, just set to u32::MAX.
-    pub lower_level_idx: u32,
+    /// insignificat on level 0, just set to usize::MAX.
+    pub lower_level_idx: usize,
     /// a Max-Heap, such that we can easily pop off the item with the largest distance to make space.
-    /// DistAnd<u32> is distances to, and idx's of neighbors
-    pub neighbors: Neighbors, // the u32 stores the index in the layer
+    /// DistAnd<usize> is distances to, and idx's of neighbors
+    pub neighbors: Neighbors, // the usize stores the index in the layer
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Neighbors(heapless::BinaryHeap<IAndDist<u32>, Max, NEIGHBORS_LIST_MAX_LEN>);
+pub struct Neighbors(heapless::BinaryHeap<IAndDist<usize>, Max, NEIGHBORS_LIST_MAX_LEN>);
 
 impl Neighbors {
     pub fn new() -> Self {
         Default::default()
     }
 
-    pub fn iter<'a>(&'a self) -> std::slice::Iter<'a, IAndDist<u32>> {
+    pub fn iter<'a>(&'a self) -> std::slice::Iter<'a, IAndDist<usize>> {
         self.0.iter()
     }
 
@@ -101,7 +101,7 @@ impl Neighbors {
     ///
     /// if no space anymore
     #[inline]
-    pub fn insert_asserted(&mut self, idx_in_layer: u32, dist: f32) {
+    pub fn insert_asserted(&mut self, idx_in_layer: usize, dist: f32) {
         self.0
             .push(IAndDist {
                 i: idx_in_layer,
@@ -110,8 +110,14 @@ impl Neighbors {
             .expect("no more space in neighbors list, use insert_if_better instead!")
     }
 
+    /// Returns true if insert was successful
     #[inline]
-    pub fn insert_if_better(&mut self, idx_in_layer: u32, dist: f32, max_neighbors: usize) {
+    pub fn insert_if_better(
+        &mut self,
+        idx_in_layer: usize,
+        dist: f32,
+        max_neighbors: usize,
+    ) -> bool {
         if self.0.len() < max_neighbors {
             self.0
                 .push(IAndDist {
@@ -119,25 +125,25 @@ impl Neighbors {
                     dist,
                 })
                 .expect("should have space too");
+            return true;
         } else {
-            // if all neighbors in n_neighbors are closer already, dont add connection from n to q:
-            let max_d = self.0.peek().unwrap().dist;
-            if max_d > dist {
-                // because this is a max heap, pop removes the item with the greatest distance.
-                self.0.pop().unwrap();
-                self.0
-                    .push(IAndDist {
-                        i: idx_in_layer,
-                        dist,
-                    })
-                    .unwrap();
+            // replace max dist element if distance is smaller.
+            let mut max_d_element = self.0.peek_mut().unwrap();
+            if dist < max_d_element.dist {
+                *max_d_element = IAndDist {
+                    i: idx_in_layer,
+                    dist,
+                };
+                return true;
+            } else {
+                return false;
             }
         }
     }
 }
 
 impl LayerEntry {
-    fn new(id: u32, lower_level_idx: u32) -> LayerEntry {
+    fn new(id: usize, lower_level_idx: usize) -> LayerEntry {
         LayerEntry {
             id,
             lower_level_idx,
@@ -162,19 +168,20 @@ impl Hnsw {
     pub fn knn_search(&self, q_data: &[f32], k: usize) -> (Vec<SearchLayerRes>, Stats) {
         assert_eq!(q_data.len(), self.data.dims());
 
-        let distance = DistanceTracker::new(self.params.distance_fn);
+        let distance = DistanceTracker::new(self.params.distance);
         let start = Instant::now();
 
-        let mut ep_idx_in_layer = 0;
+        let mut ep_idx_in_layer: usize = 0;
         for i in (1..self.layers.len()).rev() {
             let layer = &self.layers[i];
             let res =
                 closest_point_in_layer(layer, &*self.data, q_data, ep_idx_in_layer, &distance);
             ep_idx_in_layer = res.idx_in_lower_layer;
-            track!(EdgeDown {
-                from: res.id as usize,
+
+            if_tracking!(Tracking.add_event(Event::EdgeDown {
+                from: res.id,
                 upper_level: i,
-            });
+            }));
         }
 
         let ef = self.params.ef_construction.max(k);
@@ -199,7 +206,7 @@ impl Hnsw {
 }
 
 fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams) -> Hnsw {
-    let tracker = DistanceTracker::new(params.distance_fn);
+    let tracker = DistanceTracker::new(params.distance);
     let start = Instant::now();
 
     let mut hnsw = Hnsw::new_empty(data, params);
@@ -212,7 +219,7 @@ fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams) -> Hnsw {
     let mut entries = Vec::with_capacity(len);
     entries.push(LayerEntry {
         id: 0,
-        lower_level_idx: u32::MAX,
+        lower_level_idx: usize::MAX,
         neighbors: Default::default(),
     });
     hnsw.layers.push(Layer {
@@ -221,7 +228,7 @@ fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams) -> Hnsw {
     });
     // insert the rest of the points one by one
     let mut insert_ctx = InsertCtx::new(&hnsw.params);
-    for id in 1..len as u32 {
+    for id in 1..len {
         insert(&mut hnsw, id, &tracker, &mut insert_ctx);
     }
 
@@ -234,14 +241,14 @@ fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams) -> Hnsw {
 }
 
 pub struct InsertCtx {
-    ep_idxs_in_layer: Vec<u32>,
+    ep_idxs_in_layer: Vec<usize>,
     select_neighbors_res: Vec<SearchLayerRes>,
     search_ctx: SearchCtx,
 }
 
 impl InsertCtx {
     pub fn new(params: &HnswParams) -> Self {
-        let ep_idxs_in_layer: Vec<u32> = Vec::with_capacity(params.ef_construction);
+        let ep_idxs_in_layer: Vec<usize> = Vec::with_capacity(params.ef_construction);
         let neighbors_out: Vec<SearchLayerRes> = vec![];
         let search_ctx: SearchCtx = SearchCtx::new(params.ef_construction);
         Self {
@@ -257,8 +264,8 @@ impl InsertCtx {
     }
 }
 
-fn insert(hnsw: &mut Hnsw, q: ID, distance: &DistanceTracker, ctx: &mut InsertCtx) {
-    let q_data = hnsw.data.get(q as usize);
+fn insert(hnsw: &mut Hnsw, q: usize, distance: &DistanceTracker, ctx: &mut InsertCtx) {
+    let q_data = hnsw.data.get(q);
     ctx.clear();
 
     // /////////////////////////////////////////////////////////////////////////////
@@ -268,11 +275,11 @@ fn insert(hnsw: &mut Hnsw, q: ID, distance: &DistanceTracker, ctx: &mut InsertCt
 
     let top_l = hnsw.layers.len() - 1; // (previous top l)
     let insert_l = pick_level(hnsw.params.level_norm_param, &mut rng);
-    let mut lower_level_idx: u32 = u32::MAX;
+    let mut lower_level_idx: usize = usize::MAX;
     for l in 0..=insert_l {
         let entry = LayerEntry::new(q, lower_level_idx);
         if let Some(layer) = hnsw.layers.get_mut(l) {
-            lower_level_idx = layer.entries.len() as u32;
+            lower_level_idx = layer.entries.len();
             layer.entries.push(entry);
         } else {
             let layer = Layer {
@@ -325,19 +332,28 @@ fn insert(hnsw: &mut Hnsw, q: ID, distance: &DistanceTracker, ctx: &mut InsertCt
             &mut ctx.select_neighbors_res,
         );
         // add bidirectional connections from neighbors to q at layer l:
-        let idx_of_q_in_l = layer.entries.len() as u32 - 1;
+        let idx_of_q_in_l = layer.entries.len() - 1;
         let m_max = hnsw.params.m_max_on_level(l);
         for n in ctx.select_neighbors_res.iter() {
             // add connection from q to n:
 
-            layer.entries[idx_of_q_in_l as usize]
-                .neighbors
-                .insert_asserted(n.idx_in_layer, n.d_to_q);
+            // Note: not sure if always insert (insert_asserted) or insert_if_better, according to hnsw paper:
+            // layer.entries[idx_of_q_in_l ]
+            //     .neighbors
+            //     .insert_asserted(n.idx_in_layer, n.d_to_q);
+
+            layer.entries[idx_of_q_in_l].neighbors.insert_if_better(
+                n.idx_in_layer,
+                n.d_to_q,
+                m_max,
+            );
 
             // add connection from n to q:
-            layer.entries[n.idx_in_layer as usize]
-                .neighbors
-                .insert_if_better(idx_of_q_in_l, n.d_to_q, m_max);
+            layer.entries[n.idx_in_layer].neighbors.insert_if_better(
+                idx_of_q_in_l,
+                n.d_to_q,
+                m_max,
+            );
         }
 
         // set new ep_idxs_in_layer:
@@ -363,18 +379,18 @@ fn testlevel() {
 
 #[derive(Debug, Clone, Copy)]
 pub struct SearchLayerRes {
-    pub idx_in_layer: u32,
-    pub idx_in_lower_layer: u32,
-    pub id: ID,
+    pub idx_in_layer: usize,
+    pub idx_in_lower_layer: usize,
+    pub id: usize,
     pub d_to_q: f32,
 }
 
 struct SearchCtx {
-    visited_idxs: ahash::AHashSet<u32>,
+    visited_idxs: ahash::AHashSet<usize>,
     /// we need to be able to extract the closest element from this (so we use Reverse<IdxAndDist> to have a min-heap)
-    candidates: BinaryHeap<Reverse<IAndDist<u32>>>,
+    candidates: BinaryHeap<Reverse<IAndDist<usize>>>,
     /// we need to be able to extract the furthest element from this: this is a max heap, the root is the max distance.
-    search_res: BinaryHeap<IAndDist<u32>>,
+    search_res: BinaryHeap<IAndDist<usize>>,
     // Note: seemingly both rayon and this threadpool add immense overhead (10x) when applied to finding the closest neighbors in a layer each in a seperate thread.
     // pool: rayon::ThreadPool,
     // thread_pool: threadpool::ThreadPool,
@@ -432,30 +448,30 @@ fn closest_point_in_layer(
     layer: &Layer,
     data: &dyn DatasetT,
     q_data: &[f32],
-    ep_idx_in_layer: u32,
+    ep_idx_in_layer: usize,
     distance: &DistanceTracker,
 ) -> SearchLayerRes {
     // let visited_idxs: HashSet<usize> = HashSet::new(); // prob. not needed???
 
     // initialize best entry to the entry point (at ep_idx_in_layer)
     let mut best_entry_idx_in_layer = ep_idx_in_layer;
-    let mut best_entry = &layer.entries[best_entry_idx_in_layer as usize];
-    let mut best_entry_d = distance.distance(data.get(best_entry.id as usize), q_data);
+    let mut best_entry = &layer.entries[best_entry_idx_in_layer];
+    let mut best_entry_d = distance.distance(data.get(best_entry.id), q_data);
 
     // iterate over all neighbors of best_entry, go to the one with lowest distance to q.
     // if none of them better than current best entry return (greedy routing).
     loop {
-        track!(Point {
-            id: best_entry.id as usize,
+        if_tracking!(Tracking.add_event(Event::Point {
+            id: best_entry.id,
             level: layer.level
-        });
+        }));
         #[cfg(feature = "tracking")]
         let best_entry_id = best_entry.id;
 
         let mut found_a_better_neighbor = false;
         for idx_and_dist in best_entry.neighbors.iter() {
-            let n = &layer.entries[idx_and_dist.i as usize];
-            let n_d = distance.distance(data.get(n.id as usize), q_data);
+            let n = &layer.entries[idx_and_dist.i];
+            let n_d = distance.distance(data.get(n.id), q_data);
             if n_d < best_entry_d {
                 best_entry_d = n_d;
                 best_entry = n;
@@ -471,12 +487,13 @@ fn closest_point_in_layer(
                 d_to_q: best_entry_d,
             };
         }
-        track!(EdgeHorizontal {
-            from: best_entry_id as usize,
-            to: best_entry.id as usize,
+
+        if_tracking!(Tracking.add_event(Event::EdgeHorizontal {
+            from: best_entry_id,
+            to: best_entry.id,
             level: layer.level,
             comment: "search"
-        });
+        }));
     }
 }
 
@@ -485,20 +502,20 @@ fn closest_points_in_layer(
     entries: &[LayerEntry],
     data: &dyn DatasetT,
     q_data: &[f32],
-    ep_idxs_in_layer: &[u32],
+    ep_idxs_in_layer: &[usize],
     ef: usize, // max number of found items
     ctx: &mut SearchCtx,
     distance: &DistanceTracker,
 ) {
     // #[cfg(feature = "tracking")]
-    // let mut track_to_idx_from_idx: HashMap<u32, u32> = HashMap::new();
+    // let mut track_to_idx_from_idx: HashMap<usize, usize> = HashMap::new();
 
     ctx.visited_idxs.clear();
     ctx.candidates.clear();
     ctx.search_res.clear();
     for idx_in_layer in ep_idxs_in_layer.iter().copied() {
-        let id = entries[idx_in_layer as usize].id;
-        let dist = distance.distance(data.get(id as usize), q_data);
+        let id = entries[idx_in_layer].id;
+        let dist = distance.distance(data.get(id), q_data);
         ctx.visited_idxs.insert(idx_in_layer);
         ctx.candidates.push(Reverse(IAndDist {
             i: idx_in_layer,
@@ -516,12 +533,12 @@ fn closest_points_in_layer(
         if c.0.dist > f.dist {
             break; // all elements in found are evaluated (see paper).
         }
-        let c_entry = &entries[c.0.i as usize];
+        let c_entry = &entries[c.0.i];
         for idx_and_dist in c_entry.neighbors.iter() {
             let idx_in_layer = idx_and_dist.i;
             if ctx.visited_idxs.insert(idx_in_layer) {
-                let n_entry = &entries[idx_in_layer as usize];
-                let n_data = data.get(n_entry.id as usize);
+                let n_entry = &entries[idx_in_layer];
+                let n_data = data.get(n_entry.id);
                 let dist = distance.distance(q_data, n_data);
                 f = *ctx.search_res.peek().unwrap();
                 if dist < f.dist || ctx.search_res.len() < ef {
@@ -556,32 +573,32 @@ fn closest_points_in_layer(
 //     entries: &[LayerEntry],
 //     data: &dyn DatasetT,
 //     q_data: &[f32],
-//     ep_idxs_in_layer: &[u32],
+//     ep_idxs_in_layer: &[usize],
 //     ef: usize, // max number of found items
 //     ctx: &mut SearchCtx,
 //     distance: &DistanceTracker,
 // ) {
 //     // #[cfg(feature = "tracking")]
-//     // let mut track_to_idx_from_idx: HashMap<u32, u32> = HashMap::new();
+//     // let mut track_to_idx_from_idx: HashMap<usize, usize> = HashMap::new();
 //     ctx.initialize(ep_idxs_in_layer, |idx| {
-//         let id = entries[idx as usize].id;
-//         distance.distance(data.get(id as usize), q_data)
+//         let id = entries[idx ].id;
+//         distance.distance(data.get(id ), q_data)
 //     });
 
 //     struct IdxInLayerAndDist {}
 
-//     let mut tmp_indices_and_distances: [IAndDist<u32>; MAX_NEIGHBORS] =
+//     let mut tmp_indices_and_distances: [IAndDist<usize>; MAX_NEIGHBORS] =
 //         [IAndDist { i: 0, dist: 0.0 }; MAX_NEIGHBORS];
 
 //     while ctx.candidates.len() > 0 {
-//         // tmp_indices_and_distances = UnsafeCell::new([(u32::MAX, 0.0); MAX_NEIGHBORS]); // maybe not necessary
+//         // tmp_indices_and_distances = UnsafeCell::new([(usize::MAX, 0.0); MAX_NEIGHBORS]); // maybe not necessary
 
 //         let c = ctx.candidates.pop().unwrap(); // remove closest element.
 //         let mut f = *ctx.search_res.peek().unwrap();
 //         if c.0.dist > f.dist {
 //             break; // all elements in found are evaluated (see paper).
 //         }
-//         let c_entry = &entries[c.0.i as usize];
+//         let c_entry = &entries[c.0.i ];
 
 //         // compute the distances of all neighbors in parallel:
 
@@ -607,13 +624,13 @@ fn closest_points_in_layer(
 //         let barrier = Arc::new(Barrier::new(num_unvisited_neighbors + 1));
 //         for i in 0..num_unvisited_neighbors {
 //             let idx_and_dist_ptr = unsafe { tmp_start.add(i) };
-//             let idx = unsafe { *(idx_and_dist_ptr as *mut u32) };
-//             let neighbor_id = &entries[idx as usize].id;
+//             let idx = unsafe { *(idx_and_dist_ptr as *mut usize) };
+//             let neighbor_id = &entries[idx ].id;
 
-//             let n_data = extend_lifetime(data.get(*neighbor_id as usize));
+//             let n_data = extend_lifetime(data.get(*neighbor_id ));
 //             let q_data = extend_lifetime(q_data);
 //             let distance = extend_lifetime(distance);
-//             let write_dist_ptr = idx_and_dist_ptr as usize + std::mem::size_of::<u32>();
+//             let write_dist_ptr = idx_and_dist_ptr  + std::mem::size_of::<usize>();
 
 //             let barrier = barrier.clone();
 //             ctx.thread_pool.execute(move || unsafe {
@@ -651,35 +668,35 @@ fn closest_points_in_layer(
 //     entries: &[LayerEntry],
 //     data: &dyn DatasetT,
 //     q_data: &[f32],
-//     ep_idxs_in_layer: &[u32],
+//     ep_idxs_in_layer: &[usize],
 //     ef: usize, // max number of found items
 //     ctx: &mut SearchCtx,
 //     distance: &DistanceTracker,
 // ) {
 //     // #[cfg(feature = "tracking")]
-//     // let mut track_to_idx_from_idx: HashMap<u32, u32> = HashMap::new();
+//     // let mut track_to_idx_from_idx: HashMap<usize, usize> = HashMap::new();
 //     ctx.initialize(ep_idxs_in_layer, |idx| {
-//         let id = entries[idx as usize].id;
-//         distance.distance(data.get(id as usize), q_data)
+//         let id = entries[idx ].id;
+//         distance.distance(data.get(id ), q_data)
 //     });
 
 //     let mut tmp_num_unvisited_neighbors: usize = 0;
-//     let mut tmp_indices_and_distances: [(u32, f32); MAX_NEIGHBORS] =
-//         [(u32::MAX, 0.0); MAX_NEIGHBORS];
+//     let mut tmp_indices_and_distances: [(usize, f32); MAX_NEIGHBORS] =
+//         [(usize::MAX, 0.0); MAX_NEIGHBORS];
 
 //     while ctx.candidates.len() > 0 {
-//         // tmp_indices_and_distances = UnsafeCell::new([(u32::MAX, 0.0); MAX_NEIGHBORS]); // maybe not necessary
+//         // tmp_indices_and_distances = UnsafeCell::new([(usize::MAX, 0.0); MAX_NEIGHBORS]); // maybe not necessary
 
 //         let c = ctx.candidates.pop().unwrap(); // remove closest element.
 //         let mut f = *ctx.search_res.peek().unwrap();
 //         if c.0.dist > f.dist {
 //             break; // all elements in found are evaluated (see paper).
 //         }
-//         let c_entry = &entries[c.0.i as usize];
+//         let c_entry = &entries[c.0.i ];
 
 //         // compute the distances of all neighbors in parallel:
 
-//         let tmp_indices_and_distances_ptr = tmp_indices_and_distances.as_mut_ptr() as usize; // as usize to get around the restriction of Send/Sync for ptrs.
+//         let tmp_indices_and_distances_ptr = tmp_indices_and_distances.as_mut_ptr() ; //  to get around the restriction of Send/Sync for ptrs.
 
 //         // Note: checking with this, we see that in 99% of cases the MAX_NEIHGBORS is actually reached.
 //         // std::io::stdout().write_fmt(format_args!(" {}\n", c_entry.neighbors.len()));
@@ -691,12 +708,12 @@ fn closest_points_in_layer(
 //                 if newly_visited {
 //                     s.spawn(move |_| {
 //                         let i = i;
-//                         let n_entry = &entries[idx_in_layer as usize];
-//                         let n_data = data.get(n_entry.id as usize);
+//                         let n_entry = &entries[idx_in_layer ];
+//                         let n_data = data.get(n_entry.id );
 //                         let dist = distance.distance(q_data, n_data);
 //                         // write the distance back to the stack-allocated buffer:
 //                         unsafe {
-//                             let addr = (tmp_indices_and_distances_ptr as *mut (u32, f32)).add(i);
+//                             let addr = (tmp_indices_and_distances_ptr as *mut (usize, f32)).add(i);
 //                             addr.write((idx_in_layer, dist));
 //                         };
 //                     });
@@ -740,11 +757,11 @@ fn closest_points_in_layer(
 // #[cfg(feature = "tracking")]
 // {
 //     for e in out.found.iter() {
-//         let to = layer.entries[e.idx_in_layer as usize].id;
+//         let to = layer.entries[e.idx_in_layer ].id;
 //         let Some(from_idx) = track_to_idx_from_idx.get(&e.idx_in_layer) else {
 //             continue;
 //         };
-//         let from = layer.entries[*from_idx as usize].id;
+//         let from = layer.entries[*from_idx ].id;
 //         track!(EdgeHorizontal {
 //             from,
 //             to,
@@ -756,7 +773,7 @@ fn closest_points_in_layer(
 /// todo! what if less neighbors there? will fail??
 fn select_neighbors(
     layer: &Layer,
-    candidates: &mut BinaryHeap<IAndDist<u32>>, // a max-heap where the root is the largest-dist element.
+    candidates: &mut BinaryHeap<IAndDist<usize>>, // a max-heap where the root is the largest-dist element.
     n: usize,
     out: &mut Vec<SearchLayerRes>,
 ) {
@@ -767,7 +784,7 @@ fn select_neighbors(
 
     out.clear();
     for c in candidates.iter() {
-        let entry = &layer.entries[c.i as usize];
+        let entry = &layer.entries[c.i];
         out.push(SearchLayerRes {
             idx_in_layer: c.i,
             idx_in_lower_layer: entry.lower_level_idx,
@@ -781,7 +798,7 @@ fn select_neighbors(
 mod tests {
     use std::sync::Arc;
 
-    use crate::distance::l2;
+    use crate::distance::{l2, Distance};
 
     use super::Hnsw;
 
@@ -803,7 +820,7 @@ mod tests {
                 ef_construction: 4,
                 m_max: 2,
                 m_max_0: 3,
-                distance_fn: l2,
+                distance: Distance::L2,
             },
         );
 
