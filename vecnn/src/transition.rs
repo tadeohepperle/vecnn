@@ -200,9 +200,9 @@ pub fn build_hnsw_by_transition(data: Arc<dyn DatasetT>, params: TransitionParam
             &mut rng,
         );
         i += 1;
-        if i >= 4 {
-            break;
-        }
+        // if i >= 4 {
+        //     break;
+        // }
         chunks.remove(neg_idx);
         chunks[pos_idx] = merged_chunk;
     }
@@ -326,8 +326,11 @@ fn generate_stitch_pair_candidates(
             let pos_center_data = data.get(pos_center_id);
 
             if_tracking!(
-                println!("    center of pos half: {pos_center_id}");
-                Tracking.pt_meta(pos_center_id).is_pos_center = true;
+               println!("    center of pos half: {pos_center_id}");
+               let mut t = Tracking;
+               let meta = t.pt_meta(pos_center_id);
+               meta.is_pos_center = true;
+               meta.annotation = Some(meta.chunk.to_string());
             );
 
             let mut neg_candidates = HashSet::<usize>::new();

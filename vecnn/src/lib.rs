@@ -60,6 +60,7 @@ pub mod tracking {
         pub is_pos_center: bool,
         pub is_neg_random: bool,
         pub is_neg_cand: bool,
+        pub annotation: Option<String>,
     }
 
     #[derive(Debug, Clone, Default)]

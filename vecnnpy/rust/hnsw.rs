@@ -21,7 +21,7 @@ pub fn build_hnsw_by_transition(
         same_chunk_max_neighbors,
         neg_fraction,
         distance: dist_from_str(&distance_fn)?,
-        stitch_mode: StitchMode::ToAndFromPosCenter,
+        stitch_mode: StitchMode::RandomNegToPosCenterAndBack,
     };
     let hnsw = vecnn::transition::build_hnsw_by_transition(data.as_dyn_dataset(), params);
     Ok(Hnsw(hnsw))
