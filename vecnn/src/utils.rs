@@ -124,3 +124,28 @@ mod test {
 pub fn extend_lifetime<T: ?Sized>(e: &T) -> &'static T {
     unsafe { &*(e as *const T) }
 }
+
+pub trait BinaryHeapExt {
+    type Item: Ord;
+    // returns true if inserted
+    fn insert_if_better(&mut self, item: Self::Item, max_len: usize) -> bool;
+}
+
+impl<T: Ord> BinaryHeapExt for BinaryHeap<T> {
+    type Item = T;
+
+    fn insert_if_better(&mut self, item: Self::Item, max_len: usize) -> bool {
+        if self.len() < max_len {
+            self.push(item);
+            return true;
+        } else {
+            let mut worst = self.peek_mut().unwrap();
+            if item < *worst {
+                *worst = item;
+                return true;
+            } else {
+                return false;
+            }
+        }
+    }
+}

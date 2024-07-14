@@ -17,8 +17,9 @@ use vecnn::{
 };
 
 fn main() {
+    let same_chunk_max_neighbors: usize = 20;
+    let neg_fraction: f32 = 0.3;
     let mut models: Vec<ModelParams> = vec![
-        //
         ModelParams::Hnsw(HnswParams {
             level_norm_param: 0.5,
             ef_construction: 40,
@@ -28,17 +29,53 @@ fn main() {
         }),
         ModelParams::Transition(TransitionParams {
             max_chunk_size: 100,
-            same_chunk_max_neighbors: 20,
-            neg_fraction: 0.4,
+            same_chunk_max_neighbors,
+            neg_fraction,
             distance: Dot,
+            keep_fraction: 0.1,
             stitch_mode: StitchMode::RandomNegToPosCenterAndBack,
+            stop_after_stitching_n_chunks: None,
+            x: 3,
+        }),
+        ModelParams::Transition(TransitionParams {
+            max_chunk_size: 100,
+            same_chunk_max_neighbors,
+            neg_fraction,
+            distance: Dot,
+            keep_fraction: 0.1,
+            stop_after_stitching_n_chunks: None,
+            stitch_mode: StitchMode::RandomNegToRandomPosAndBack,
+            x: 3,
         }),
         ModelParams::Transition(TransitionParams {
             max_chunk_size: 100,
             same_chunk_max_neighbors: 20,
-            neg_fraction: 0.4,
-            distance: L2,
-            stitch_mode: StitchMode::RandomNegToRandomPosAndBack,
+            neg_fraction,
+            distance: Dot,
+            keep_fraction: 0.1,
+            stop_after_stitching_n_chunks: None,
+            stitch_mode: StitchMode::RandomSubsetOfSubset,
+            x: 3,
+        }),
+        ModelParams::Transition(TransitionParams {
+            max_chunk_size: 100,
+            same_chunk_max_neighbors: 20,
+            neg_fraction,
+            distance: Dot,
+            keep_fraction: 0.2,
+            stop_after_stitching_n_chunks: None,
+            stitch_mode: StitchMode::BestXofRandomXTimesX,
+            x: 10,
+        }),
+        ModelParams::Transition(TransitionParams {
+            max_chunk_size: 100,
+            same_chunk_max_neighbors: 20,
+            neg_fraction,
+            distance: Dot,
+            keep_fraction: 0.2,
+            stop_after_stitching_n_chunks: None,
+            stitch_mode: StitchMode::DontStarveXXSearch,
+            x: 10,
         }),
         // ModelParams::RNNGraph(RNNGraphParams {
         //     outer_loops: 3,
@@ -47,28 +84,8 @@ fn main() {
         //     initial_neighbors: 40,
         //     distance: dot,
         // }),
-        // ModelParams::RNNGraph(RNNGraphParams {
-        //     outer_loops: 3,
-        //     inner_loops: 7,
-        //     max_neighbors_after_reverse_pruning: 10,
-        //     initial_neighbors: 20,
-        //     distance: dot,
-        // }),
-        // ModelParams::RNNGraph(RNNGraphParams {
-        //     outer_loops: 2,
-        //     inner_loops: 7,
-        //     max_neighbors_after_reverse_pruning: 10,
-        //     initial_neighbors: 20,
-        //     distance: dot,
-        // }),
-        // ModelParams::RNNGraph(RNNGraphParams {
-        //     outer_loops: 3,
-        //     inner_loops: 10,
-        //     max_neighbors_after_reverse_pruning: 16,
-        //     initial_neighbors: 20,
-        //     distance: dot,
-        // }),
     ];
+    eval_models_on_laion(100000, 100, 100, dot, &models)
     // for max_chunk_size in 60..99 {
     //     models.push(ModelParams::Transition(TransitionParams {
     //         max_chunk_size,
@@ -77,9 +94,6 @@ fn main() {
     //         distance_fn: dot,
     //     }))
     // }
-
-    // eval_models_random_data(10000, 2, 200, 100, dot, &models)
-    eval_models_on_laion(3000, 100, 100, dot, &models)
 }
 
 #[derive(Debug, Clone, Copy)]

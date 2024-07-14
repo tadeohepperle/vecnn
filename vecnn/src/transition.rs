@@ -1,12 +1,11 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BinaryHeap, HashMap, HashSet},
     hash::Hash,
     ops::Range,
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use heapless::{binary_heap::Max, BinaryHeap};
 use nanoserde::{DeJson, SerJson};
 use rand::{seq::SliceRandom, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
@@ -19,6 +18,7 @@ use crate::{
         NEIGHBORS_LIST_MAX_LEN,
     },
     if_tracking,
+    utils::BinaryHeapExt,
     vp_tree::{self, arrange_into_vp_tree, left, left_with_root, right, Node, Stats, VpTree},
 };
 
@@ -97,18 +97,11 @@ pub struct TransitionParams {
     pub max_chunk_size: usize,
     pub same_chunk_max_neighbors: usize,
     pub neg_fraction: f32,
+    pub keep_fraction: f32,
+    pub x: usize,
+    pub stop_after_stitching_n_chunks: Option<usize>,
     pub distance: Distance,
     pub stitch_mode: StitchMode,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson)]
-pub enum StitchMode {
-    /// - select `neg_fraction` random points in negative half.
-    /// - search from each of them in neg half towards center of positive half -> neg candidates
-    /// - for each neg candidate: search in pos half from center of positive half towards neg candidate -> pos candidate
-    /// - connect pos and neg candidates if the connection would be good.
-    RandomNegToPosCenterAndBack,
-    RandomNegToRandomPosAndBack,
 }
 
 pub fn build_hnsw_by_transition(data: Arc<dyn DatasetT>, params: TransitionParams) -> Hnsw {
@@ -200,9 +193,11 @@ pub fn build_hnsw_by_transition(data: Arc<dyn DatasetT>, params: TransitionParam
             &mut rng,
         );
         i += 1;
-        // if i >= 4 {
-        //     break;
-        // }
+        if let Some(n) = params.stop_after_stitching_n_chunks {
+            if i >= n {
+                break;
+            }
+        }
         chunks.remove(neg_idx);
         chunks[pos_idx] = merged_chunk;
     }
@@ -248,7 +243,7 @@ fn stitch_chunks(
     };
 
     let stitch_candidates =
-        generate_stitch_pair_candidates(data, distance, pos_chunk, neg_chunk, entries, params, rng);
+        generate_stitch_candidates(data, distance, pos_chunk, neg_chunk, entries, params, rng);
 
     for c in stitch_candidates.iter() {
         let pos_entry = &mut entries[c.pos_cand_idx];
@@ -276,7 +271,7 @@ fn stitch_chunks(
                     .edge_meta(neg_cand_id, pos_cand_id)
                     .is_neg_to_pos = true;
             }
-            println!("    potential connection: pos:{pos_cand_id} - neg:{neg_cand_id}  (pos_to_neg_inserted={pos_to_neg_inserted}, neg_to_pos_inserted={neg_to_pos_inserted})")
+            // println!("    potential connection: pos:{pos_cand_id} - neg:{neg_cand_id}  (pos_to_neg_inserted={pos_to_neg_inserted}, neg_to_pos_inserted={neg_to_pos_inserted})")
         );
     }
 
@@ -296,6 +291,16 @@ impl Hash for StitchCandidate {
     }
 }
 impl Eq for StitchCandidate {}
+impl PartialOrd for StitchCandidate {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.dist.partial_cmp(&other.dist)
+    }
+}
+impl Ord for StitchCandidate {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.dist.total_cmp(&other.dist)
+    }
+}
 
 fn random_idx_sample(range: Range<usize>, fraction: f32, rng: &mut ChaCha20Rng) -> Vec<usize> {
     let len = range.len();
@@ -309,7 +314,42 @@ fn random_idx_sample(range: Range<usize>, fraction: f32, rng: &mut ChaCha20Rng) 
     ids_random_order
 }
 
-fn generate_stitch_pair_candidates(
+#[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson, strum::EnumIter)]
+pub enum StitchMode {
+    /// - select `neg_fraction` random points in negative half.
+    /// - search from each of them in neg half towards center of positive half -> neg candidates
+    /// - for each neg candidate: search in pos half from center of positive half towards neg candidate -> pos candidate
+    /// - connect pos and neg candidates if the connection would be good.
+    RandomNegToPosCenterAndBack,
+    RandomNegToRandomPosAndBack,
+    /// select neg_fraction points randomly in pos and neg half:
+    /// - compute all distances and sort them
+    /// - suggest the best `keep_fraction` distances as candidates
+    RandomSubsetOfSubset,
+    /// Select in many iterations X candidates in negative and positive half: (so that in total we look at `neg_fraction` pts roughly)
+    /// - compute all X^2 distances between them, select the best X of these distances and return the pairs as candidates.
+    BestXofRandomXTimesX,
+    /// Select X candidates in negative and positive half:
+    /// - for each positive candidate, search towards it, from a negative candidate if it is closer to it than each other negative candidate.
+    /// -> leads to X searches from points in neg, towards pos half.
+    ///
+    /// Afterwards, search from the X pos candidates in pos half towards the X found neg candidates.
+    DontStarveXXSearch,
+}
+
+impl StitchMode {
+    pub fn name(&self) -> &'static str {
+        match self {
+            StitchMode::RandomNegToPosCenterAndBack => "RandomNegToPosCenterAndBack",
+            StitchMode::RandomNegToRandomPosAndBack => "RandomNegToRandomPosAndBack",
+            StitchMode::RandomSubsetOfSubset => "RandomSubsetOfSubset",
+            StitchMode::BestXofRandomXTimesX => "BestXofRandomXTimesX",
+            StitchMode::DontStarveXXSearch => "DontStarveXXSearch",
+        }
+    }
+}
+
+fn generate_stitch_candidates(
     data: &dyn DatasetT,
     distance: &DistanceTracker,
     pos_chunk: &Chunk,
@@ -409,6 +449,180 @@ fn generate_stitch_pair_candidates(
                     pos_cand_idx,
                     dist,
                 });
+            }
+        }
+        StitchMode::RandomSubsetOfSubset => {
+            let mut neg_random_indices =
+                random_idx_sample(neg_chunk.range.clone(), params.neg_fraction, rng);
+            let mut pos_random_indices =
+                random_idx_sample(pos_chunk.range.clone(), params.neg_fraction, rng);
+            let len = neg_random_indices.len().min(pos_random_indices.len());
+            neg_random_indices.truncate(len);
+            pos_random_indices.truncate(len);
+
+            let mut max_candidates =
+                (params.keep_fraction * neg_chunk.range.len() as f32).floor() as usize;
+            if max_candidates == 0 {
+                max_candidates = 1;
+            }
+            let mut candidates: BinaryHeap<StitchCandidate> = Default::default();
+
+            for neg_cand_idx in neg_random_indices {
+                let neg_id = entries[neg_cand_idx].id;
+                let neg_data = data.get(neg_id);
+                for &pos_cand_idx in pos_random_indices.iter() {
+                    let pos_id = entries[pos_cand_idx].id;
+                    let pos_data = data.get(pos_id);
+                    let dist = distance.distance(neg_data, pos_data);
+                    let cand = StitchCandidate {
+                        pos_cand_idx,
+                        neg_cand_idx,
+                        dist,
+                    };
+                    candidates.insert_if_better(cand, max_candidates);
+                }
+            }
+            for c in candidates {
+                result.insert(c);
+            }
+        }
+
+        StitchMode::BestXofRandomXTimesX => {
+            let mut neg_random_indices =
+                random_idx_sample(neg_chunk.range.clone(), params.neg_fraction, rng);
+            let mut pos_random_indices =
+                random_idx_sample(pos_chunk.range.clone(), params.neg_fraction, rng);
+            let x = params.x;
+            let outer_loops = neg_random_indices.len().min(pos_random_indices.len()) / x;
+
+            neg_random_indices.truncate(outer_loops * x);
+            pos_random_indices.truncate(outer_loops * x);
+
+            for i in 0..outer_loops {
+                // perform the XX search, it is like football players running towards each other, but they can starve or duplicate.
+
+                let range = i * x..(i + 1) * x;
+
+                let neg_indices = &neg_random_indices[range.clone()];
+                let pos_indices = &pos_random_indices[range];
+
+                let mut x_searches: BinaryHeap<StitchCandidate> = Default::default();
+                for &neg_cand_idx in neg_indices.iter() {
+                    let neg_id = entries[neg_cand_idx].id;
+                    let neg_data = data.get(neg_id);
+                    for &pos_cand_idx in pos_indices.iter() {
+                        let pos_id = entries[pos_cand_idx].id;
+                        let pos_data = data.get(pos_id);
+                        let dist = distance.distance(neg_data, pos_data);
+                        x_searches.insert_if_better(
+                            StitchCandidate {
+                                pos_cand_idx,
+                                neg_cand_idx,
+                                dist,
+                            },
+                            x,
+                        );
+                    }
+                }
+                assert_eq!(x_searches.len(), x);
+                for x in x_searches {
+                    result.insert(x);
+                }
+            }
+        }
+        StitchMode::DontStarveXXSearch => {
+            let mut neg_random_indices =
+                random_idx_sample(neg_chunk.range.clone(), params.neg_fraction, rng);
+            let mut pos_random_indices =
+                random_idx_sample(pos_chunk.range.clone(), params.neg_fraction, rng);
+            let x = params.x;
+            let outer_loops = neg_random_indices.len().min(pos_random_indices.len()) / x;
+
+            neg_random_indices.truncate(outer_loops * x);
+            pos_random_indices.truncate(outer_loops * x);
+
+            let mut neg_search_results: Vec<usize> = vec![];
+
+            for i in 0..outer_loops {
+                neg_search_results.clear();
+                // perform the XX search, it is like football players running towards each other, but they can starve or duplicate.
+
+                let range = i * x..(i + 1) * x;
+                let neg_indices = &neg_random_indices[range.clone()];
+                let pos_indices = &pos_random_indices[range];
+
+                // X^2 distance calculations (random in neg, random in pos), then X searches from neg to pos.
+                let mut x_searches: BinaryHeap<StitchCandidate> = Default::default();
+                for &neg_cand_idx in neg_indices.iter() {
+                    let neg_id = entries[neg_cand_idx].id;
+                    let neg_data = data.get(neg_id);
+                    for &pos_cand_idx in pos_indices.iter() {
+                        let pos_id = entries[pos_cand_idx].id;
+                        let pos_data = data.get(pos_id);
+                        let dist = distance.distance(neg_data, pos_data);
+                        x_searches.insert_if_better(
+                            StitchCandidate {
+                                pos_cand_idx,
+                                neg_cand_idx,
+                                dist,
+                            },
+                            x,
+                        );
+                    }
+                }
+                assert_eq!(x_searches.len(), x);
+                for x_search in x_searches.iter() {
+                    let pos_id = entries[x_search.pos_cand_idx].id;
+                    let pos_data = data.get(pos_id);
+                    let (neg_search_res_idx, dist) = greedy_search_in_range(
+                        data,
+                        distance,
+                        entries,
+                        neg_chunk.range.clone(),
+                        x_search.neg_cand_idx,
+                        pos_data,
+                    );
+                    neg_search_results.push(neg_search_res_idx)
+                }
+
+                // X^2 distance calculations (found in neg, random in pos), then X searches from pos to neg.
+                x_searches.clear();
+                for &neg_search_res_idx in neg_search_results.iter() {
+                    let neg_id = entries[neg_search_res_idx].id;
+                    let neg_data = data.get(neg_id);
+                    for &pos_cand_idx in pos_indices.iter() {
+                        let pos_id = entries[pos_cand_idx].id;
+                        let pos_data = data.get(pos_id);
+                        let dist = distance.distance(neg_data, pos_data);
+                        x_searches.insert_if_better(
+                            StitchCandidate {
+                                pos_cand_idx,
+                                neg_cand_idx: neg_search_res_idx,
+                                dist,
+                            },
+                            x,
+                        );
+                    }
+                }
+                assert_eq!(x_searches.len(), x);
+                for x_search in x_searches.iter() {
+                    let neg_id = entries[x_search.neg_cand_idx].id;
+                    let neg_data = data.get(neg_id);
+                    let (pos_search_res_idx, dist) = greedy_search_in_range(
+                        data,
+                        distance,
+                        entries,
+                        pos_chunk.range.clone(),
+                        x_search.pos_cand_idx,
+                        neg_data,
+                    );
+
+                    result.insert(StitchCandidate {
+                        pos_cand_idx: pos_search_res_idx,
+                        neg_cand_idx: x_search.neg_cand_idx,
+                        dist,
+                    });
+                }
             }
         }
     }
