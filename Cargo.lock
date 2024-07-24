@@ -998,6 +998,7 @@ dependencies = [
  "criterion",
  "heapless",
  "nanoserde",
+ "num-traits",
  "prettytable-rs",
  "rand",
  "rand_chacha",

@@ -12,7 +12,7 @@ use rand_chacha::{rand_core::impls, ChaCha12Rng, ChaCha20Rng};
 use crate::{
     dataset::DatasetT,
     distance::{Distance, DistanceFn, DistanceTracker},
-    hnsw::IAndDist,
+    hnsw::DistAnd,
     utils::KnnHeap,
     Float,
 };
@@ -94,7 +94,7 @@ impl VpTree {
         slice_iter(&self.nodes, 0, f);
     }
 
-    pub fn knn_search(&self, q: &[Float], k: usize) -> (Vec<IAndDist<usize>>, Stats) {
+    pub fn knn_search(&self, q: &[Float], k: usize) -> (Vec<DistAnd<usize>>, Stats) {
         let tracker = DistanceTracker::new(self.distance);
         let start = Instant::now();
         let dist_to_q = |idx| {
@@ -108,13 +108,13 @@ impl VpTree {
             }
 
             let root = &tree[0];
-            let d = dist_to_q(root.idx);
+            let d = dist_to_q(root.id);
             let t = root.dist; // threshold
 
             if tree.len() == 1 {
-                heap.maybe_add(root.idx, d);
+                heap.maybe_add(root.id, d);
             } else if d <= t {
-                heap.maybe_add(root.idx, d);
+                heap.maybe_add(root.id, d);
                 // search inner side
                 search_tree(left(tree), dist_to_q, heap);
                 if (d - t).abs() < heap.worst_nn_dist() || !heap.is_full() {
@@ -124,7 +124,7 @@ impl VpTree {
                 // search other side
                 search_tree(right(tree), dist_to_q, heap);
                 if (d - t).abs() < heap.worst_nn_dist() || !heap.is_full() {
-                    heap.maybe_add(root.idx, d);
+                    heap.maybe_add(root.id, d);
                     search_tree(left(tree), dist_to_q, heap);
                 }
             }
@@ -300,7 +300,7 @@ struct VpTreeBuilder {
 #[derive(Clone, Copy, PartialEq)]
 pub struct Node {
     /// id into the dataset
-    pub idx: usize,
+    pub id: usize,
     /// median distance of children of this node
     pub dist: Float,
 }
@@ -317,18 +317,15 @@ impl Ord for Node {
 }
 impl Eq for Node {}
 
-impl PartialEq<IAndDist<u32>> for Node {
-    fn eq(&self, other: &IAndDist<u32>) -> bool {
-        self.dist == other.dist && self.idx as u32 == other.i
+impl PartialEq<DistAnd<u32>> for Node {
+    fn eq(&self, other: &DistAnd<u32>) -> bool {
+        self.dist == other.dist() && self.id as u32 == other.1
     }
 }
 
 impl Debug for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("")
-            .field(&self.idx)
-            .field(&self.dist)
-            .finish()
+        f.debug_tuple("").field(&self.id).field(&self.dist).finish()
     }
 }
 
@@ -336,7 +333,7 @@ impl VpTreeBuilder {
     pub fn new(seed: u64, data: Arc<dyn DatasetT>, distance: Distance) -> Self {
         let mut nodes: Vec<Node> = Vec::with_capacity(data.len());
         for idx in 0..data.len() {
-            nodes.push(Node { idx, dist: 0.0 });
+            nodes.push(Node { id: idx, dist: 0.0 });
         }
         VpTreeBuilder {
             nodes,
@@ -374,8 +371,8 @@ pub fn arrange_into_vp_tree(tmp: &mut [Node], data: &dyn DatasetT, distance: &Di
             return;
         }
         2 => {
-            let pt_0 = data.get(tmp[0].idx);
-            let pt_1 = data.get(tmp[1].idx);
+            let pt_0 = data.get(tmp[0].id);
+            let pt_1 = data.get(tmp[1].id);
             tmp[0].dist = distance.distance(pt_0, pt_1);
             tmp[1].dist = 0.0;
             return;
@@ -384,11 +381,11 @@ pub fn arrange_into_vp_tree(tmp: &mut [Node], data: &dyn DatasetT, distance: &Di
     }
     // select a random index and swap it with the first element:
     tmp.swap(select_random_point(tmp, data), 0);
-    let vp_pt = data.get(tmp[0].idx);
+    let vp_pt = data.get(tmp[0].id);
     // calculate distances to each other element:
     for i in 1..tmp.len() {
         let other = &mut tmp[i];
-        let other_pt = data.get(other.idx);
+        let other_pt = data.get(other.id);
         other.dist = distance.distance(vp_pt, other_pt);
     }
     // partition into points closer and further to median:
@@ -499,7 +496,7 @@ pub mod tests {
             let n = rng.gen_range(1..4000);
             for i in 0..n {
                 tmp.push(Node {
-                    idx: i,
+                    id: i,
                     dist: rng.gen(),
                 })
             }
@@ -519,17 +516,17 @@ pub mod tests {
     #[test]
     fn quick_select_test_1() {
         let mut tmp = vec![
-            Node { idx: 1, dist: 1.0 },
-            Node { idx: 2, dist: 2.0 },
-            Node { idx: 3, dist: 3.0 },
-            Node { idx: 4, dist: 4.0 },
-            Node { idx: 5, dist: 5.0 },
-            Node { idx: 6, dist: 6.0 },
-            Node { idx: 7, dist: 7.0 },
-            Node { idx: 8, dist: 8.0 },
+            Node { id: 1, dist: 1.0 },
+            Node { id: 2, dist: 2.0 },
+            Node { id: 3, dist: 3.0 },
+            Node { id: 4, dist: 4.0 },
+            Node { id: 5, dist: 5.0 },
+            Node { id: 6, dist: 6.0 },
+            Node { id: 7, dist: 7.0 },
+            Node { id: 8, dist: 8.0 },
         ];
         let mut tmp2 = tmp.clone();
-        tmp2.push(Node { idx: 9, dist: 9.0 });
+        tmp2.push(Node { id: 9, dist: 9.0 });
 
         let mut rng = ChaCha12Rng::seed_from_u64(0);
 
@@ -541,12 +538,12 @@ pub mod tests {
             // even number of elements (should return index to first element of second half):
             let i = quick_select_median_dist(&mut tmp);
             assert_eq!(i, 3);
-            assert_eq!(tmp[i], Node { idx: 4, dist: 4.0 });
+            assert_eq!(tmp[i], Node { id: 4, dist: 4.0 });
 
             // uneven number of elements:
             let i = quick_select_median_dist(&mut tmp2);
             assert_eq!(i, 4);
-            assert_eq!(tmp2[i], Node { idx: 5, dist: 5.0 });
+            assert_eq!(tmp2[i], Node { id: 5, dist: 5.0 });
         }
     }
 
@@ -562,8 +559,8 @@ pub mod tests {
                 let query = data.get(query_idx);
                 let vp_tree = VpTree::new(data.clone(), Distance::L2);
                 let nn = vp_tree.knn_search(query, 1).0[0];
-                assert_eq!(nn.i, query_idx);
-                assert_eq!(nn.dist, 0.0);
+                assert_eq!(nn.1, query_idx);
+                assert_eq!(nn.dist(), 0.0);
             }
         }
     }
@@ -571,7 +568,7 @@ pub mod tests {
     #[test]
     fn left_right() {
         let nodes = (0..100)
-            .map(|e| Node { idx: e, dist: 0.0 })
+            .map(|e| Node { id: e, dist: 0.0 })
             .collect::<Vec<_>>();
         for i in 2..100 {
             let sub = &nodes[0..i];

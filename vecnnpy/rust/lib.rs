@@ -62,10 +62,10 @@ fn linear_knn<'py>(
     let results =
         vecnn::utils::linear_knn_search(data.as_dyn_dataset_ref(), q, k, distance.to_fn());
     let indices: Py<PyArray1<usize>> =
-        ndarray::Array::from_iter(results.iter().map(|e| e.i as usize))
+        ndarray::Array::from_iter(results.iter().map(|e| e.1 as usize))
             .into_pyarray_bound(py)
             .unbind();
-    let distances: Py<PyArray1<f32>> = ndarray::Array::from_iter(results.iter().map(|e| e.dist))
+    let distances: Py<PyArray1<f32>> = ndarray::Array::from_iter(results.iter().map(|e| e.dist()))
         .into_pyarray_bound(py)
         .unbind();
     Ok(KnnResult {

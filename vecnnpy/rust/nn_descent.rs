@@ -49,10 +49,10 @@ impl RNNGraph {
     ) -> PyResult<KnnResult> {
         let q = pyarray1_to_slice(query, Some(self.0.data.dims()))?;
         let (res, stats) = self.0.knn_search(q, k, start_candidates);
-        let indices = ndarray::Array::from_iter(res.iter().map(|e| e.i))
+        let indices = ndarray::Array::from_iter(res.iter().map(|e| e.1))
             .into_pyarray_bound(py)
             .unbind();
-        let distances = ndarray::Array::from_iter(res.iter().map(|e| e.dist))
+        let distances = ndarray::Array::from_iter(res.iter().map(|e| e.dist()))
             .into_pyarray_bound(py)
             .unbind();
         Ok(KnnResult {

@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use nanoserde::{DeJson, SerJson};
 
-use crate::Float;
+use crate::{schubert_distance::KMath, Float};
 
 #[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson)]
 pub enum Distance {
@@ -92,31 +92,44 @@ pub fn cos(a: &[Float], b: &[Float]) -> Float {
 pub fn dot(a: &[Float], b: &[Float]) -> Float {
     let dims = a.len();
     assert_eq!(dims, b.len());
-    let mut dot: Float = 0.0;
 
-    let chunks = dims / 8;
-    let rem = dims % 8;
-    assert_eq!(dims, chunks * 8 + rem);
+    // return (0..dims)
+    //     .map(|i| {
+    //         a[i] * b[i]
 
-    for c in 0..chunks {
-        let i = c * 8;
-        dot += unsafe {
-            a.get_unchecked(i) * b.get_unchecked(i)
-                + a.get_unchecked(i + 1) * b.get_unchecked(i + 1)
-                + a.get_unchecked(i + 2) * b.get_unchecked(i + 2)
-                + a.get_unchecked(i + 3) * b.get_unchecked(i + 3)
-                + a.get_unchecked(i + 4) * b.get_unchecked(i + 4)
-                + a.get_unchecked(i + 5) * b.get_unchecked(i + 5)
-                + a.get_unchecked(i + 6) * b.get_unchecked(i + 6)
-                + a.get_unchecked(i + 7) * b.get_unchecked(i + 7)
-        }
-    }
+    //         // unsafe { *a.get_unchecked(i) * *b.get_unchecked(i) }
+    //     })
+    //     .sum();
+    // return crate::schubert_distance::UnrollKMath::<f32, 4>::dot(a, b, dims);
+    // return crate::schubert_distance::AVX2KMath::<f32, 32>::dot(a, b, dims);
+    // return crate::schubert_distance::DefaultKMath::<f32>::dot(a, b, dims);
+    return 1.0 - crate::schubert_distance::UnrollKMath::<f32, 16>::dot(a, b, dims);
 
-    for i in (dims - rem)..dims {
-        dot += unsafe { a.get_unchecked(i) * b.get_unchecked(i) }
-    }
+    // let mut dot: Float = 0.0;
 
-    1.0 - dot // to make it a distance not a similarity
+    // let chunks = dims / 8;
+    // let rem = dims % 8;
+    // assert_eq!(dims, chunks * 8 + rem);
+
+    // for c in 0..chunks {
+    //     let i = c * 8;
+    //     dot += unsafe {
+    //         a.get_unchecked(i) * b.get_unchecked(i)
+    //             + a.get_unchecked(i + 1) * b.get_unchecked(i + 1)
+    //             + a.get_unchecked(i + 2) * b.get_unchecked(i + 2)
+    //             + a.get_unchecked(i + 3) * b.get_unchecked(i + 3)
+    //             + a.get_unchecked(i + 4) * b.get_unchecked(i + 4)
+    //             + a.get_unchecked(i + 5) * b.get_unchecked(i + 5)
+    //             + a.get_unchecked(i + 6) * b.get_unchecked(i + 6)
+    //             + a.get_unchecked(i + 7) * b.get_unchecked(i + 7)
+    //     }
+    // }
+
+    // for i in (dims - rem)..dims {
+    //     dot += unsafe { a.get_unchecked(i) * b.get_unchecked(i) }
+    // }
+
+    // 1.0 - dot // to make it a distance not a similarity
 }
 
 pub fn l2(a: &[Float], b: &[Float]) -> Float {

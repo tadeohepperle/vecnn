@@ -27,10 +27,10 @@ impl VpTree {
     fn knn<'py>(&self, py: Python<'py>, query: Py<PyArray1<f32>>, k: usize) -> PyResult<KnnResult> {
         let q = pyarray1_to_slice(query, Some(self.0.data.dims()))?;
         let (res, stats) = self.0.knn_search(q, k);
-        let indices = ndarray::Array::from_iter(res.iter().map(|e| e.i))
+        let indices = ndarray::Array::from_iter(res.iter().map(|e| e.1))
             .into_pyarray_bound(py)
             .unbind();
-        let distances = ndarray::Array::from_iter(res.iter().map(|e| e.dist))
+        let distances = ndarray::Array::from_iter(res.iter().map(|e| e.dist()))
             .into_pyarray_bound(py)
             .unbind();
         Ok(KnnResult {
@@ -50,7 +50,7 @@ impl VpTree {
         let mut rows: Vec<Row> = vec![];
         self.0.iter_levels(&mut |level, node| {
             rows.push(Row {
-                idx: node.idx,
+                idx: node.id,
                 level,
                 dist: node.dist,
             });

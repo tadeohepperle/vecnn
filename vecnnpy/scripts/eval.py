@@ -177,7 +177,7 @@ class Model:
                 space = 'cosine'
             hnswlib_hnsw = hnswlib.Index(space = space, dim = dim) 
             hnswlib_hnsw.init_index(max_elements = n, ef_construction = params.ef_construction, M = params.m_max)
-            hnswlib_hnsw.add_items(data, ids, num_threads = 1) # add_items(data, ids, num_threads = -1, replace_deleted = False)
+            hnswlib_hnsw.add_items(data, ids, num_threads = 1) #   # add_items(data, ids, num_threads = -1, replace_deleted = False)
             build_time =  time.time() - start
             self.build_metrics =  BuildMetrics(build_time=build_time)
             self.hnswlib_hnsw = hnswlib_hnsw
@@ -343,14 +343,14 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
 # k = 10
 
 laion_data = laion.load_laion_data()
-data, queries = laion_data.subset(100000, 20)
+data, queries = laion_data.subset(100000, 100)
 
 # (truth_indices, search_time) = linear_search_true_knn(data, queries, k, "dot")
 model_params: list[ModelParams] = [
     # ModelParams('vecnn_rnn_descent',outer_loops=50, inner_loops=1, max_neighbors_after_reverse_pruning=4, initial_neighbors = 10, distance_fn = "dot"),
     # ModelParams('vecnn_vptree'),
-    ModelParams('rustcv_hnsw', ef_construction=40),
-    ModelParams('vecnn_hnsw', level_norm_param=0.5, ef_construction=40, m_max=20, m_max_0=20, distance_fn = "dot"),
+    # ModelParams('rustcv_hnsw', ef_construction=40),
+    ModelParams('vecnn_hnsw', level_norm_param=0.5, ef_construction=40, m_max=20, m_max_0=30, distance_fn = "dot"),
     ModelParams('hnswlib_hnsw', ef_construction=40, m_max=20, distance_fn = "dot"),
     # ModelParams('hnswlib_hnsw', ef_construction=40, m_max=20, distance_fn = "dot"),
     # ModelParams('hnswlib_hnsw', ef_construction=20, m_max=20, distance_fn = "dot"),
@@ -366,7 +366,7 @@ model_params: list[ModelParams] = [
     # ModelParams('hnswlib_hnsw', ef_construction=200, m_max=40, distance_fn = "dot"),
 ]
 search_params: list[SearchParams] = [
-    SearchParams(20, "dot", ef = 20, start_candidates = 10) # make sure ef >= k
+    SearchParams(50, "dot", ef = 20, start_candidates = 10) # make sure ef >= k
 ]
 
 start = time.time()

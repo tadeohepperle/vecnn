@@ -1,30 +1,30 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rand::Rng;
 use vecnn::{
-    distance::Distance::*,
+    distance::{dot, l2, Distance::*},
     hnsw::{Hnsw, HnswParams},
     utils::random_data_set,
 };
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    let data = random_data_set(500, 768);
+    let data = random_data_set(124, 768);
 
-    c.bench_function("build_hnsw", |b| {
-        b.iter(|| {
-            let hnsw = Hnsw::new(
-                data.clone(),
-                HnswParams {
-                    level_norm_param: 0.7,
-                    ef_construction: 20,
-                    m_max: 10,
-                    m_max_0: 10,
-                    distance: L2,
-                },
-            );
-        })
-    });
+    // c.bench_function("build_hnsw", |b| {
+    //     b.iter(|| {
+    //         let hnsw = Hnsw::new(
+    //             data.clone(),
+    //             HnswParams {
+    //                 level_norm_param: 0.7,
+    //                 ef_construction: 20,
+    //                 m_max: 10,
+    //                 m_max_0: 10,
+    //                 distance: L2,
+    //             },
+    //         );
+    //     })
+    // });
 
-    // let mut rng = thread_rng();
+    let mut rng = rand::thread_rng();
     // c.bench_function("distance", |b| {
     //     b.iter(|| {
     //         let i = rng.gen_range(0..data.len());
@@ -33,13 +33,13 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     //     })
     // });
 
-    // c.bench_function("distance_simd", |b| {
-    //     b.iter(|| {
-    //         let i = rng.gen_range(0..data.len());
-    //         let j = rng.gen_range(0..data.len());
-    //         SquaredDiffSumSIMD::distance(data.get(i), data.get(j));
-    //     })
-    // });
+    c.bench_function("distance_simd", |b| {
+        b.iter(|| {
+            let i = rng.gen_range(0..data.len());
+            let j = rng.gen_range(0..data.len());
+            dot(data.get(i), data.get(j));
+        })
+    });
 }
 
 criterion_group!(benches, criterion_benchmark);

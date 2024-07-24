@@ -14,11 +14,11 @@ use crate::{
     dataset::DatasetT,
     distance::{l2, Distance, DistanceFn, DistanceTracker},
     hnsw::{
-        self, pick_level, Hnsw, HnswParams, IAndDist, Layer, LayerEntry, Neighbors,
+        self, pick_level, DistAnd, Hnsw, HnswParams, Layer, LayerEntry, Neighbors,
         NEIGHBORS_LIST_MAX_LEN,
     },
     if_tracking,
-    utils::BinaryHeapExt,
+    utils::{BinaryHeapExt, SliceBinaryHeap},
     vp_tree::{self, arrange_into_vp_tree, left, left_with_root, right, Node, Stats, VpTree},
 };
 
@@ -31,7 +31,7 @@ pub fn vp_tree_to_hnsw(tree: &VpTree) -> Hnsw {
 
     for i in 0..n {
         let node = tree.nodes[i];
-        let id = node.idx;
+        let id = node.id;
         let id_data = tree.data.get(id);
 
         let mut neighbors = Neighbors::new();
@@ -39,7 +39,7 @@ pub fn vp_tree_to_hnsw(tree: &VpTree) -> Hnsw {
         let mut sum_dist = 0.0;
         for j in 1..=20 {
             let i2 = (i + j) % n;
-            let other_id = tree.nodes[i2].idx;
+            let other_id = tree.nodes[i2].id;
             let other_id_data = tree.data.get(other_id);
             let dist = l2(id_data, other_id_data);
             sum_dist += dist;
@@ -48,7 +48,7 @@ pub fn vp_tree_to_hnsw(tree: &VpTree) -> Hnsw {
         sum_dists.push(sum_dist);
 
         entries.push(LayerEntry {
-            id: node.idx,
+            id: node.id,
             lower_level_idx: usize::MAX,
             neighbors,
         });
@@ -92,6 +92,126 @@ pub fn vp_tree_to_hnsw(tree: &VpTree) -> Hnsw {
     }
 }
 
+#[derive(Debug, Clone, Copy, DeJson, SerJson, PartialEq)]
+pub struct EnsembleTransitionParams {
+    pub num_vp_trees: usize,
+    pub max_chunk_size: usize,
+    pub max_neighbors_same_chunk: usize,
+    pub max_neighbors_hnsw: usize,
+    pub distance: Distance,
+}
+
+pub fn build_hnsw_by_vp_tree_ensemble(
+    data: Arc<dyn DatasetT>,
+    params: EnsembleTransitionParams,
+) -> Hnsw {
+    let max_chunk_size = params.max_chunk_size;
+    let max_neighbors_same_chunk = params.max_neighbors_same_chunk;
+    assert!(max_neighbors_same_chunk <= NEIGHBORS_LIST_MAX_LEN);
+
+    let mut distance = DistanceTracker::new(params.distance);
+    let start = Instant::now();
+    let mut rng = ChaCha20Rng::seed_from_u64(42);
+
+    let mut hnsw_entries: Vec<hnsw::LayerEntry> = Vec::with_capacity(data.len());
+    for i in 0..data.len() {
+        hnsw_entries.push(LayerEntry {
+            id: i,
+            lower_level_idx: usize::MAX,
+            neighbors: Neighbors::new(),
+        })
+    }
+
+    // setup buffers to operate in:
+    let chunks = make_chunks(data.len(), max_chunk_size);
+    let mut chunk_dst_mat: Vec<f32> = vec![0.0; max_chunk_size * max_chunk_size]; // memory reused for all chunks
+    let mut neighbors_memory: Vec<DistAnd<usize>> =
+        Vec::with_capacity(data.len() * max_neighbors_same_chunk);
+    let neighbors_memory_ptr = neighbors_memory.as_mut_ptr();
+    let mut vp_tree_neighbors: Vec<SliceBinaryHeap<'_, DistAnd<usize>>> =
+        Vec::with_capacity(data.len()); // todo! maybe u32 for better space utilization
+    for i in 0..data.len() {
+        let slice = unsafe {
+            std::slice::from_raw_parts_mut(
+                neighbors_memory_ptr.add(i * max_neighbors_same_chunk),
+                max_neighbors_same_chunk,
+            )
+        };
+        vp_tree_neighbors.push(SliceBinaryHeap::new(slice));
+    }
+    let mut vp_tree: Vec<vp_tree::Node> = Vec::with_capacity(data.len());
+    for idx in 0..data.len() {
+        vp_tree.push(vp_tree::Node { id: idx, dist: 0.0 });
+    }
+
+    for vp_tree_iteration in 0..params.num_vp_trees {
+        // build the vp_tree, chunk it and brute force search the best neighbors per chunk, put them in vp_tree_neighbors list
+        arrange_into_vp_tree(&mut vp_tree, &*data, &mut distance);
+        for (chunk_i, chunk) in chunks.iter().enumerate() {
+            let chunk_size = chunk.range.len();
+            let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
+            let chunk_nodes = &vp_tree[chunk.range.clone()];
+
+            assert!(chunk_size >= max_chunk_size / 2);
+            assert!(chunk_size <= max_chunk_size);
+
+            // calculate distances between all the nodes in this chunk. (clearing chunk_dst_mat not necessary, because everything relevant should be overwritten).
+            for i in 0..chunk_size {
+                chunk_dst_mat[chunk_dst_mat_idx(i, i)] = 0.0;
+                for j in i + 1..chunk_size {
+                    let i_data = data.get(chunk_nodes[i].id);
+                    let j_data = data.get(chunk_nodes[j].id);
+                    let dist = distance.distance(i_data, j_data);
+                    chunk_dst_mat[chunk_dst_mat_idx(i, j)] = dist;
+                    chunk_dst_mat[chunk_dst_mat_idx(j, i)] = dist;
+                }
+            }
+            // connect each node in the chunk to each other node (except itself)
+            for i in 0..chunk_size {
+                let i_id = chunk_nodes[i].id;
+                for j in 0..chunk_size {
+                    if j == i {
+                        continue;
+                    }
+                    let j_id = chunk_nodes[j].id;
+                    let dist = chunk_dst_mat[chunk_dst_mat_idx(i, j)];
+                    vp_tree_neighbors[i_id].insert_if_better(DistAnd(dist, j_id));
+                }
+
+                if_tracking! {
+                    Tracking.pt_meta(i_id).chunk_on_level.push(chunk_i);
+                }
+            }
+        }
+
+        // add the connections of this vp-tree into the hsnw:
+        for (hnsw_entry, vp_neighbors) in hnsw_entries.iter_mut().zip(vp_tree_neighbors.iter_mut())
+        {
+            for v in vp_neighbors.as_slice().iter() {
+                if !hnsw_entry.neighbors.iter().any(|e| e.1 == v.1) {
+                    hnsw_entry
+                        .neighbors
+                        .insert_if_better(v.1, v.0, params.max_neighbors_hnsw);
+                }
+            }
+            vp_neighbors.clear();
+        }
+    }
+
+    Hnsw {
+        params: Default::default(),
+        data,
+        layers: vec![hnsw::Layer {
+            level: 0,
+            entries: hnsw_entries,
+        }],
+        build_stats: Stats {
+            num_distance_calculations: distance.num_calculations(),
+            duration: start.elapsed(),
+        },
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson)]
 pub struct TransitionParams {
     pub max_chunk_size: usize,
@@ -114,7 +234,7 @@ pub fn build_hnsw_by_transition(data: Arc<dyn DatasetT>, params: TransitionParam
 
     let mut vp_tree: Vec<vp_tree::Node> = Vec::with_capacity(data.len());
     for idx in 0..data.len() {
-        vp_tree.push(vp_tree::Node { idx, dist: 0.0 });
+        vp_tree.push(vp_tree::Node { id: idx, dist: 0.0 });
     }
     arrange_into_vp_tree(&mut vp_tree, &*data, &mut distance);
 
@@ -122,7 +242,7 @@ pub fn build_hnsw_by_transition(data: Arc<dyn DatasetT>, params: TransitionParam
     let mut entries: Vec<hnsw::LayerEntry> = Vec::with_capacity(data.len());
     for node in vp_tree.iter() {
         entries.push(LayerEntry {
-            id: node.idx,
+            id: node.id,
             lower_level_idx: usize::MAX,
             neighbors: Neighbors::new(),
         })
@@ -142,8 +262,8 @@ pub fn build_hnsw_by_transition(data: Arc<dyn DatasetT>, params: TransitionParam
         for i in 0..chunk_size {
             chunk_dst_mat[chunk_dst_mat_idx(i, i)] = 0.0;
             for j in i + 1..chunk_size {
-                let i_data = data.get(chunk_nodes[i].idx);
-                let j_data = data.get(chunk_nodes[j].idx);
+                let i_data = data.get(chunk_nodes[i].id);
+                let j_data = data.get(chunk_nodes[j].id);
                 let dist = distance.distance(i_data, j_data);
                 chunk_dst_mat[chunk_dst_mat_idx(i, j)] = dist;
                 chunk_dst_mat[chunk_dst_mat_idx(j, i)] = dist;
@@ -650,7 +770,7 @@ fn greedy_search_in_range(
         let neighbors = &entries[best_idx].neighbors;
         let best_idx_before = best_idx;
         for n in neighbors.iter() {
-            let n_idx = n.i;
+            let n_idx = n.1;
             if !visited_indices.insert(n_idx) {
                 continue;
             }
@@ -768,7 +888,7 @@ fn chunk_collection_matches_vp_tree_subtrees() {
     let len = 35;
 
     let nodes: Vec<Node> = (0..len)
-        .map(|e| Node { idx: e, dist: 0.0 })
+        .map(|e| Node { id: e, dist: 0.0 })
         .collect::<Vec<_>>();
 
     fn collect_slices<'a>(

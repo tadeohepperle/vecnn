@@ -1,0 +1,5 @@
+  Kind              build_ndc    build_ms              recall_mean    ndc_mean    time_ms_mean  
+  Hnsw              5866525      1276.410238           0.949          1141.890    0.325  
+  RnnGraph          6250020      1182.5797739999998    0.961          1941.260    0.540  
+  Stitching         1403550      287.528847            0.808          1049.880    0.336  
+  VpTreeEnsemble    2002512      372.07298             0.951          1358.310    0.454  

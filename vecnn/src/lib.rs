@@ -5,6 +5,7 @@
 pub mod dataset;
 pub mod distance;
 pub mod nn_descent;
+pub mod schubert_distance;
 pub mod transition;
 pub mod utils;
 pub mod vp_tree;
@@ -22,7 +23,6 @@ macro_rules! if_tracking {
         }
     }};
 }
-
 #[cfg(feature = "tracking")]
 pub mod tracking {
 
@@ -61,6 +61,7 @@ pub mod tracking {
         pub is_neg_random: bool,
         pub is_neg_cand: bool,
         pub annotation: Option<String>,
+        pub chunk_on_level: Vec<usize>,
     }
 
     #[derive(Debug, Clone, Default)]

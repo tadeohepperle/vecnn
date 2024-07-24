@@ -11,7 +11,10 @@ use vecnn::{
     distance::{cos, dot, l2, Distance::*, DistanceFn},
     hnsw::{Hnsw, HnswParams},
     nn_descent::{RNNGraph, RNNGraphParams},
-    transition::{build_hnsw_by_transition, StitchMode, TransitionParams},
+    transition::{
+        build_hnsw_by_transition, build_hnsw_by_vp_tree_ensemble, EnsembleTransitionParams,
+        StitchMode, TransitionParams,
+    },
     utils::{linear_knn_search, random_data_set},
     vp_tree::Stats,
 };
@@ -19,70 +22,53 @@ use vecnn::{
 fn main() {
     let same_chunk_max_neighbors: usize = 20;
     let neg_fraction: f32 = 0.3;
+
+    let e = HnswParams {
+        level_norm_param: todo!(),
+        ef_construction: todo!(),
+        m_max: todo!(),
+        m_max_0: todo!(),
+        distance: todo!(),
+    };
+
     let mut models: Vec<ModelParams> = vec![
-        ModelParams::Hnsw(HnswParams {
-            level_norm_param: 0.5,
-            ef_construction: 40,
-            m_max: 20,
-            m_max_0: 40,
+        // ModelParams::Hnsw(HnswParams {
+        //     level_norm_param: 0.5,
+        //     ef_construction: 40,
+        //     m_max: 20,
+        //     m_max_0: 40,
+        //     distance: Dot,
+        // }),
+        // ModelParams::RNNGraph(RNNGraphParams {
+        //     distance: Dot,
+        //     outer_loops: 2,
+        //     inner_loops: 3,
+        //     max_neighbors_after_reverse_pruning: 20,
+        //     initial_neighbors: 30,
+        // }),
+        // ModelParams::Transition(TransitionParams {
+        //     max_chunk_size: 200,
+        //     same_chunk_max_neighbors,
+        //     neg_fraction,
+        //     distance: Dot,
+        //     keep_fraction: 0.2,
+        //     stop_after_stitching_n_chunks: None,
+        //     stitch_mode: StitchMode::RandomNegToRandomPosAndBack,
+        //     x: 5,
+        // }),
+        ModelParams::EnsembleTransition(EnsembleTransitionParams {
+            max_chunk_size: 400,
             distance: Dot,
-        }),
-        ModelParams::Transition(TransitionParams {
-            max_chunk_size: 100,
-            same_chunk_max_neighbors,
-            neg_fraction,
-            distance: Dot,
-            keep_fraction: 0.1,
-            stitch_mode: StitchMode::RandomNegToPosCenterAndBack,
-            stop_after_stitching_n_chunks: None,
-            x: 3,
-        }),
-        ModelParams::Transition(TransitionParams {
-            max_chunk_size: 100,
-            same_chunk_max_neighbors,
-            neg_fraction,
-            distance: Dot,
-            keep_fraction: 0.1,
-            stop_after_stitching_n_chunks: None,
-            stitch_mode: StitchMode::RandomNegToRandomPosAndBack,
-            x: 3,
-        }),
-        ModelParams::Transition(TransitionParams {
-            max_chunk_size: 100,
-            same_chunk_max_neighbors: 20,
-            neg_fraction,
-            distance: Dot,
-            keep_fraction: 0.1,
-            stop_after_stitching_n_chunks: None,
-            stitch_mode: StitchMode::RandomSubsetOfSubset,
-            x: 3,
-        }),
-        ModelParams::Transition(TransitionParams {
-            max_chunk_size: 100,
-            same_chunk_max_neighbors: 20,
-            neg_fraction,
-            distance: Dot,
-            keep_fraction: 0.2,
-            stop_after_stitching_n_chunks: None,
-            stitch_mode: StitchMode::BestXofRandomXTimesX,
-            x: 10,
-        }),
-        ModelParams::Transition(TransitionParams {
-            max_chunk_size: 100,
-            same_chunk_max_neighbors: 20,
-            neg_fraction,
-            distance: Dot,
-            keep_fraction: 0.2,
-            stop_after_stitching_n_chunks: None,
-            stitch_mode: StitchMode::DontStarveXXSearch,
-            x: 10,
+            num_vp_trees: 10,
+            max_neighbors_same_chunk: 20,
+            max_neighbors_hnsw: 40,
         }),
         // ModelParams::RNNGraph(RNNGraphParams {
-        //     outer_loops: 3,
-        //     inner_loops: 7,
+        //     distance: Dot,
+        //     outer_loops: 2,
+        //     inner_loops: 3,
         //     max_neighbors_after_reverse_pruning: 20,
-        //     initial_neighbors: 40,
-        //     distance: dot,
+        //     initial_neighbors: 30,
         // }),
     ];
     eval_models_on_laion(100000, 100, 100, dot, &models)
@@ -100,6 +86,7 @@ fn main() {
 enum ModelParams {
     Hnsw(HnswParams),
     Transition(TransitionParams),
+    EnsembleTransition(EnsembleTransitionParams),
     RNNGraph(RNNGraphParams),
 }
 
@@ -108,6 +95,7 @@ impl ModelParams {
         match self {
             ModelParams::Hnsw(e) => format!("{e:?}"),
             ModelParams::Transition(e) => format!("{e:?}"),
+            ModelParams::EnsembleTransition(e) => format!("{e:?}"),
             ModelParams::RNNGraph(e) => format!("{e:?}"),
         }
     }
@@ -116,6 +104,7 @@ impl ModelParams {
 enum Model {
     Hnsw(Hnsw),
     HnswTransition(Hnsw),
+    VpTreeEnsemble(Hnsw),
     RNNGraph(RNNGraph),
 }
 
@@ -126,6 +115,13 @@ impl Model {
 
     pub fn hnsw_transition(data: Arc<dyn DatasetT>, params: TransitionParams) -> Self {
         Self::HnswTransition(build_hnsw_by_transition(data, params))
+    }
+
+    pub fn vp_tree_ensemble_transition(
+        data: Arc<dyn DatasetT>,
+        params: EnsembleTransitionParams,
+    ) -> Self {
+        Self::VpTreeEnsemble(build_hnsw_by_vp_tree_ensemble(data, params))
     }
 
     pub fn rnn_graph(data: Arc<dyn DatasetT>, params: RNNGraphParams) -> Self {
@@ -143,7 +139,7 @@ impl Model {
         let found: HashSet<usize>;
         let stats: Stats;
         match self {
-            Model::Hnsw(hnsw) | Model::HnswTransition(hnsw) => {
+            Model::Hnsw(hnsw) | Model::HnswTransition(hnsw) | Model::VpTreeEnsemble(hnsw) => {
                 let res = hnsw.knn_search(q_data, k);
                 found = res
                     .0
@@ -154,7 +150,7 @@ impl Model {
             }
             Model::RNNGraph(rnn_graph) => {
                 let res = rnn_graph.knn_search(q_data, k, start_candidates.unwrap());
-                found = res.0.iter().map(|e| e.i).collect::<HashSet<usize>>();
+                found = res.0.iter().map(|e| e.1).collect::<HashSet<usize>>();
                 stats = res.1;
             }
         };
@@ -165,8 +161,7 @@ impl Model {
 
     pub fn build_stats(&self) -> Stats {
         match self {
-            Model::Hnsw(e) => e.build_stats,
-            Model::HnswTransition(e) => e.build_stats,
+            Model::Hnsw(e) | Model::HnswTransition(e) | Model::VpTreeEnsemble(e) => e.build_stats,
             Model::RNNGraph(e) => e.build_stats,
         }
     }
@@ -252,7 +247,7 @@ fn eval_models(
         let q_data = queries.get(i);
         let knn = linear_knn_search(&*data, q_data, k, truth_distance)
             .iter()
-            .map(|e| e.i)
+            .map(|e| e.1)
             .collect::<HashSet<usize>>();
         true_knns.push(knn);
     }
@@ -263,6 +258,9 @@ fn eval_models(
             ModelParams::Hnsw(params) => Model::hnsw(data.clone(), params),
             ModelParams::Transition(params) => Model::hnsw_transition(data.clone(), params),
             ModelParams::RNNGraph(params) => Model::rnn_graph(data.clone(), params),
+            ModelParams::EnsembleTransition(params) => {
+                Model::vp_tree_ensemble_transition(data.clone(), params)
+            }
         };
         models.push(model);
     }

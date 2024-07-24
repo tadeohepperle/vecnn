@@ -85,15 +85,17 @@ pub struct LayerEntry {
     pub neighbors: Neighbors, // the usize stores the index in the layer
 }
 
+// TODO! I should probably change the usize back to a u32, because together with the f32,
+// each element then will only take 8 bytes instead of 16 bytes.
 #[derive(Debug, Clone, Default)]
-pub struct Neighbors(heapless::BinaryHeap<IAndDist<usize>, Max, NEIGHBORS_LIST_MAX_LEN>);
+pub struct Neighbors(heapless::BinaryHeap<DistAnd<usize>, Max, NEIGHBORS_LIST_MAX_LEN>);
 
 impl Neighbors {
     pub fn new() -> Self {
         Default::default()
     }
 
-    pub fn iter<'a>(&'a self) -> std::slice::Iter<'a, IAndDist<usize>> {
+    pub fn iter<'a>(&'a self) -> std::slice::Iter<'a, DistAnd<usize>> {
         self.0.iter()
     }
 
@@ -103,10 +105,7 @@ impl Neighbors {
     #[inline]
     pub fn insert_asserted(&mut self, idx_in_layer: usize, dist: f32) {
         self.0
-            .push(IAndDist {
-                i: idx_in_layer,
-                dist,
-            })
+            .push(DistAnd(dist, idx_in_layer))
             .expect("no more space in neighbors list, use insert_if_better instead!")
     }
 
@@ -120,20 +119,14 @@ impl Neighbors {
     ) -> bool {
         if self.0.len() < max_neighbors {
             self.0
-                .push(IAndDist {
-                    i: idx_in_layer,
-                    dist,
-                })
+                .push(DistAnd(dist, idx_in_layer))
                 .expect("should have space too");
             return true;
         } else {
             // replace max dist element if distance is smaller.
             let mut max_d_element = self.0.peek_mut().unwrap();
-            if dist < max_d_element.dist {
-                *max_d_element = IAndDist {
-                    i: idx_in_layer,
-                    dist,
-                };
+            if dist < max_d_element.0 {
+                *max_d_element = DistAnd(dist, idx_in_layer);
                 return true;
             } else {
                 return false;
@@ -359,7 +352,7 @@ fn insert(hnsw: &mut Hnsw, q: usize, distance: &DistanceTracker, ctx: &mut Inser
         // set new ep_idxs_in_layer:
         ctx.clear();
         for e in ctx.search_ctx.search_res.iter() {
-            ctx.ep_idxs_in_layer.push(e.i)
+            ctx.ep_idxs_in_layer.push(e.1)
         }
     }
 }
@@ -388,9 +381,9 @@ pub struct SearchLayerRes {
 struct SearchCtx {
     visited_idxs: ahash::AHashSet<usize>,
     /// we need to be able to extract the closest element from this (so we use Reverse<IdxAndDist> to have a min-heap)
-    candidates: BinaryHeap<Reverse<IAndDist<usize>>>,
+    candidates: BinaryHeap<Reverse<DistAnd<usize>>>,
     /// we need to be able to extract the furthest element from this: this is a max heap, the root is the max distance.
-    search_res: BinaryHeap<IAndDist<usize>>,
+    search_res: BinaryHeap<DistAnd<usize>>,
     // Note: seemingly both rayon and this threadpool add immense overhead (10x) when applied to finding the closest neighbors in a layer each in a seperate thread.
     // pool: rayon::ThreadPool,
     // thread_pool: threadpool::ThreadPool,
@@ -412,34 +405,37 @@ impl SearchCtx {
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
-pub struct IAndDist<T: PartialEq + Copy> {
-    pub i: T,
-    pub dist: f32,
+pub struct DistAnd<T: PartialEq + Copy>(pub f32, pub T);
+impl<T: PartialEq + Copy> DistAnd<T> {
+    #[inline(always)]
+    pub fn dist(&self) -> f32 {
+        self.0
+    }
 }
 
-impl<T: PartialEq + Copy> std::fmt::Debug for IAndDist<T>
+impl<T: PartialEq + Copy> std::fmt::Debug for DistAnd<T>
 where
     T: std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}: {:.3}", self.i, self.dist)
+        write!(f, "{:?}: {:.3}", self.1, self.0)
     }
 }
 
-impl<T: PartialEq + Copy> PartialEq for IAndDist<T> {
+impl<T: PartialEq + Copy> PartialEq for DistAnd<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.i == other.i && self.dist == other.dist
+        self.1 == other.1 && self.0 == other.0
     }
 }
-impl<T: PartialEq + Copy> Eq for IAndDist<T> {}
-impl<T: PartialEq + Copy> PartialOrd for IAndDist<T> {
+impl<T: PartialEq + Copy> Eq for DistAnd<T> {}
+impl<T: PartialEq + Copy> PartialOrd for DistAnd<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.dist.partial_cmp(&other.dist)
+        self.0.partial_cmp(&other.0)
     }
 }
-impl<T: PartialEq + Copy> Ord for IAndDist<T> {
+impl<T: PartialEq + Copy> Ord for DistAnd<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.dist.total_cmp(&other.dist)
+        self.0.total_cmp(&other.0)
     }
 }
 
@@ -470,13 +466,13 @@ fn closest_point_in_layer(
 
         let mut found_a_better_neighbor = false;
         for idx_and_dist in best_entry.neighbors.iter() {
-            let n = &layer.entries[idx_and_dist.i];
+            let n = &layer.entries[idx_and_dist.1];
             let n_d = distance.distance(data.get(n.id), q_data);
             if n_d < best_entry_d {
                 best_entry_d = n_d;
                 best_entry = n;
                 found_a_better_neighbor = true;
-                best_entry_idx_in_layer = idx_and_dist.i;
+                best_entry_idx_in_layer = idx_and_dist.1;
             }
         }
         if !found_a_better_neighbor {
@@ -517,49 +513,34 @@ fn closest_points_in_layer(
         let id = entries[idx_in_layer].id;
         let dist = distance.distance(data.get(id), q_data);
         ctx.visited_idxs.insert(idx_in_layer);
-        ctx.candidates.push(Reverse(IAndDist {
-            i: idx_in_layer,
-            dist,
-        }));
-        ctx.search_res.push(IAndDist {
-            i: idx_in_layer,
-            dist,
-        })
+        ctx.candidates.push(Reverse(DistAnd(dist, idx_in_layer)));
+        ctx.search_res.push(DistAnd(dist, idx_in_layer))
     }
 
     while ctx.candidates.len() > 0 {
         let c = ctx.candidates.pop().unwrap(); // remove closest element.
         let mut f = *ctx.search_res.peek().unwrap();
-        if c.0.dist > f.dist {
+        if c.0.dist() > f.dist() {
             break; // all elements in found are evaluated (see paper).
         }
-        let c_entry = &entries[c.0.i];
+        let c_entry = &entries[c.0 .1];
         for idx_and_dist in c_entry.neighbors.iter() {
-            let idx_in_layer = idx_and_dist.i;
+            let idx_in_layer = idx_and_dist.1;
             if ctx.visited_idxs.insert(idx_in_layer) {
                 let n_entry = &entries[idx_in_layer];
                 let n_data = data.get(n_entry.id);
                 let dist = distance.distance(q_data, n_data);
                 f = *ctx.search_res.peek().unwrap();
-                if dist < f.dist || ctx.search_res.len() < ef {
-                    ctx.candidates.push(Reverse(IAndDist {
-                        i: idx_in_layer,
-                        dist,
-                    }));
+                if dist < f.dist() || ctx.search_res.len() < ef {
+                    ctx.candidates.push(Reverse(DistAnd(dist, idx_in_layer)));
                     if ctx.search_res.len() < ef {
-                        ctx.search_res.push(IAndDist {
-                            i: idx_in_layer,
-                            dist,
-                        });
+                        ctx.search_res.push(DistAnd(dist, idx_in_layer));
                     } else {
                         // compare dist to the currently furthest away,
                         // if further than this dist, kick it out and insert the new one instead.
-                        if dist < f.dist {
+                        if dist < f.dist() {
                             ctx.search_res.pop().unwrap();
-                            ctx.search_res.push(IAndDist {
-                                i: idx_in_layer,
-                                dist,
-                            });
+                            ctx.search_res.push(DistAnd(dist, idx_in_layer));
                         }
                     }
                 }
@@ -773,7 +754,7 @@ fn closest_points_in_layer(
 /// todo! what if less neighbors there? will fail??
 fn select_neighbors(
     layer: &Layer,
-    candidates: &mut BinaryHeap<IAndDist<usize>>, // a max-heap where the root is the largest-dist element.
+    candidates: &mut BinaryHeap<DistAnd<usize>>, // a max-heap where the root is the largest-dist element.
     n: usize,
     out: &mut Vec<SearchLayerRes>,
 ) {
@@ -784,12 +765,12 @@ fn select_neighbors(
 
     out.clear();
     for c in candidates.iter() {
-        let entry = &layer.entries[c.i];
+        let entry = &layer.entries[c.1];
         out.push(SearchLayerRes {
-            idx_in_layer: c.i,
+            idx_in_layer: c.1,
             idx_in_lower_layer: entry.lower_level_idx,
             id: entry.id,
-            d_to_q: c.dist,
+            d_to_q: c.dist(),
         })
     }
 }

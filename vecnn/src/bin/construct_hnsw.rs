@@ -38,7 +38,7 @@ fn main() {
         let q_data = queries.get(i);
         let true_res = linear_knn_search(&*data, q_data, k, distance.to_fn())
             .iter()
-            .map(|e| e.i)
+            .map(|e| e.1)
             .collect::<HashSet<usize>>();
         let s_res = hnsw
             .knn_search(q_data, k)

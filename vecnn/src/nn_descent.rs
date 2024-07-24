@@ -14,7 +14,7 @@ use rand_chacha::ChaCha20Rng;
 use crate::{
     dataset::DatasetT,
     distance::{l2, Distance, DistanceFn, DistanceTracker},
-    hnsw::IAndDist,
+    hnsw::DistAnd,
     if_tracking,
     vp_tree::Stats,
 };
@@ -76,7 +76,7 @@ impl RNNGraph {
         q_data: &[f32],
         k: usize,
         start_candidates: usize,
-    ) -> (Vec<IAndDist<usize>>, Stats) {
+    ) -> (Vec<DistAnd<usize>>, Stats) {
         assert!(start_candidates > 0);
         let distance = DistanceTracker::new(self.params.distance);
         let dist_to_q = |idx: usize| -> f32 {
@@ -87,21 +87,21 @@ impl RNNGraph {
         let start = Instant::now();
 
         let mut visited: ahash::HashSet<usize> = Default::default();
-        let mut candidates: BinaryHeap<Reverse<IAndDist<usize>>> = Default::default(); // has min dist item in root, can be peaked
-        let mut search_res: BinaryHeap<IAndDist<usize>> = Default::default(); // has top dist in root, to pop it easily
+        let mut candidates: BinaryHeap<Reverse<DistAnd<usize>>> = Default::default(); // has min dist item in root, can be peaked
+        let mut search_res: BinaryHeap<DistAnd<usize>> = Default::default(); // has top dist in root, to pop it easily
 
         let i: usize = 0;
         visited.insert(i);
         let dist = dist_to_q(i);
-        candidates.push(Reverse(IAndDist { i, dist }));
-        search_res.push(IAndDist { i, dist });
+        candidates.push(Reverse(DistAnd(dist, i)));
+        search_res.push(DistAnd(dist, i));
 
         loop {
             let Some(closest_to_q) = candidates.pop() else {
                 break;
             };
 
-            let neighbors = &self.nodes[closest_to_q.0.i];
+            let neighbors = &self.nodes[closest_to_q.0 .1];
             let mut any_neighbor_added: bool = false;
             for n in neighbors.iter() {
                 let i = n.idx;
@@ -115,12 +115,12 @@ impl RNNGraph {
                 let space_available = search_res.len() < k;
 
                 if space_available {
-                    search_res.push(IAndDist { i, dist });
+                    search_res.push(DistAnd(dist, i));
                     added = true;
                 } else {
                     let mut worst = search_res.peek_mut().unwrap();
-                    if dist < worst.dist {
-                        *worst = IAndDist { i, dist };
+                    if dist < worst.dist() {
+                        *worst = DistAnd(dist, i);
                         added = true;
                     } else {
                         added = false;
@@ -128,10 +128,10 @@ impl RNNGraph {
                 }
                 if added {
                     any_neighbor_added = true;
-                    candidates.push(Reverse(IAndDist { i, dist }));
+                    candidates.push(Reverse(DistAnd(dist, i)));
                 }
                 if_tracking!(Tracking.add_event(Event::EdgeHorizontal {
-                    from: closest_to_q.0.i,
+                    from: closest_to_q.0 .1,
                     to: i,
                     level: 0,
                     comment: if space_available {
@@ -144,7 +144,7 @@ impl RNNGraph {
                 }))
             }
         }
-        let mut results: Vec<IAndDist<usize>> = search_res.into_vec();
+        let mut results: Vec<DistAnd<usize>> = search_res.into_vec();
         results.sort();
         let stats = Stats {
             num_distance_calculations: distance.num_calculations(),
