@@ -549,6 +549,8 @@ fn closest_points_in_layer(
     }
 }
 
+// Threadpool idea was slower because work per thread was too small:
+
 // /// after doing this, ctx.found will contain the relevant found points.
 // fn closest_points_in_layer_threadpool(
 //     entries: &[LayerEntry],

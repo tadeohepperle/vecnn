@@ -93,6 +93,9 @@ pub fn dot(a: &[Float], b: &[Float]) -> Float {
     let dims = a.len();
     assert_eq!(dims, b.len());
 
+    // (~76ms / IDK)
+    return 1.0 - crate::schubert_distance::UnrollKMath::<f32, 16>::dot(a, b, dims);
+
     // return (0..dims)
     //     .map(|i| {
     //         a[i] * b[i]
@@ -100,10 +103,13 @@ pub fn dot(a: &[Float], b: &[Float]) -> Float {
     //         // unsafe { *a.get_unchecked(i) * *b.get_unchecked(i) }
     //     })
     //     .sum();
-    // return crate::schubert_distance::UnrollKMath::<f32, 4>::dot(a, b, dims);
-    // return crate::schubert_distance::AVX2KMath::<f32, 32>::dot(a, b, dims);
-    // return crate::schubert_distance::DefaultKMath::<f32>::dot(a, b, dims);
-    return 1.0 - crate::schubert_distance::UnrollKMath::<f32, 16>::dot(a, b, dims);
+
+    // return crate::schubert_distance::UnrollKMath::<f32, 4>::dot(a, b, dims); // (~100ms / IDK)
+    // return crate::schubert_distance::AVX2KMath::<f32, 32>::dot(a, b, dims); // (~700ms / IDK)
+
+    // return crate::schubert_distance::DefaultKMath::<f32>::dot(a, b, dims); // (~430ms / IDK)
+
+    // // Manual implementation following: (~220ms / IDK)
 
     // let mut dot: Float = 0.0;
 

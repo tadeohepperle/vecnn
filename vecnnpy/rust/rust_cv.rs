@@ -92,18 +92,4 @@ impl RustCvHnsw {
             num_distance_calculations: stats.num_distance_calculations,
         })
     }
-
-    // fn knn<'py>(
-    //     &self,
-    //     py: Python<'py>,
-    //     query: Py<PyArray1<f32>>,
-    //     k: usize,
-    // ) -> PyResult<(Bound<'py, PyArray1<usize>>, Bound<'py, PyArray1<f32>>, i32)> {
-    //     let q = pyarray1_to_slice(query, self.0.data.dims())?;
-    //     let (res, stats) = self.0.knn_search(q, k);
-    //     let idices = ndarray::Array::from_iter(res.iter().map(|e| e.idx)).into_pyarray_bound(py);
-    //     let distances =
-    //         ndarray::Array::from_iter(res.iter().map(|e| e.dist)).into_pyarray_bound(py);
-    //     Ok((idices, distances, stats.num_distance_calculations as i32))
-    // }
 }
