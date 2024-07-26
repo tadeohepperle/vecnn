@@ -19,6 +19,35 @@ use crate::{
     vp_tree::Stats,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson)]
+pub struct RNNGraphParams {
+    pub outer_loops: usize,
+    pub inner_loops: usize,
+    pub max_neighbors_after_reverse_pruning: usize,
+    pub initial_neighbors: usize,
+    pub distance: Distance,
+}
+
+impl Default for RNNGraphParams {
+    fn default() -> Self {
+        Self {
+            initial_neighbors: 30,
+            outer_loops: 4,
+            inner_loops: 15,
+            max_neighbors_after_reverse_pruning: Default::default(),
+            distance: Distance::L2,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RNNGraph {
+    pub data: Arc<dyn DatasetT>,
+    pub nodes: Vec<Vec<Neighbor>>,
+    pub build_stats: Stats,
+    pub params: RNNGraphParams,
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct Neighbor {
@@ -46,27 +75,6 @@ impl PartialOrd for Neighbor {
 impl Ord for Neighbor {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.dist.total_cmp(&other.dist)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson)]
-pub struct RNNGraphParams {
-    pub outer_loops: usize,
-    pub inner_loops: usize,
-    pub max_neighbors_after_reverse_pruning: usize,
-    pub initial_neighbors: usize,
-    pub distance: Distance,
-}
-
-impl Default for RNNGraphParams {
-    fn default() -> Self {
-        Self {
-            initial_neighbors: 30,
-            outer_loops: 4,
-            inner_loops: 15,
-            max_neighbors_after_reverse_pruning: Default::default(),
-            distance: Distance::L2,
-        }
     }
 }
 
@@ -154,14 +162,6 @@ impl RNNGraph {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct RNNGraph {
-    pub data: Arc<dyn DatasetT>,
-    pub nodes: Vec<Vec<Neighbor>>,
-    pub build_stats: Stats,
-    pub params: RNNGraphParams,
-}
-
 impl RNNGraph {
     pub fn new_empty(data: Arc<dyn DatasetT>, params: RNNGraphParams) -> Self {
         RNNGraph {
@@ -215,7 +215,6 @@ fn construct_relative_nn_graph(data: Arc<dyn DatasetT>, params: RNNGraphParams) 
 }
 
 fn update_neighbors(nodes: &mut [Vec<Neighbor>], distance: &impl Fn(usize, usize) -> f32) {
-    // let mut mark_old: heapless::Vec<usize, MAX_NEIGHBORS> = Default::default();
     let mut new_neighbors: Vec<Neighbor> = vec![];
 
     for u_idx in 0..nodes.len() {
@@ -224,7 +223,7 @@ fn update_neighbors(nodes: &mut [Vec<Neighbor>], distance: &impl Fn(usize, usize
 
         // sort and remove duplicates:
         old_neighbors.sort();
-        remove_duplicates(&mut old_neighbors);
+        remove_duplicates_for_sorted(&mut old_neighbors);
 
         for v in old_neighbors.drain(..) {
             let mut ok = true;
@@ -264,7 +263,7 @@ fn update_neighbors(nodes: &mut [Vec<Neighbor>], distance: &impl Fn(usize, usize
 }
 
 /// Warning! expects a sorted vector
-fn remove_duplicates(neighbors: &mut Vec<Neighbor>) {
+pub fn remove_duplicates(neighbors: &mut Vec<Neighbor>) {
     let mut last_idx = usize::MAX;
     neighbors.retain(|e| {
         let retain = e.idx != last_idx;
@@ -273,12 +272,35 @@ fn remove_duplicates(neighbors: &mut Vec<Neighbor>) {
     });
 }
 
+/// Author: Erik Thordsen
+pub fn remove_duplicates_for_sorted(neighbors: &mut Vec<Neighbor>) {
+    if neighbors.len() == 0 {
+        return;
+    }
+    // Last index of items to keep
+    let mut target: usize = 0;
+    // Identifier of the last item to keep for comparisons
+    let mut target_idx: usize = neighbors[0].idx;
+    for i in 1..neighbors.len() {
+        unsafe {
+            let i_element = &*neighbors.get_unchecked(i);
+            if i_element.idx != target_idx {
+                target += 1;
+                target_idx = i_element.idx;
+                // Move element at i to target (overwriting duplicated between i and target):
+                *neighbors.get_unchecked_mut(target) = *i_element;
+            }
+        }
+    }
+    neighbors.truncate(target + 1);
+}
+
 fn add_reverse_edges(
     nodes: &mut [Vec<Neighbor>],
     two_sided_neighbors: &mut [Vec<Neighbor>],
     max_neighbors_after_reverse_pruning: usize,
 ) {
-    // create list for each node, with all **INCOMING** connections this node and all **OUTGOING** connections from this node
+    // create list for each node, with all **INCOMING** connections to this node and all **OUTGOING** connections from this node
     assert_eq!(nodes.len(), two_sided_neighbors.len());
     for r in two_sided_neighbors.iter_mut() {
         r.clear();
@@ -329,7 +351,10 @@ fn random_nn_graph_nodes(
         let mut neighbors: Vec<Neighbor> = Vec::with_capacity(initial_neighbors_num);
         loop {
             while neighbors.len() < initial_neighbors_num {
-                let random_idx = rng.gen_range(0..n);
+                let mut random_idx = rng.gen_range(0..n - 1);
+                if random_idx >= idx {
+                    random_idx += 1 // ensures that random_idx != idx
+                }
                 neighbors.push(Neighbor {
                     idx: random_idx,
                     dist: 0.0,

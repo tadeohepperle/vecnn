@@ -23,14 +23,6 @@ fn main() {
     let same_chunk_max_neighbors: usize = 20;
     let neg_fraction: f32 = 0.3;
 
-    let e = HnswParams {
-        level_norm_param: todo!(),
-        ef_construction: todo!(),
-        m_max: todo!(),
-        m_max_0: todo!(),
-        distance: todo!(),
-    };
-
     let mut models: Vec<ModelParams> = vec![
         // ModelParams::Hnsw(HnswParams {
         //     level_norm_param: 0.5,
@@ -39,13 +31,13 @@ fn main() {
         //     m_max_0: 40,
         //     distance: Dot,
         // }),
-        // ModelParams::RNNGraph(RNNGraphParams {
-        //     distance: Dot,
-        //     outer_loops: 2,
-        //     inner_loops: 3,
-        //     max_neighbors_after_reverse_pruning: 20,
-        //     initial_neighbors: 30,
-        // }),
+        ModelParams::RNNGraph(RNNGraphParams {
+            distance: Dot,
+            outer_loops: 2,
+            inner_loops: 3,
+            max_neighbors_after_reverse_pruning: 20,
+            initial_neighbors: 30,
+        }),
         // ModelParams::Transition(TransitionParams {
         //     max_chunk_size: 200,
         //     same_chunk_max_neighbors,
@@ -56,13 +48,13 @@ fn main() {
         //     stitch_mode: StitchMode::RandomNegToRandomPosAndBack,
         //     x: 5,
         // }),
-        ModelParams::EnsembleTransition(EnsembleTransitionParams {
-            max_chunk_size: 400,
-            distance: Dot,
-            num_vp_trees: 10,
-            max_neighbors_same_chunk: 20,
-            max_neighbors_hnsw: 40,
-        }),
+        // ModelParams::EnsembleTransition(EnsembleTransitionParams {
+        //     max_chunk_size: 400,
+        //     distance: Dot,
+        //     num_vp_trees: 10,
+        //     max_neighbors_same_chunk: 20,
+        //     max_neighbors_hnsw: 40,
+        // }),
         // ModelParams::RNNGraph(RNNGraphParams {
         //     distance: Dot,
         //     outer_loops: 2,
@@ -71,7 +63,7 @@ fn main() {
         //     initial_neighbors: 30,
         // }),
     ];
-    eval_models_on_laion(100000, 100, 100, dot, &models)
+    eval_models_on_laion(10000, 100, 100, dot, &models)
     // for max_chunk_size in 60..99 {
     //     models.push(ModelParams::Transition(TransitionParams {
     //         max_chunk_size,
