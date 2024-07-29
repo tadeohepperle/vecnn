@@ -70,9 +70,15 @@ impl Hnsw {
         Ok(self.0.build_stats.num_distance_calculations as i32)
     }
 
-    fn knn<'py>(&self, py: Python<'py>, query: Py<PyArray1<f32>>, k: usize) -> PyResult<KnnResult> {
+    fn knn<'py>(
+        &self,
+        py: Python<'py>,
+        query: Py<PyArray1<f32>>,
+        k: usize,
+        ef: usize,
+    ) -> PyResult<KnnResult> {
         let q = pyarray1_to_slice(query, Some(self.0.data.dims()))?;
-        let (res, stats) = self.0.knn_search(q, k);
+        let (res, stats) = self.0.knn_search(q, k, ef);
         let indices = ndarray::Array::from_iter(res.iter().map(|e| e.id))
             .into_pyarray_bound(py)
             .unbind();

@@ -272,7 +272,7 @@ pub fn remove_duplicates(neighbors: &mut Vec<Neighbor>) {
     });
 }
 
-/// Author: Erik Thordsen
+/// Credit: Erik Thordsen (https://www-ai.cs.tu-dortmund.de/PERSONAL/thordsen.html)
 pub fn remove_duplicates_for_sorted(neighbors: &mut Vec<Neighbor>) {
     if neighbors.len() == 0 {
         return;

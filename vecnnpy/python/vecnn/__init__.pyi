@@ -86,11 +86,12 @@ class Hnsw():
         """constructs a new hnsw on the dataset."""
         pass
 
-    def knn(self, query: np.ndarray, k: int) -> KnnResult:
+    def knn(self, query: np.ndarray, k: int, ef: int) -> KnnResult:
         """performs knn search on the hnsw
 
         query: 1-dimensional numpy array of type float32.
         k: number of nearest neighbors to find.
+        ef: size of priority queue holding found elements, top k of these are returned.
         """
         pass
 

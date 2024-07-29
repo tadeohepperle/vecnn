@@ -41,7 +41,7 @@ fn main() {
             .map(|e| e.1)
             .collect::<HashSet<usize>>();
         let s_res = hnsw
-            .knn_search(q_data, k)
+            .knn_search(q_data, k, 0)
             .0
             .iter()
             .map(|e| e.id as usize)

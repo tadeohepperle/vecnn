@@ -1,3 +1,5 @@
+//! Credit: Prof. Dr. Erich Schubert (https://www-ai.cs.tu-dortmund.de/PERSONAL/schubert.html)
+
 //! Math operations for k-means
 //!
 //! This helps with using SSE, AVX, and similar instruction sets.

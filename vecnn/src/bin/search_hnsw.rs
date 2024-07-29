@@ -21,7 +21,7 @@ fn main() {
     for _ in 0..10 {
         for i in 0..data.dims() {
             let q_data = data.get(i);
-            hnsw.knn_search(q_data, 30);
+            hnsw.knn_search(q_data, 30, 0);
         }
     }
 }

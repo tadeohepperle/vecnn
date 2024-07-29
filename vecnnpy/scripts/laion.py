@@ -19,6 +19,7 @@ class LaionData:
     gold_knns: np.ndarray
 
     def subset(self,n_data: int, n_queries: int) -> Tuple[np.ndarray,np.ndarray]:
+        np.random.seed(42)
         if n_data == -1:
             data = self.data
         else:

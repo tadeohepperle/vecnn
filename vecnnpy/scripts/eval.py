@@ -164,7 +164,6 @@ class Model:
             build_time = time.time() - start
             self.build_metrics =  BuildMetrics(build_time=build_time)
             self.faiss_hnsw = faiss_hnsw
-            faiss_hnsw.hnsw.efSearch = 20 #todo!
         elif params.kind == 'hnswlib_hnsw':
             ids = np.arange(n)
             start = time.time()
@@ -205,14 +204,14 @@ class Model:
         elif model == 'vecnn_hnsw' or model == 'vecnn_transition':
             def knn(query: np.ndarray, params: SearchParams) -> Tuple[np.ndarray, float, Optional[int]]:
                 start = time.time()
-                res = self.vecnn_hsnw.knn(query, params.k)
+                res = self.vecnn_hsnw.knn(query, params.k, params.ef)
                 search_time = time.time() - start
                 return (res.indices, search_time, res.num_distance_calculations)
             return knn
         elif model == 'rustcv_hnsw':
             def knn(query: np.ndarray, params: SearchParams) -> Tuple[np.ndarray, float, Optional[int]]:
                 start = time.time()
-                res = self.rustcv_hnsw.knn(query, k=params.k, ef=params.ef)
+                res = self.rustcv_hnsw.knn(query, params.k, params.ef)
                 search_time = time.time() - start
                 return (res.indices, search_time, res.num_distance_calculations)
             return knn
@@ -254,10 +253,14 @@ class Model:
         truth_indices: 2-d-ndarray of uint64
         """
         n_queries = queries.shape[0]
-        fn = self.single_row_knn_fn()
 
         if hasattr(self, "hnswlib_hnsw"):
+            print("set ef to ", params.ef)
             self.hnswlib_hnsw.set_ef(params.ef)
+        elif hasattr(self, "faiss_hnsw"):
+            self.faiss_hnsw.hnsw.efSearch = params.ef #todo!
+
+        fn = self.single_row_knn_fn()
 
         search_time = 0
         recall = 0
@@ -320,7 +323,6 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
             i+=1
             print(f"    Model {i+1}/{len(models)}")
             metrics = model.knn(queries, s, truth_indices)
-            
             s_dict = s.to_dict().copy()
             del s_dict["distance_fn"]
 
@@ -343,30 +345,19 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
 # k = 10
 
 laion_data = laion.load_laion_data()
-data, queries = laion_data.subset(100000, 100)
+data, queries = laion_data.subset(50000, 300)
 
 # (truth_indices, search_time) = linear_search_true_knn(data, queries, k, "dot")
 model_params: list[ModelParams] = [
     # ModelParams('vecnn_rnn_descent',outer_loops=50, inner_loops=1, max_neighbors_after_reverse_pruning=4, initial_neighbors = 10, distance_fn = "dot"),
     # ModelParams('vecnn_vptree'),
-    # ModelParams('rustcv_hnsw', ef_construction=40),
-    ModelParams('vecnn_hnsw', level_norm_param=0.5, ef_construction=40, m_max=20, m_max_0=30, distance_fn = "dot"),
-    ModelParams('hnswlib_hnsw', ef_construction=40, m_max=20, distance_fn = "dot"),
-    # ModelParams('hnswlib_hnsw', ef_construction=40, m_max=20, distance_fn = "dot"),
-    # ModelParams('hnswlib_hnsw', ef_construction=20, m_max=20, distance_fn = "dot"),
-    # ModelParams('hnswlib_hnsw', ef_construction=20, m_max=40, distance_fn = "dot"),
-    # ModelParams('hnswlib_hnsw', ef_construction=40, m_max=10, distance_fn = "dot"),
-    # ModelParams('hnswlib_hnsw', ef_construction=40, m_max=20, distance_fn = "dot"),
-    # ModelParams('hnswlib_hnsw', ef_construction=40, m_max=40, distance_fn = "dot"),
-    # ModelParams('hnswlib_hnsw', ef_construction=100, m_max=10, distance_fn = "dot"),
-    # ModelParams('hnswlib_hnsw', ef_construction=100, m_max=20, distance_fn = "dot"),
-    # ModelParams('hnswlib_hnsw', ef_construction=100, m_max=40, distance_fn = "dot"),
-    # ModelParams('hnswlib_hnsw', ef_construction=200, m_max=10, distance_fn = "dot"),
-    # ModelParams('hnswlib_hnsw', ef_construction=200, m_max=20, distance_fn = "dot"),
-    # ModelParams('hnswlib_hnsw', ef_construction=200, m_max=40, distance_fn = "dot"),
+    ModelParams('rustcv_hnsw', ef_construction=100),
+    ModelParams('vecnn_hnsw', level_norm_param=0.3, ef_construction=100, m_max=30, m_max_0=30, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=100, m_max=30, distance_fn = "dot"),
+    ModelParams('faiss_hnsw', ef_construction=100, m_max=30, distance_fn = "dot"),
 ]
 search_params: list[SearchParams] = [
-    SearchParams(50, "dot", ef = 20, start_candidates = 10) # make sure ef >= k
+    SearchParams(30, "dot", ef = 60, start_candidates = 10) # make sure ef >= k
 ]
 
 start = time.time()
@@ -375,3 +366,9 @@ total = time.time() -start
 print(table.df().to_string())
 
 filename = table.save(f"experiments/experiment{datetime.datetime.now()} Total time: {int(total)}s.csv")
+
+HNSW_LIB_BEST_CONSTRUCTION_TIME = [
+    ModelParams('rustcv_hnsw', ef_construction=200),
+    ModelParams('vecnn_hnsw', level_norm_param=0.3, ef_construction=200, m_max=30, m_max_0=30, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=200, m_max=30, distance_fn = "dot"),
+]

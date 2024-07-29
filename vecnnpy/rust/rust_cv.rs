@@ -27,8 +27,10 @@ impl space::Metric<&[f32]> for Dot {
     }
 }
 
+const M: usize = 30;
+const M0: usize = 30;
 type ParameterizedRustCvHnsw =
-    rust_cv_hnsw::Hnsw<Dot, &'static [f32], rand_chacha::ChaCha20Rng, 20, 20>;
+    rust_cv_hnsw::Hnsw<Dot, &'static [f32], rand_chacha::ChaCha20Rng, M, M0>;
 
 #[pyclass]
 pub struct RustCvHnsw {
@@ -74,6 +76,7 @@ impl RustCvHnsw {
            // But M is const. so maybe using k here as the length of the slice is all wrong!!
 
         let start = Instant::now();
+        let ef = ef.max(k);
         self.inner
             .nearest(&extend_lifetime(q), ef, &mut searcher, &mut res);
         let stats: Stats = Stats {

@@ -1,0 +1,7 @@
+n,search_params,params,build_ndc,build_ms,recall_mean,ndc_mean,time_ms_mean
+10000,"{k:30, ef: 30, start_candidates: 1}","HnswParams { level_norm_param: 0.5, ef_construction: 60, m_max: 20, m_max_0: 40, distance: Dot }",7247837,1056.17618,0.926,609.910,0.108
+10000,"{k:30, ef: 30, start_candidates: 1}","HnswParams { level_norm_param: 0.5, ef_construction: 120, m_max: 20, m_max_0: 40, distance: Dot }",10526740,1974.1889449999999,0.937,613.740,0.114
+10000,"{k:30, ef: 60, start_candidates: 1}","HnswParams { level_norm_param: 0.5, ef_construction: 60, m_max: 20, m_max_0: 40, distance: Dot }",7247837,1131.707994,0.964,872.465,0.218
+10000,"{k:30, ef: 60, start_candidates: 1}","HnswParams { level_norm_param: 0.5, ef_construction: 120, m_max: 20, m_max_0: 40, distance: Dot }",10526740,2264.490341,0.971,879.320,0.243
+10000,"{k:30, ef: 100, start_candidates: 1}","HnswParams { level_norm_param: 0.5, ef_construction: 60, m_max: 20, m_max_0: 40, distance: Dot }",7247837,1094.470125,0.972,1158.245,0.260
+10000,"{k:30, ef: 100, start_candidates: 1}","HnswParams { level_norm_param: 0.5, ef_construction: 120, m_max: 20, m_max_0: 40, distance: Dot }",10526740,1944.331201,0.981,1172.100,0.265

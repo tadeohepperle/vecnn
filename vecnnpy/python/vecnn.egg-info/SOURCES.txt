@@ -8,6 +8,7 @@ python/vecnn.egg-info/PKG-INFO
 python/vecnn.egg-info/SOURCES.txt
 python/vecnn.egg-info/dependency_links.txt
 python/vecnn.egg-info/top_level.txt
+rust/chroma_hnsw.rs
 rust/dataset.rs
 rust/hnsw.rs
 rust/lib.rs

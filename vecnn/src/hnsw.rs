@@ -158,7 +158,7 @@ impl Hnsw {
         }
     }
 
-    pub fn knn_search(&self, q_data: &[f32], k: usize) -> (Vec<SearchLayerRes>, Stats) {
+    pub fn knn_search(&self, q_data: &[f32], k: usize, ef: usize) -> (Vec<SearchLayerRes>, Stats) {
         assert_eq!(q_data.len(), self.data.dims());
 
         let distance = DistanceTracker::new(self.params.distance);
@@ -177,14 +177,14 @@ impl Hnsw {
             }));
         }
 
-        let ef = self.params.ef_construction.max(k);
+        let ef = ef.max(k);
         let mut ctx = SearchCtx::new(ef);
         closest_points_in_layer(
             &self.layers[0].entries,
             &*self.data,
             q_data,
             &[ep_idx_in_layer],
-            ef, // todo! maybe not right?
+            ef,
             &mut ctx,
             &distance,
         );
