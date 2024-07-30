@@ -1,17 +1,19 @@
 use std::collections::HashSet;
 
 use crate::hnsw::Hnsw;
+use external::jpboth::JpBothHnsw;
+use external::rust_cv::RustCvHnsw;
 use hnsw::dist_from_str;
 use numpy::ndarray::{ArrayD, ArrayViewD, ArrayViewMutD};
 use numpy::{IntoPyArray, PyArray1, PyArrayDyn, PyArrayMethods, PyReadonlyArrayDyn};
 use pyo3::prelude::*;
 use pyo3::{pymodule, types::PyModule, Bound, PyResult, Python};
-use rust_cv::RustCvHnsw;
 
 mod dataset;
+mod external;
 mod hnsw;
 mod nn_descent;
-mod rust_cv;
+
 mod utils;
 mod vp_tree;
 
@@ -35,6 +37,7 @@ fn _lib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<KnnResult>()?;
     m.add_class::<Hnsw>()?;
     m.add_class::<RustCvHnsw>()?;
+    m.add_class::<JpBothHnsw>()?;
     m.add_class::<RNNGraph>()?;
     m.add_function(wrap_pyfunction!(linear_knn, m)?)?;
     m.add_function(wrap_pyfunction!(knn_recall, m)?)?;

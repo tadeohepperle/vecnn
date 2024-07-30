@@ -51,12 +51,11 @@ class VpTree():
         """
         pass
 
-
 class KnnResult():
     indices: np.ndarray
     """1-dimensional numpy array of type uint64. Dataset indices of the k nearest neighbors to the query."""
-    distances: np.ndarray
-    """ 1-dimensional numpy array of type float32. Distances of the k nearest neighbors to the query. Belonging to the respective elements of indices array, same size as indices"""
+    # distances: np.ndarray
+    # """ 1-dimensional numpy array of type float32. Distances of the k nearest neighbors to the query. Belonging to the respective elements of indices array, same size as indices"""
     num_distance_calculations: int
     """how many distance calculations were performed during build."""
 
@@ -101,7 +100,10 @@ class RustCvHnsw():
 
     
     def __init__(self, data: Dataset, ef_construction: int):
-        """constructs a new hnsw on the dataset."""
+        """constructs a new hnsw on the dataset.
+
+        ef_construction: size of priority queue when searching for insertion point in each layer.
+        """
         pass
 
     def knn(self, query: np.ndarray, k: int, ef: int) -> KnnResult:
@@ -112,6 +114,29 @@ class RustCvHnsw():
         ef: number of candidates in candidate set.
         """
         pass
+
+class JpBothHnsw():
+    '''An HNSW, from https://github.com/jean-pierreBoth/hnswlib-rs'''
+
+    def __init__(self, data: Dataset, ef_construction: int, m_max: int):
+        """constructs a new hnsw on the dataset.
+        
+        ef_construction: size of priority queue when searching for insertion point in each layer.
+        m_max: max number of neighbors in each layer
+        """
+        pass
+
+    def knn(self, query: np.ndarray, k: int, ef: int) -> KnnResult:
+        """performs knn search on the hnsw
+
+        query: 1-dimensional numpy array of type float32.
+        k: number of nearest neighbors to find.
+        ef: number of candidates in candidate set.
+        """
+        pass
+
+
+
 
 class RNNGraph:
     num_distance_calculations_in_build: int

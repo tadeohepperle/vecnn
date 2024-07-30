@@ -29,12 +29,12 @@ fn main() {
     let same_chunk_max_neighbors: usize = 20;
     let neg_fraction: f32 = 0.3;
 
-    let n = 300000;
+    let n = 5000;
     let k = 30;
-    let k_samples = 200;
+    let k_samples = 300;
     let mut models: Vec<ModelParams> = vec![];
-    for ef_construction in [60, 120] {
-        for n in [10000] {
+    for ef_construction in [20] {
+        for n in [5006] {
             eval_models_on_laion(
                 n,
                 k_samples,
@@ -42,14 +42,14 @@ fn main() {
                     level_norm_param: 0.5,
                     ef_construction: ef_construction,
                     m_max: 20,
-                    m_max_0: 40,
+                    m_max_0: 20,
                     distance: Dot,
                 })],
                 SearchParams {
                     k,
                     truth_distance: dot,
                     start_candidates: 1,
-                    ef: 100,
+                    ef: 60,
                 },
             )
         }

@@ -81,7 +81,7 @@ class SearchMetrics:
 
 
 
-# type ModelKind = Literal['vecnn_hsnw', 'vecnn_transition', 'vecnn_rnn_descent' 'vecnn_vptree', 'scipy_kdtree', 'hnswlib_hnsw', 'rustcv_hnsw', 'faiss_hnsw']
+# type ModelKind = Literal['vecnn_hsnw', 'vecnn_transition', 'vecnn_rnn_descent' 'vecnn_vptree', 'scipy_kdtree', 'hnswlib_hnsw', 'rustcv_hnsw', 'jpboth_hnsw', 'faiss_hnsw']
 class ModelParams:
     kind: str
     def __init__(self, kind: str, **kwargs) -> None:
@@ -142,6 +142,13 @@ class Model:
             build_time =  time.time() - start
             self.build_metrics =  BuildMetrics(build_time=build_time)
             self.rustcv_hnsw = hnsw
+        elif params.kind == 'jpboth_hnsw':
+            dataset = vecnn.Dataset(data) # not ideal
+            start = time.time()
+            hnsw = vecnn.JpBothHnsw(dataset, params.ef_construction, params.m_max)
+            build_time =  time.time() - start
+            self.build_metrics = BuildMetrics(build_time=build_time)
+            self.jpboth_hnsw = hnsw
         elif params.kind == 'vecnn_rnn_descent':
             dataset = vecnn.Dataset(data) # not ideal
             start = time.time()
@@ -212,6 +219,13 @@ class Model:
             def knn(query: np.ndarray, params: SearchParams) -> Tuple[np.ndarray, float, Optional[int]]:
                 start = time.time()
                 res = self.rustcv_hnsw.knn(query, params.k, params.ef)
+                search_time = time.time() - start
+                return (res.indices, search_time, res.num_distance_calculations)
+            return knn
+        elif model == 'jpboth_hnsw':
+            def knn(query: np.ndarray, params: SearchParams) -> Tuple[np.ndarray, float, Optional[int]]:
+                start = time.time()
+                res = self.jpboth_hnsw.knn(query, params.k, params.ef)
                 search_time = time.time() - start
                 return (res.indices, search_time, res.num_distance_calculations)
             return knn
@@ -345,16 +359,20 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
 # k = 10
 
 laion_data = laion.load_laion_data()
-data, queries = laion_data.subset(50000, 300)
+data, queries = laion_data.subset(5000, 100)
 
+
+ef_construction =20
+m_max = 20
 # (truth_indices, search_time) = linear_search_true_knn(data, queries, k, "dot")
 model_params: list[ModelParams] = [
     # ModelParams('vecnn_rnn_descent',outer_loops=50, inner_loops=1, max_neighbors_after_reverse_pruning=4, initial_neighbors = 10, distance_fn = "dot"),
     # ModelParams('vecnn_vptree'),
-    ModelParams('rustcv_hnsw', ef_construction=100),
-    ModelParams('vecnn_hnsw', level_norm_param=0.3, ef_construction=100, m_max=30, m_max_0=30, distance_fn = "dot"),
-    ModelParams('hnswlib_hnsw', ef_construction=100, m_max=30, distance_fn = "dot"),
-    ModelParams('faiss_hnsw', ef_construction=100, m_max=30, distance_fn = "dot"),
+    ModelParams('rustcv_hnsw', ef_construction=ef_construction),
+    ModelParams('jpboth_hnsw', ef_construction=ef_construction, m_max=m_max),
+    ModelParams('vecnn_hnsw', level_norm_param=0.3, ef_construction=ef_construction, m_max=m_max, m_max_0=m_max, distance_fn = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=ef_construction, m_max=m_max, distance_fn = "dot"),
+    ModelParams('faiss_hnsw', ef_construction=ef_construction, m_max=m_max, distance_fn = "dot"),
 ]
 search_params: list[SearchParams] = [
     SearchParams(30, "dot", ef = 60, start_candidates = 10) # make sure ef >= k

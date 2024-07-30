@@ -5,3 +5,8 @@ n,search_params,params,build_ndc,build_ms,recall_mean,ndc_mean,time_ms_mean
 10000,"{k:30, ef: 60, start_candidates: 1}","HnswParams { level_norm_param: 0.5, ef_construction: 120, m_max: 20, m_max_0: 40, distance: Dot }",10526740,2264.490341,0.971,879.320,0.243
 10000,"{k:30, ef: 100, start_candidates: 1}","HnswParams { level_norm_param: 0.5, ef_construction: 60, m_max: 20, m_max_0: 40, distance: Dot }",7247837,1094.470125,0.972,1158.245,0.260
 10000,"{k:30, ef: 100, start_candidates: 1}","HnswParams { level_norm_param: 0.5, ef_construction: 120, m_max: 20, m_max_0: 40, distance: Dot }",10526740,1944.331201,0.981,1172.100,0.265
+5000,"{k:30, ef: 60, start_candidates: 1}","HnswParams { level_norm_param: 0.5, ef_construction: 20, m_max: 20, m_max_0: 20, distance: Dot }",1279313,138.706575,0.817,499.395,0.071
+5000,"{k:30, ef: 60, start_candidates: 1}","HnswParams { level_norm_param: 0.5, ef_construction: 20, m_max: 20, m_max_0: 20, distance: Dot }",1279313,128.342217,0.817,499.395,0.061
+5000,"{k:30, ef: 60, start_candidates: 1}","HnswParams { level_norm_param: 0.5, ef_construction: 20, m_max: 20, m_max_0: 20, distance: Dot }",1279313,140.797433,0.817,499.395,0.074
+5006,"{k:30, ef: 60, start_candidates: 1}","HnswParams { level_norm_param: 0.5, ef_construction: 20, m_max: 20, m_max_0: 20, distance: Dot }",1281118,129.458558,0.819,500.640,0.063
+5006,"{k:30, ef: 60, start_candidates: 1}","HnswParams { level_norm_param: 0.5, ef_construction: 20, m_max: 20, m_max_0: 20, distance: Dot }",1281118,126.95970600000001,0.825,496.943,0.061
