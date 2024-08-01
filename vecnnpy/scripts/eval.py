@@ -359,20 +359,20 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
 # k = 10
 
 laion_data = laion.load_laion_data()
-data, queries = laion_data.subset(5000, 100)
+data, queries = laion_data.subset(100000, 1000)
 
 
 ef_construction =20
 m_max = 20
 # (truth_indices, search_time) = linear_search_true_knn(data, queries, k, "dot")
 model_params: list[ModelParams] = [
-    # ModelParams('vecnn_rnn_descent',outer_loops=50, inner_loops=1, max_neighbors_after_reverse_pruning=4, initial_neighbors = 10, distance_fn = "dot"),
-    # ModelParams('vecnn_vptree'),
     ModelParams('rustcv_hnsw', ef_construction=ef_construction),
     ModelParams('jpboth_hnsw', ef_construction=ef_construction, m_max=m_max),
-    ModelParams('vecnn_hnsw', level_norm_param=0.3, ef_construction=ef_construction, m_max=m_max, m_max_0=m_max, distance_fn = "dot"),
+    ModelParams('vecnn_hnsw', level_norm_param=0.5, ef_construction=ef_construction, m_max=m_max, m_max_0=m_max*2, distance_fn = "dot"),
     ModelParams('hnswlib_hnsw', ef_construction=ef_construction, m_max=m_max, distance_fn = "dot"),
     ModelParams('faiss_hnsw', ef_construction=ef_construction, m_max=m_max, distance_fn = "dot"),
+    # ModelParams('vecnn_rnn_descent',outer_loops=50, inner_loops=1, max_neighbors_after_reverse_pruning=4, initial_neighbors = 10, distance_fn = "dot"),
+    # ModelParams('vecnn_vptree'),
 ]
 search_params: list[SearchParams] = [
     SearchParams(30, "dot", ef = 60, start_candidates = 10) # make sure ef >= k

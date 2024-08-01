@@ -95,6 +95,7 @@ pub fn dot(a: &[Float], b: &[Float]) -> Float {
 
     // (~76ms / IDK)
     return 1.0 - crate::schubert_distance::UnrollKMath::<f32, 16>::dot(a, b, dims);
+    // 1.0 - x to make it a distance
 
     // return (0..dims)
     //     .map(|i| {

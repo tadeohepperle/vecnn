@@ -153,7 +153,7 @@ impl<T: Ord> BinaryHeapExt for BinaryHeap<T> {
 pub use binary_heap::SliceBinaryHeap;
 
 mod binary_heap {
-    use std::{mem::ManuallyDrop, ptr};
+    use std::{fmt::Debug, mem::ManuallyDrop, ptr};
 
     /// Has the property that the max item is always kept as the first element of the slice
     pub struct SliceBinaryHeap<'a, T: Ord> {
@@ -162,10 +162,34 @@ mod binary_heap {
         len: usize,
     }
 
+    impl<'a, T: Ord + Debug> Debug for SliceBinaryHeap<'a, T> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_list()
+                .entries(self.slice[..self.len].iter())
+                .finish()
+        }
+    }
+
+    impl<T: Ord> SliceBinaryHeap<'static, T> {
+        #[inline(always)]
+        pub unsafe fn new_uninitialized() -> Self {
+            SliceBinaryHeap {
+                slice: unsafe {
+                    &mut *std::ptr::slice_from_raw_parts_mut::<T>(std::ptr::null_mut(), 0)
+                },
+                len: 0,
+            }
+        }
+    }
+
     impl<'a, T: Ord> SliceBinaryHeap<'a, T> {
         pub fn new(slice: &'a mut [T]) -> Self {
             assert!(slice.len() != 0);
             SliceBinaryHeap { slice, len: 0 }
+        }
+
+        pub fn iter(&self) -> std::slice::Iter<T> {
+            self.slice[..self.len].iter()
         }
 
         pub fn as_slice(&self) -> &[T] {
@@ -175,6 +199,16 @@ mod binary_heap {
         pub fn clear(&mut self) {
             self.len = 0
         }
+
+        /// returns true if item was included.
+        pub fn push_asserted(&mut self, item: T) {
+            assert!(self.len < self.slice.len());
+            let old_len = self.len;
+            self.slice[self.len] = item;
+            self.len += 1;
+            unsafe { self.sift_up(0, old_len) };
+        }
+
         /// returns true if item was included.
         pub fn insert_if_better(&mut self, item: T) -> bool {
             if self.len < self.slice.len() {

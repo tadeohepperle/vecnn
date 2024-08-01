@@ -16,6 +16,7 @@ use vecnn::{
     dataset::{DatasetT, FlatDataSet},
     distance::{cos, dot, l2, Distance::*, DistanceFn},
     hnsw::{Hnsw, HnswParams},
+    hnsw2::Hnsw2,
     nn_descent::{RNNGraph, RNNGraphParams},
     transition::{
         build_hnsw_by_transition, build_hnsw_by_vp_tree_ensemble, EnsembleTransitionParams,
@@ -25,26 +26,36 @@ use vecnn::{
     vp_tree::Stats,
 };
 
+const RNG_SEED: u64 = 21321424198;
 fn main() {
     let same_chunk_max_neighbors: usize = 20;
     let neg_fraction: f32 = 0.3;
 
-    let n = 5000;
+    let n = 6000;
     let k = 30;
     let k_samples = 300;
     let mut models: Vec<ModelParams> = vec![];
-    for ef_construction in [20] {
-        for n in [5006] {
+    for ef_construction in [50] {
+        for n in [200000] {
             eval_models_on_laion(
                 n,
                 k_samples,
-                &[ModelParams::Hnsw(HnswParams {
-                    level_norm_param: 0.5,
-                    ef_construction: ef_construction,
-                    m_max: 20,
-                    m_max_0: 20,
-                    distance: Dot,
-                })],
+                &[
+                    ModelParams::Hnsw(HnswParams {
+                        level_norm_param: 0.5,
+                        ef_construction,
+                        m_max: 20,
+                        m_max_0: 40,
+                        distance: Dot,
+                    }),
+                    ModelParams::Hnsw2(HnswParams {
+                        level_norm_param: 0.5,
+                        ef_construction,
+                        m_max: 20,
+                        m_max_0: 40,
+                        distance: Dot,
+                    }),
+                ],
                 SearchParams {
                     k,
                     truth_distance: dot,
@@ -55,6 +66,25 @@ fn main() {
         }
     }
 }
+
+// eval_models_random_data(
+//     n,
+//     768,
+//     k_samples,
+//     &[ModelParams::Hnsw(HnswParams {
+//         level_norm_param: 0.5,
+//         ef_construction,
+//         m_max: 20,
+//         m_max_0: 20,
+//         distance: Dot,
+//     })],
+//     SearchParams {
+//         k,
+//         truth_distance: dot,
+//         start_candidates: 1,
+//         ef: 60,
+//     },
+// );
 
 // ModelParams::Hnsw(HnswParams {
 //     level_norm_param: 0.5,
@@ -97,6 +127,7 @@ fn main() {
 #[derive(Debug, Clone, Copy)]
 enum ModelParams {
     Hnsw(HnswParams),
+    Hnsw2(HnswParams),
     Transition(TransitionParams),
     EnsembleTransition(EnsembleTransitionParams),
     RNNGraph(RNNGraphParams),
@@ -106,6 +137,7 @@ impl ModelParams {
     pub fn to_string(&self) -> String {
         match self {
             ModelParams::Hnsw(e) => format!("{e:?}"),
+            ModelParams::Hnsw2(e) => format!("HNSW2{e:?}"),
             ModelParams::Transition(e) => format!("{e:?}"),
             ModelParams::EnsembleTransition(e) => format!("{e:?}"),
             ModelParams::RNNGraph(e) => format!("{e:?}"),
@@ -115,6 +147,7 @@ impl ModelParams {
 
 enum Model {
     Hnsw(Hnsw),
+    Hnsw2(Hnsw2),
     HnswTransition(Hnsw),
     VpTreeEnsemble(Hnsw),
     RNNGraph(RNNGraph),
@@ -182,6 +215,15 @@ impl Model {
                 found = res.0.iter().map(|e| e.1).collect::<HashSet<usize>>();
                 stats = res.1;
             }
+            Model::Hnsw2(hnsw) => {
+                let res = hnsw.knn_search(q_data, search_params.k, search_params.ef);
+                found = res
+                    .0
+                    .iter()
+                    .map(|e| e.1 as usize)
+                    .collect::<HashSet<usize>>();
+                stats = res.1
+            }
         };
         let recall_n = true_res.iter().filter(|i| found.contains(i)).count();
         let r = recall_n as f64 / search_params.k as f64;
@@ -192,6 +234,7 @@ impl Model {
         match self {
             Model::Hnsw(e) | Model::HnswTransition(e) | Model::VpTreeEnsemble(e) => e.build_stats,
             Model::RNNGraph(e) => e.build_stats,
+            Model::Hnsw2(e) => e.build_stats,
         }
     }
 }
@@ -220,7 +263,7 @@ fn eval_models_on_laion(
         assert_eq!(bytes.len(), len * dims * std::mem::size_of::<f32>());
 
         let mut indices: Vec<usize> = (0..len).collect();
-        let mut rng = ChaCha20Rng::seed_from_u64(42);
+        let mut rng = ChaCha20Rng::seed_from_u64(RNG_SEED);
         indices.shuffle(&mut rng);
 
         let mut flat_float_arr: Vec<f32> = vec![0.0; subsample_n * dims];
@@ -285,13 +328,15 @@ fn eval_models(
 
     let mut models: Vec<Model> = vec![];
     for &param in params.iter() {
+        let data = data.clone();
         let model = match param {
-            ModelParams::Hnsw(params) => Model::hnsw(data.clone(), params),
+            ModelParams::Hnsw(params) => Model::hnsw(data, params),
             ModelParams::Transition(params) => Model::hnsw_transition(data.clone(), params),
-            ModelParams::RNNGraph(params) => Model::rnn_graph(data.clone(), params),
+            ModelParams::RNNGraph(params) => Model::rnn_graph(data, params),
             ModelParams::EnsembleTransition(params) => {
-                Model::vp_tree_ensemble_transition(data.clone(), params)
+                Model::vp_tree_ensemble_transition(data, params)
             }
+            ModelParams::Hnsw2(params) => Model::Hnsw2(Hnsw2::new(data, params)),
         };
         models.push(model);
     }

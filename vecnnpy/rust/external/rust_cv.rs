@@ -27,8 +27,8 @@ impl space::Metric<&[f32]> for Dot {
     }
 }
 
-const M: usize = 30;
-const M0: usize = 30;
+const M: usize = 20;
+const M0: usize = 40;
 type ParameterizedRustCvHnsw =
     rust_cv_hnsw::Hnsw<Dot, &'static [f32], rand_chacha::ChaCha20Rng, M, M0>;
 

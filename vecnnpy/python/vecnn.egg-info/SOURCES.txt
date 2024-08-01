@@ -14,7 +14,6 @@ rust/lib.rs
 rust/nn_descent.rs
 rust/utils.rs
 rust/vp_tree.rs
-rust/external/chroma_hnsw.rs
 rust/external/jpboth.rs
 rust/external/mod.rs
 rust/external/rust_cv.rs

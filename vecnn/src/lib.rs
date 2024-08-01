@@ -4,6 +4,7 @@
 
 pub mod dataset;
 pub mod distance;
+pub mod hnsw2;
 pub mod nn_descent;
 pub mod schubert_distance;
 pub mod transition;

@@ -1,9 +1,11 @@
 use numpy::{IntoPyArray, PyArray1};
 use pyo3::{exceptions::PyTypeError, pyclass, pyfunction, pymethods, Bound, Py, PyResult, Python};
 use vecnn::{
+    dataset::DatasetT,
     distance::{cos, dot, l1, l2, Distance},
     hnsw::HnswParams,
     transition::{StitchMode, TransitionParams},
+    vp_tree::Stats,
 };
 
 use crate::utils::{pyarray1_to_slice, KnnResult};
@@ -27,7 +29,7 @@ pub fn build_hnsw_by_transition(
         x: 3,
     };
     let hnsw = vecnn::transition::build_hnsw_by_transition(data.as_dyn_dataset(), params);
-    Ok(Hnsw(hnsw))
+    Ok(Hnsw(Inner::OldImpl(hnsw)))
 }
 
 pub fn dist_from_str(str: &str) -> PyResult<Distance> {
@@ -41,7 +43,29 @@ pub fn dist_from_str(str: &str) -> PyResult<Distance> {
 }
 
 #[pyclass]
-pub struct Hnsw(vecnn::hnsw::Hnsw);
+pub struct Hnsw(Inner);
+unsafe impl Send for Hnsw {}
+
+enum Inner {
+    OldImpl(vecnn::hnsw::Hnsw),
+    NewImpl(vecnn::hnsw2::Hnsw2),
+}
+
+impl Inner {
+    fn build_stats(&self) -> Stats {
+        match self {
+            Inner::OldImpl(hnsw) => hnsw.build_stats,
+            Inner::NewImpl(hnsw) => hnsw.build_stats,
+        }
+    }
+
+    fn data(&self) -> &dyn DatasetT {
+        match self {
+            Inner::OldImpl(hnsw) => &*hnsw.data,
+            Inner::NewImpl(hnsw) => &*hnsw.data,
+        }
+    }
+}
 
 #[pymethods]
 impl Hnsw {
@@ -61,13 +85,15 @@ impl Hnsw {
             m_max_0,
             distance: dist_from_str(&distance_fn)?,
         };
-        let hnsw = vecnn::hnsw::Hnsw::new(data.as_dyn_dataset(), params);
-        Ok(Hnsw(hnsw))
+        let hnsw = vecnn::hnsw2::Hnsw2::new(data.as_dyn_dataset(), params);
+        Ok(Hnsw(Inner::NewImpl(hnsw)))
+        // let hnsw = vecnn::hnsw::Hnsw::new(data.as_dyn_dataset(), params);
+        // Ok(Hnsw(Inner::OldImpl(hnsw)))
     }
 
     #[getter]
     fn num_distance_calculations_in_build(&self) -> PyResult<i32> {
-        Ok(self.0.build_stats.num_distance_calculations as i32)
+        Ok(self.0.build_stats().num_distance_calculations as i32)
     }
 
     fn knn<'py>(
@@ -77,18 +103,37 @@ impl Hnsw {
         k: usize,
         ef: usize,
     ) -> PyResult<KnnResult> {
-        let q = pyarray1_to_slice(query, Some(self.0.data.dims()))?;
-        let (res, stats) = self.0.knn_search(q, k, ef);
-        let indices = ndarray::Array::from_iter(res.iter().map(|e| e.id))
-            .into_pyarray_bound(py)
-            .unbind();
-        let distances = ndarray::Array::from_iter(res.iter().map(|e| e.d_to_q))
-            .into_pyarray_bound(py)
-            .unbind();
-        Ok(KnnResult {
-            indices,
-            distances,
-            num_distance_calculations: stats.num_distance_calculations,
-        })
+        let q = pyarray1_to_slice(query, Some(self.0.data().dims()))?;
+        // ugly temporary solution
+        match &self.0 {
+            Inner::OldImpl(hnsw) => {
+                let (res, stats) = hnsw.knn_search(q, k, ef);
+                let indices = ndarray::Array::from_iter(res.iter().map(|e| e.id))
+                    .into_pyarray_bound(py)
+                    .unbind();
+                let distances = ndarray::Array::from_iter(res.iter().map(|e| e.d_to_q))
+                    .into_pyarray_bound(py)
+                    .unbind();
+                Ok(KnnResult {
+                    indices,
+                    distances,
+                    num_distance_calculations: stats.num_distance_calculations,
+                })
+            }
+            Inner::NewImpl(hnsw) => {
+                let (res, stats) = hnsw.knn_search(q, k, ef);
+                let indices = ndarray::Array::from_iter(res.iter().map(|e| e.1))
+                    .into_pyarray_bound(py)
+                    .unbind();
+                let distances = ndarray::Array::from_iter(res.iter().map(|e| e.dist()))
+                    .into_pyarray_bound(py)
+                    .unbind();
+                Ok(KnnResult {
+                    indices,
+                    distances,
+                    num_distance_calculations: stats.num_distance_calculations,
+                })
+            }
+        }
     }
 }

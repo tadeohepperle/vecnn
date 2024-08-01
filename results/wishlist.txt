@@ -1,0 +1,5 @@
+Table: Comparision of my implementation of HNSW compared to 2 other rust impls, faiss and hnswlib.
+- Fix parameters for all of them, Use sisap datasets: variable n=10000,100000,30000, k=30, m_max = 20,40, ef = 40, 80, 160
+- table with metrics: recall, build time, search time, 
+
+- in our own hnsw impl: n => number of distance calculations
