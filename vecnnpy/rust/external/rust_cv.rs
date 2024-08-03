@@ -8,7 +8,7 @@ use space::Neighbor;
 use vecnn::{
     dataset::DatasetT,
     distance::{dot, l2},
-    vp_tree::Stats,
+    utils::Stats,
 };
 
 struct Euclidean;

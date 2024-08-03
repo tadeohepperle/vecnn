@@ -4,6 +4,7 @@ use std::{
     ops::Range,
     sync::Arc,
     time::{Duration, Instant},
+    usize,
 };
 
 use nanoserde::{DeJson, SerJson};
@@ -18,65 +19,56 @@ use crate::{
         NEIGHBORS_LIST_MAX_LEN,
     },
     if_tracking,
-    utils::{BinaryHeapExt, SliceBinaryHeap},
-    vp_tree::{self, arrange_into_vp_tree, left, left_with_root, right, Node, Stats, VpTree},
+    slice_hnsw::{self, SliceHnsw, MAX_LAYERS},
+    utils::{slice_binary_heap_arena, BinaryHeapExt, SliceBinaryHeap, Stats},
+    vp_tree::{self, arrange_into_vp_tree, left, left_with_root, right, Node, StoresDistT, VpTree},
 };
 
 #[derive(Debug, Clone, Copy, DeJson, SerJson, PartialEq)]
-pub struct EnsembleTransitionParams {
-    pub num_vp_trees: usize,
+pub struct EnsembleParams {
+    pub n_vp_trees: usize,
     pub max_chunk_size: usize,
-    pub max_neighbors_same_chunk: usize,
-    pub max_neighbors_hnsw: usize,
+    pub same_chunk_m_max: usize,
+    pub m_max: usize, // see hnsw params, max number of neighbors at any layer > 0 in hnsw
+    pub m_max_0: usize, // see hnsw params, max number of neighbors at layer 0 in hnsw
+    pub level_norm: f32, // see hnsw params, controls height
     pub distance: Distance,
 }
 
 pub fn build_hnsw_by_vp_tree_ensemble(
     data: Arc<dyn DatasetT>,
-    params: EnsembleTransitionParams,
-) -> Hnsw {
+    params: EnsembleParams,
+) -> SliceHnsw {
+    let mut hnsw_layer = slice_hnsw::Layer::new(params.m_max_0);
+    hnsw_layer.entries_cap = data.len();
+    hnsw_layer.allocate_neighbors_memory();
+    for id in 0..data.len() {
+        hnsw_layer.add_entry_assuming_allocated_memory(id, usize::MAX);
+    }
+
     let max_chunk_size = params.max_chunk_size;
-    let max_neighbors_same_chunk = params.max_neighbors_same_chunk;
-    assert!(max_neighbors_same_chunk <= NEIGHBORS_LIST_MAX_LEN);
+    let same_chunk_m_max = params.same_chunk_m_max;
+    assert!(same_chunk_m_max <= NEIGHBORS_LIST_MAX_LEN);
 
     let mut distance = DistanceTracker::new(params.distance);
     let start = Instant::now();
     let mut rng = ChaCha20Rng::seed_from_u64(42);
 
-    let mut hnsw_entries: Vec<hnsw::LayerEntry> = Vec::with_capacity(data.len());
-    for i in 0..data.len() {
-        hnsw_entries.push(LayerEntry {
-            id: i,
-            lower_level_idx: usize::MAX,
-            neighbors: Neighbors::new(),
-        })
-    }
-
     // setup buffers to operate in:
     let chunks = make_chunks(data.len(), max_chunk_size);
     let mut chunk_dst_mat: Vec<f32> = vec![0.0; max_chunk_size * max_chunk_size]; // memory reused for all chunks
-    let mut neighbors_memory: Vec<DistAnd<usize>> =
-        Vec::with_capacity(data.len() * max_neighbors_same_chunk);
-    let neighbors_memory_ptr = neighbors_memory.as_mut_ptr();
-    let mut vp_tree_neighbors: Vec<SliceBinaryHeap<'_, DistAnd<usize>>> =
-        Vec::with_capacity(data.len()); // todo! maybe u32 for better space utilization
-    for i in 0..data.len() {
-        let slice = unsafe {
-            std::slice::from_raw_parts_mut(
-                neighbors_memory_ptr.add(i * max_neighbors_same_chunk),
-                max_neighbors_same_chunk,
-            )
-        };
-        vp_tree_neighbors.push(SliceBinaryHeap::new(slice));
-    }
+    let (_memory, mut vp_tree_neighbors) =
+        slice_binary_heap_arena::<DistAnd<usize>>(data.len(), same_chunk_m_max);
+
     let mut vp_tree: Vec<vp_tree::Node> = Vec::with_capacity(data.len());
     for idx in 0..data.len() {
         vp_tree.push(vp_tree::Node { id: idx, dist: 0.0 });
     }
 
-    for vp_tree_iteration in 0..params.num_vp_trees {
+    let data_get = |e: &vp_tree::Node| data.get(e.id);
+    for vp_tree_iteration in 0..params.n_vp_trees {
         // build the vp_tree, chunk it and brute force search the best neighbors per chunk, put them in vp_tree_neighbors list
-        arrange_into_vp_tree(&mut vp_tree, &*data, &mut distance);
+        arrange_into_vp_tree(&mut vp_tree, &data_get, &mut distance, &mut rng);
         for (chunk_i, chunk) in chunks.iter().enumerate() {
             let chunk_size = chunk.range.len();
             let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
@@ -115,30 +107,204 @@ pub fn build_hnsw_by_vp_tree_ensemble(
         }
 
         // add the connections of this vp-tree into the hsnw:
-        for (hnsw_entry, vp_neighbors) in hnsw_entries.iter_mut().zip(vp_tree_neighbors.iter_mut())
+        for (hnsw_entry, vp_neighbors) in hnsw_layer
+            .entries
+            .iter_mut()
+            .zip(vp_tree_neighbors.iter_mut())
         {
             for v in vp_neighbors.as_slice().iter() {
                 if !hnsw_entry.neighbors.iter().any(|e| e.1 == v.1) {
-                    hnsw_entry
-                        .neighbors
-                        .insert_if_better(v.1, v.0, params.max_neighbors_hnsw);
+                    hnsw_entry.neighbors.insert_if_better(*v);
                 }
             }
             vp_neighbors.clear();
         }
     }
 
-    Hnsw {
-        params: Default::default(),
+    let mut layers: heapless::Vec<slice_hnsw::Layer, MAX_LAYERS> = Default::default();
+    layers.push(hnsw_layer).unwrap(); // single layer
+    let build_stats = Stats {
+        num_distance_calculations: distance.num_calculations(),
+        duration: start.elapsed(),
+    };
+    SliceHnsw {
         data,
-        layers: vec![hnsw::Layer {
-            level: 0,
-            entries: hnsw_entries,
-        }],
-        build_stats: Stats {
-            num_distance_calculations: distance.num_calculations(),
-            duration: start.elapsed(),
+        layers,
+        params: HnswParams {
+            level_norm_param: params.level_norm,
+            ef_construction: 0,
+            m_max: params.m_max,
+            m_max_0: params.m_max_0,
+            distance: params.distance,
         },
+        build_stats,
+    }
+}
+
+pub fn build_hnsw_by_vp_tree_ensemble_multi_layer(
+    data: Arc<dyn DatasetT>,
+    params: EnsembleParams,
+) -> SliceHnsw {
+    let start_time = Instant::now();
+    let mut rng = ChaCha20Rng::seed_from_u64(42);
+    let mut layers = super::slice_hnsw::create_hnsw_layers_with_empty_neighbors(
+        data.len(),
+        params.m_max,
+        params.m_max_0,
+        params.level_norm,
+        &mut rng,
+    );
+    let distance = DistanceTracker::new(params.distance);
+    // do the ensemble approach for each layer:
+    for (level, layer) in layers.iter_mut().enumerate() {
+        if layer.entries.len() <= params.max_chunk_size * 2 {
+            // brute force connect neighbors!
+            fill_hnsw_layer_range_by_brute_force(&*data, &distance, layer);
+        } else {
+            fill_hnsw_layer_by_vp_tree_ensemble(&*data, &distance, layer, &params, rng.clone());
+        }
+    }
+    let build_stats = Stats {
+        duration: start_time.elapsed(),
+        num_distance_calculations: distance.num_calculations(),
+    };
+    SliceHnsw {
+        data,
+        layers,
+        params: HnswParams {
+            level_norm_param: params.level_norm,
+            ef_construction: 0,
+            m_max: params.m_max,
+            m_max_0: params.m_max_0,
+            distance: params.distance,
+        },
+        build_stats,
+    }
+}
+
+fn fill_hnsw_layer_range_by_brute_force(
+    data: &dyn DatasetT,
+    distance: &DistanceTracker,
+    layer: &mut super::slice_hnsw::Layer,
+) {
+    let n_entries = layer.entries.len();
+    let mut dist_mat: Vec<f32> = vec![0.0; n_entries * n_entries];
+    let dist_mat_idx = |i: usize, j: usize| i + j * n_entries;
+    for i in 0..n_entries {
+        for j in i + 1..n_entries {
+            let i_data = data.get(layer.entries[i].id);
+            let j_data = data.get(layer.entries[j].id);
+            let dist = distance.distance(i_data, j_data);
+            dist_mat[dist_mat_idx(i, j)] = dist;
+            dist_mat[dist_mat_idx(j, i)] = dist;
+        }
+    }
+    for i in 0..n_entries {
+        let i_neighbors = &mut layer.entries[i].neighbors;
+        for j in 0..n_entries {
+            if j == i {
+                continue;
+            }
+            let dist = dist_mat[dist_mat_idx(i, j)];
+            i_neighbors.insert_if_better(DistAnd(dist, j));
+        }
+    }
+}
+
+fn fill_hnsw_layer_by_vp_tree_ensemble(
+    data: &dyn DatasetT,
+    distance: &DistanceTracker,
+    layer: &mut super::slice_hnsw::Layer,
+    params: &EnsembleParams,
+    mut rng: ChaCha20Rng,
+) {
+    struct VpTreeNode {
+        id: u32, // u32 for better align
+        idx_in_hnsw_layer: u32,
+        dist: f32,
+    }
+
+    impl StoresDistT for VpTreeNode {
+        #[inline(always)]
+        fn dist(&self) -> f32 {
+            self.dist
+        }
+        #[inline(always)]
+        fn set_dist(&mut self, dist: f32) {
+            self.dist = dist
+        }
+    }
+
+    let mut vp_tree: Vec<VpTreeNode> = Vec::with_capacity(data.len());
+    for (i, entry) in layer.entries.iter().enumerate() {
+        vp_tree.push(VpTreeNode {
+            id: entry.id as u32,
+            idx_in_hnsw_layer: i as u32,
+            dist: 0.0,
+        });
+    }
+    let n_entries = layer.entries.len();
+    let max_chunk_size = params.max_chunk_size;
+    let same_chunk_m_max = params.same_chunk_m_max;
+    let chunks = make_chunks(n_entries, max_chunk_size);
+    let mut chunk_dst_mat: Vec<f32> = vec![0.0; max_chunk_size * max_chunk_size];
+    let data_get = |e: &VpTreeNode| data.get(e.id as usize);
+
+    let (_memory, mut vp_tree_neighbors) =
+        slice_binary_heap_arena::<DistAnd<usize>>(n_entries, same_chunk_m_max);
+    // Note: The vp_tree_neighbors are aligned with the nodes in the vp_tree (vp_tree[i] has neighbors stored in vp_tree_neighbors[i]),
+    // but the indices stored in the neighbors lists, refer to indices of the hnsw layer!
+
+    for _ in 0..params.n_vp_trees {
+        arrange_into_vp_tree(&mut vp_tree, &data_get, distance, &mut rng);
+
+        for (chunk_i, chunk) in chunks.iter().enumerate() {
+            let chunk_size = chunk.range.len();
+            let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
+            let chunk_nodes = &vp_tree[chunk.range.clone()];
+            assert!(chunk_size >= max_chunk_size / 2);
+            assert!(chunk_size <= max_chunk_size);
+
+            // calculate distances between all the nodes in this chunk. (clearing chunk_dst_mat not necessary, because everything relevant should be overwritten).
+            for i in 0..chunk_size {
+                for j in i + 1..chunk_size {
+                    let i_data = data.get(chunk_nodes[i].id as usize);
+                    let j_data = data.get(chunk_nodes[j].id as usize);
+                    let dist = distance.distance(i_data, j_data);
+                    chunk_dst_mat[chunk_dst_mat_idx(i, j)] = dist;
+                    chunk_dst_mat[chunk_dst_mat_idx(j, i)] = dist;
+                }
+            }
+            // connect each node in the chunk to each other node (except itself)
+            for i in 0..chunk_size {
+                let i_neighbors = &mut vp_tree_neighbors[chunk.range.start + i];
+                for j in 0..chunk_size {
+                    if j == i {
+                        continue;
+                    }
+                    let dist = chunk_dst_mat[chunk_dst_mat_idx(i, j)];
+                    let j_idx_in_hnsw = chunk_nodes[j].idx_in_hnsw_layer as usize;
+                    i_neighbors.insert_if_better(DistAnd(dist, j_idx_in_hnsw));
+                }
+
+                if_tracking! {
+                    Tracking.pt_meta(chunk_nodes[i].id as usize).chunk_on_level.push(chunk_i);
+                }
+            }
+        }
+
+        for (node, neighbors) in vp_tree.iter().zip(vp_tree_neighbors.iter_mut()) {
+            let hnsw_entry = &mut layer.entries[node.idx_in_hnsw_layer as usize];
+            for &DistAnd(dist, idx_in_hnsw) in neighbors.iter() {
+                // awkward, but idk how to filter out duplicates mor efficiently
+                if !hnsw_entry.neighbors.iter().any(|e| e.1 == idx_in_hnsw) {
+                    hnsw_entry
+                        .neighbors
+                        .insert_if_better(DistAnd(dist, idx_in_hnsw));
+                }
+            }
+            neighbors.clear();
+        }
     }
 }
 
@@ -166,7 +332,9 @@ pub fn build_hnsw_by_transition(data: Arc<dyn DatasetT>, params: TransitionParam
     for idx in 0..data.len() {
         vp_tree.push(vp_tree::Node { id: idx, dist: 0.0 });
     }
-    arrange_into_vp_tree(&mut vp_tree, &*data, &mut distance);
+
+    let data_get = |e: &vp_tree::Node| data.get(e.id);
+    arrange_into_vp_tree(&mut vp_tree, &data_get, &mut distance, &mut rng);
 
     // create an hnsw layer with same order as vp-tree but no neighbors:
     let mut entries: Vec<hnsw::LayerEntry> = Vec::with_capacity(data.len());

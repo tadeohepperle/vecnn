@@ -14,21 +14,30 @@ use crate::{
     dataset::DatasetT,
     distance::DistanceTracker,
     hnsw::{DistAnd, HnswParams},
-    utils::SliceBinaryHeap,
-    vp_tree::Stats,
+    utils::Stats,
+    utils::{SliceBinaryHeap, SlicesMemory},
 };
 
-const MAX_LAYERS: usize = 30;
-pub struct Hnsw2 {
+pub const MAX_LAYERS: usize = 30;
+pub struct SliceHnsw {
     pub data: Arc<dyn DatasetT>,
-    layers: heapless::Vec<Layer, MAX_LAYERS>,
+    pub layers: heapless::Vec<Layer, MAX_LAYERS>,
     pub params: HnswParams,
     pub build_stats: Stats,
 }
 
-impl Hnsw2 {
+impl SliceHnsw {
     pub fn new(data: Arc<dyn DatasetT>, params: HnswParams) -> Self {
         construct_hnsw(data, params)
+    }
+
+    pub fn new_empty(data: Arc<dyn DatasetT>, params: HnswParams) -> Self {
+        SliceHnsw {
+            params,
+            data,
+            layers: Default::default(),
+            build_stats: Stats::default(),
+        }
     }
 
     /// the usize's returned are actual data ids, not layers indices!
@@ -41,24 +50,24 @@ impl Hnsw2 {
         let top_layer = self.layers.len() - 1;
         for l in (1..=top_layer).rev() {
             let layer = &self.layers[l];
-            search_layer(
-                &*self.data,
-                &distance,
-                &mut buffers,
-                layer,
-                q_data,
-                1,
-                &[ep_idx],
-            );
-            let this_layer_ep_idx = buffers.found.as_slice()[0].1;
-            // let this_layer_ep_idx = search_layer_ef_1(
+            // search_layer(
             //     &*self.data,
             //     &distance,
-            //     &mut buffers.visited,
+            //     &mut buffers,
             //     layer,
             //     q_data,
-            //     ep_idx,
+            //     1,
+            //     &[ep_idx],
             // );
+            // let this_layer_ep_idx = buffers.found.as_slice()[0].1;
+            let this_layer_ep_idx = search_layer_ef_1(
+                &*self.data,
+                &distance,
+                &mut buffers.visited,
+                layer,
+                q_data,
+                ep_idx,
+            );
             ep_idx = layer.entries[this_layer_ep_idx].lower_level_idx;
         }
         let layer_0 = &self.layers[0];
@@ -91,50 +100,54 @@ impl Hnsw2 {
     }
 }
 
+/// This layer can be used in two different ways:
+///
+/// Way 1:
+/// - set `entries_cap`
+/// - call `allocate_neighbors_memory`
+/// - for each entry that should be added, call `add_entry_assuming_allocated_memory`
+///
+/// Way 2:
+/// - for each entry call `add_entry_with_uninit_neighbors`
+/// - once all entries are added, call `allocate_neighbors_memory_and_suballocate_neighbors_lists`
 #[derive(Debug)]
 pub struct Layer {
-    allocation_ptr: NonNull<Neighbor>, // ptr to memory region of size: entries_cap * m_max * size_of<Neighbor>
-    entries_cap: usize,                // how many entries is the layer gonna hold?
-    m_max: usize,                      // max many neighbors per entry
-    entries: Vec<LayerEntry>,
+    pub memory: SlicesMemory<Neighbor>,
+    pub m_max: usize,       // max many neighbors per entry
+    pub entries_cap: usize, // how many entries should this layer be max able to hold
+    pub entries: Vec<LayerEntry>,
 }
 
 impl Layer {
-    pub fn new() -> Self {
-        // could maybe estimate based on layer number how many elements make it up to here and preallocate entries Vec with okay cap.
+    /// just leave entries_cap_hint at 0 if you don't know yet.
+    pub fn new(m_max: usize) -> Self {
+        assert!(m_max != 0);
+        // Potential improvement: could maybe estimate based on layer number how many elements make it up to here and preallocate entries Vec with okay cap.
         Layer {
-            allocation_ptr: NonNull::dangling(),
+            memory: SlicesMemory::new_uninit(),
+            m_max,
             entries_cap: 0,
-            m_max: 0,
             entries: vec![],
         }
     }
 
-    fn allocation_layout(&self) -> std::alloc::Layout {
-        std::alloc::Layout::array::<Neighbor>(self.m_max * self.entries_cap).unwrap()
-    }
-
     /// should be called *AFTER* the layer already contains all of the elements.
     /// After calling this, the number of elements in this layer should not change anymore, so you can start modifying the neighbors of the elements.
-    fn allocate_neighbors_memory(&mut self) {
-        assert!(self.m_max != 0);
-        assert!(self.entries_cap != 0);
-        let ptr = unsafe { std::alloc::alloc(self.allocation_layout()) };
-        self.allocation_ptr = NonNull::new(ptr as *mut Neighbor).expect("Allocation failed.");
-        self.entries = Vec::with_capacity(self.entries_cap);
+    pub fn allocate_neighbors_memory(&mut self) {
+        self.memory = SlicesMemory::new(self.entries_cap, self.m_max);
+        if self.entries.capacity() == 0 {
+            self.entries = Vec::with_capacity(self.entries_cap);
+        }
     }
 
-    /// returns the idx of this entry in `self.entries`
-    fn push_entry(&mut self, id: usize, lower_level_idx: usize) -> usize {
+    /// returns the idx of this entry in this layer
+    pub fn add_entry_assuming_allocated_memory(
+        &mut self,
+        id: usize,
+        lower_level_idx: usize,
+    ) -> usize {
         // allocate a new neighbors list from the big slice that this layer owns (which contains enough memory from the start to hold exactly all elements)
-        let slice = unsafe {
-            std::slice::from_raw_parts_mut(
-                self.allocation_ptr
-                    .as_ptr()
-                    .add(self.entries.len() * self.m_max),
-                self.m_max,
-            )
-        };
+        let slice = unsafe { self.memory.static_slice_at(self.entries.len()) };
         let entry = LayerEntry {
             id,
             lower_level_idx,
@@ -144,15 +157,29 @@ impl Layer {
         self.entries.push(entry);
         idx
     }
-}
 
-impl Drop for Layer {
-    fn drop(&mut self) {
-        unsafe {
-            std::alloc::dealloc(
-                self.allocation_ptr.as_ptr() as *mut u8,
-                self.allocation_layout(),
-            );
+    /// returns the idx of this entry in this layer
+    #[inline]
+    pub fn add_entry_with_uninit_neighbors(&mut self, id: usize, lower_level_idx: usize) -> usize {
+        let entry = LayerEntry {
+            id,
+            lower_level_idx,
+            neighbors: unsafe { Neighbors::new_uninitialized() },
+        };
+        let idx = self.entries.len();
+        self.entries.push(entry);
+        idx
+    }
+
+    /// Assumes all the neighbors lists are uninitialized.
+    /// Looks at how many entries are there, allocated the needed memory,
+    /// then gives out a slice of this memory to each entry to keep its neighbors list.
+    pub fn allocate_neighbors_memory_and_suballocate_neighbors_lists(&mut self) {
+        self.entries_cap = self.entries.len();
+        self.allocate_neighbors_memory();
+        for (i, entry) in self.entries.iter_mut().enumerate() {
+            let slice = unsafe { self.memory.static_slice_at(i) };
+            entry.neighbors = Neighbors::new(slice)
         }
     }
 }
@@ -160,25 +187,25 @@ impl Drop for Layer {
 #[derive(Debug)]
 #[repr(C)]
 pub struct LayerEntry {
-    id: usize,
-    lower_level_idx: usize,
-    neighbors: Neighbors,
+    pub id: usize,
+    pub lower_level_idx: usize,
+    pub neighbors: Neighbors,
 }
 
 pub type Neighbor = DistAnd<usize>;
 pub type Neighbors = SliceBinaryHeap<'static, Neighbor>;
 
-fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams) -> Hnsw2 {
+fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams) -> SliceHnsw {
     let start_time = Instant::now();
     // /////////////////////////////////////////////////////////////////////////////
     // Step 1: Create all the layers
     // /////////////////////////////////////////////////////////////////////////////
     let mut rng = ChaCha20Rng::seed_from_u64(42);
     let data_len = data.len();
-    let (mut layers, insert_levels) =
-        determine_insert_levels_and_prepare_layers(data_len, &params, &mut rng);
-    // we assume that the layers have len 0, and just ignore all the empty layers that already have been preallocated.
 
+    let (mut layers, insert_levels) =
+        determine_insert_levels_and_allocate_layers_memory(data_len, &params, &mut rng);
+    // we assume that the layers have len 0, and just ignore all the empty layers that already have been preallocated.
     let mut ctx = InsertCtx {
         distance: DistanceTracker::new(params.distance),
         params,
@@ -199,7 +226,7 @@ fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams) -> Hnsw2 {
         duration: start_time.elapsed(),
     };
 
-    Hnsw2 {
+    SliceHnsw {
         data,
         layers,
         params,
@@ -218,7 +245,7 @@ fn insert_element(ctx: &mut InsertCtx<'_>, id: usize, insert_level: usize) {
     // /////////////////////////////////////////////////////////////////////////////
     let mut lower_level_idx: usize = usize::MAX;
     for l in 0..=insert_level {
-        lower_level_idx = ctx.layers[l].push_entry(id, lower_level_idx);
+        lower_level_idx = ctx.layers[l].add_entry_assuming_allocated_memory(id, lower_level_idx);
     }
 
     // /////////////////////////////////////////////////////////////////////////////
@@ -520,7 +547,7 @@ impl SearchBuffers {
 }
 
 /// returns layers and insert level of each node in the dataset
-fn determine_insert_levels_and_prepare_layers(
+fn determine_insert_levels_and_allocate_layers_memory(
     data_len: usize,
     params: &HnswParams,
     rng: &mut ChaCha20Rng,
@@ -532,13 +559,13 @@ fn determine_insert_levels_and_prepare_layers(
         insert_levels.push(level);
         for l in 0..=level {
             if l >= layers.len() {
-                let mut layer = Layer::new();
-                layer.entries_cap = 1;
-                layer.m_max = if layers.len() == 0 {
+                let m_max = if layers.len() == 0 {
                     params.m_max_0
                 } else {
                     params.m_max
                 };
+                let mut layer = Layer::new(m_max);
+                layer.entries_cap = 1;
                 layers.push(layer).unwrap();
             } else {
                 layers[l].entries_cap += 1;
@@ -549,6 +576,59 @@ fn determine_insert_levels_and_prepare_layers(
         layer.allocate_neighbors_memory();
     }
     (layers, insert_levels)
+}
+
+/// Note: the elements will get inserted at random heights and point to lower level indices.
+/// Memory for the neighbors will also be allocated sufficiently, but all neighbors lists will be fresh and empty.
+pub fn create_hnsw_layers_with_empty_neighbors(
+    data_len: usize,
+    m_max: usize,
+    m_max_0: usize,
+    level_norm_param: f32,
+    rng: &mut ChaCha20Rng,
+) -> heapless::Vec<Layer, MAX_LAYERS> {
+    let mut layers: heapless::Vec<Layer, MAX_LAYERS> = Default::default();
+
+    // exit early for the special case that only 1 layer is needed (skip all the random level selection stuff):
+    if level_norm_param == 0.0 {
+        let mut layer = Layer::new(m_max);
+        layer.entries_cap = data_len;
+        layer.allocate_neighbors_memory();
+        for id in 0..data_len {
+            layer.add_entry_assuming_allocated_memory(id, usize::MAX);
+        }
+        layers.push(layer).unwrap();
+        return layers;
+    }
+
+    // create as much layers as possible, such that no checks are needed in the hot loop below:
+    for level in 0..MAX_LAYERS {
+        let m_max = if level == 0 { m_max_0 } else { m_max };
+        layers.push(Layer::new(m_max)).unwrap();
+    }
+    // determine a random level for each data point and insert it with uninitialized neighbors into the hnsw:
+    for id in 0..data_len {
+        let level = random_level(level_norm_param, rng);
+        let mut lower_level_idx = usize::MAX;
+        for l in 0..=level {
+            lower_level_idx = layers[l].add_entry_with_uninit_neighbors(id, lower_level_idx);
+        }
+    }
+    // remove empty layers that were not used:
+    for level in (0..MAX_LAYERS).rev() {
+        if layers[level].entries.len() == 0 {
+            layers.pop();
+        } else {
+            break;
+        }
+    }
+    // now all layers (below as well) should have at least one entry. Allocate all the neighbors lists per layer.
+    for layer in layers.iter_mut() {
+        assert!(layer.entries.len() > 0);
+        layer.allocate_neighbors_memory_and_suballocate_neighbors_lists();
+    }
+
+    layers
 }
 
 #[inline]

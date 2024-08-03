@@ -5,7 +5,7 @@ use vecnn::{
     distance::{cos, dot, l1, l2, Distance},
     hnsw::HnswParams,
     transition::{StitchMode, TransitionParams},
-    vp_tree::Stats,
+    utils::Stats,
 };
 
 use crate::utils::{pyarray1_to_slice, KnnResult};
@@ -48,7 +48,7 @@ unsafe impl Send for Hnsw {}
 
 enum Inner {
     OldImpl(vecnn::hnsw::Hnsw),
-    NewImpl(vecnn::hnsw2::Hnsw2),
+    NewImpl(vecnn::slice_hnsw::SliceHnsw),
 }
 
 impl Inner {
@@ -85,7 +85,7 @@ impl Hnsw {
             m_max_0,
             distance: dist_from_str(&distance_fn)?,
         };
-        let hnsw = vecnn::hnsw2::Hnsw2::new(data.as_dyn_dataset(), params);
+        let hnsw = vecnn::slice_hnsw::SliceHnsw::new(data.as_dyn_dataset(), params);
         Ok(Hnsw(Inner::NewImpl(hnsw)))
         // let hnsw = vecnn::hnsw::Hnsw::new(data.as_dyn_dataset(), params);
         // Ok(Hnsw(Inner::OldImpl(hnsw)))

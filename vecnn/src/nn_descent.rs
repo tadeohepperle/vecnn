@@ -16,7 +16,7 @@ use crate::{
     distance::{l2, Distance, DistanceFn, DistanceTracker},
     hnsw::DistAnd,
     if_tracking,
-    vp_tree::Stats,
+    utils::Stats,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson)]

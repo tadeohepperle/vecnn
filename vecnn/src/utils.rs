@@ -6,7 +6,13 @@ use crate::{
     hnsw::DistAnd,
     Float,
 };
-use std::{collections::BinaryHeap, mem::ManuallyDrop, ptr, sync::Arc};
+use std::{
+    collections::BinaryHeap,
+    mem::ManuallyDrop,
+    ptr::{self, NonNull},
+    sync::Arc,
+    time::Duration,
+};
 
 pub fn linear_knn_search(
     data: &dyn DatasetT,
@@ -150,16 +156,100 @@ impl<T: Ord> BinaryHeapExt for BinaryHeap<T> {
     }
 }
 
-pub use binary_heap::SliceBinaryHeap;
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Stats {
+    pub num_distance_calculations: usize,
+    pub duration: Duration,
+}
+
+pub use binary_heap::{slice_binary_heap_arena, SliceBinaryHeap};
+
+/// Points to a memory region of same sized slices of T
+#[derive(Debug)]
+pub struct SlicesMemory<T> {
+    ptr: NonNull<T>,
+    n_slices: usize,
+    n_elements_per_slice: usize,
+}
+unsafe impl<T> Send for SlicesMemory<T> {}
+
+impl<T> SlicesMemory<T> {
+    pub fn new_uninit() -> Self {
+        Self {
+            ptr: NonNull::dangling(),
+            n_slices: 0,
+            n_elements_per_slice: 0,
+        }
+    }
+
+    pub fn new(n_slices: usize, n_elements_per_slice: usize) -> Self {
+        assert!(n_slices != 0);
+        assert!(n_elements_per_slice != 0);
+        let layout = std::alloc::Layout::array::<T>(n_slices * n_elements_per_slice).unwrap();
+        let ptr = unsafe { std::alloc::alloc(layout) };
+        Self {
+            ptr: NonNull::new(ptr as *mut T).expect("Allocation of SlicesMemory failed"),
+            n_slices,
+            n_elements_per_slice,
+        }
+    }
+    #[inline(always)]
+    pub unsafe fn slice_at(&mut self, i: usize) -> &mut [T] {
+        std::slice::from_raw_parts_mut(
+            self.ptr.as_ptr().add(i * self.n_elements_per_slice),
+            self.n_elements_per_slice,
+        )
+    }
+
+    /// Useful when storing the slices somewhere else, make sure to store the SlicesMemory for the same lifetime as well.
+    #[inline(always)]
+    pub unsafe fn static_slice_at(&mut self, i: usize) -> &'static mut [T] {
+        std::slice::from_raw_parts_mut(
+            self.ptr.as_ptr().add(i * self.n_elements_per_slice),
+            self.n_elements_per_slice,
+        )
+    }
+}
+
+impl<T> Drop for SlicesMemory<T> {
+    fn drop(&mut self) {
+        if self.ptr != NonNull::dangling() {
+            let layout =
+                std::alloc::Layout::array::<T>(self.n_slices * self.n_elements_per_slice).unwrap();
+            unsafe {
+                std::alloc::dealloc(self.ptr.as_ptr() as *mut u8, layout);
+            }
+        }
+    }
+}
 
 mod binary_heap {
     use std::{fmt::Debug, mem::ManuallyDrop, ptr};
 
+    use super::SlicesMemory;
+
+    pub fn slice_binary_heap_arena<T: Ord>(
+        n_slices: usize,
+        n_elements_per_slice: usize,
+    ) -> (SlicesMemory<T>, Vec<SliceBinaryHeap<'static, T>>) {
+        let mut memory: SlicesMemory<T> = SlicesMemory::new(n_slices, n_elements_per_slice);
+        let mut binary_heaps: Vec<SliceBinaryHeap<'_, T>> = Vec::with_capacity(n_slices);
+        unsafe {
+            binary_heaps.set_len(n_slices);
+            for i in 0..n_slices {
+                let heap = binary_heaps.get_unchecked_mut(i);
+                heap.len = 0;
+                heap.slice = memory.static_slice_at(i);
+            }
+        }
+        (memory, binary_heaps)
+    }
+
     /// Has the property that the max item is always kept as the first element of the slice
     pub struct SliceBinaryHeap<'a, T: Ord> {
         /// Note: slices len is heaps capacity.
-        slice: &'a mut [T],
-        len: usize,
+        pub slice: &'a mut [T],
+        pub len: usize,
     }
 
     impl<'a, T: Ord + Debug> Debug for SliceBinaryHeap<'a, T> {
@@ -184,7 +274,7 @@ mod binary_heap {
 
     impl<'a, T: Ord> SliceBinaryHeap<'a, T> {
         pub fn new(slice: &'a mut [T]) -> Self {
-            assert!(slice.len() != 0);
+            debug_assert!(slice.len() != 0);
             SliceBinaryHeap { slice, len: 0 }
         }
 

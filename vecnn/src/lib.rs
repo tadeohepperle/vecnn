@@ -4,9 +4,9 @@
 
 pub mod dataset;
 pub mod distance;
-pub mod hnsw2;
 pub mod nn_descent;
 pub mod schubert_distance;
+pub mod slice_hnsw;
 pub mod transition;
 pub mod utils;
 pub mod vp_tree;

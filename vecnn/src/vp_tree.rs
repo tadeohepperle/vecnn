@@ -13,7 +13,7 @@ use crate::{
     dataset::DatasetT,
     distance::{Distance, DistanceFn, DistanceTracker},
     hnsw::DistAnd,
-    utils::KnnHeap,
+    utils::{KnnHeap, Stats},
     Float,
 };
 
@@ -64,14 +64,6 @@ pub struct VpTree {
     pub distance: Distance,
     pub build_stats: Stats,
 }
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Stats {
-    pub num_distance_calculations: usize,
-    pub duration: Duration,
-}
-
-impl VpTree {}
 
 impl VpTree {
     pub fn new(data: Arc<dyn DatasetT>, distance: Distance) -> Self {
@@ -346,8 +338,10 @@ impl VpTreeBuilder {
     pub fn build(mut self) -> VpTree {
         let tracker = DistanceTracker::new(self.distance);
         let start = Instant::now();
+        let mut rng = ChaCha20Rng::seed_from_u64(42);
         // arrange items in self.tmp into a vp tree
-        arrange_into_vp_tree(&mut self.nodes, &*self.data, &tracker);
+        let data_get = |e: &Node| self.data.get(e.id);
+        arrange_into_vp_tree(&mut self.nodes, &data_get, &tracker, &mut rng);
 
         let build_stats = Stats {
             num_distance_calculations: tracker.num_calculations(),
@@ -362,44 +356,65 @@ impl VpTreeBuilder {
     }
 }
 
-pub fn arrange_into_vp_tree(tmp: &mut [Node], data: &dyn DatasetT, distance: &DistanceTracker) {
+pub trait StoresDistT {
+    fn dist(&self) -> f32;
+    fn set_dist(&mut self, dist: f32);
+}
+
+impl StoresDistT for Node {
+    #[inline(always)]
+    fn dist(&self) -> f32 {
+        self.dist
+    }
+    #[inline(always)]
+    fn set_dist(&mut self, dist: f32) {
+        self.dist = dist;
+    }
+}
+
+pub fn arrange_into_vp_tree<'a, T: StoresDistT>(
+    tmp: &mut [T],
+    data_get: &'a impl Fn(&T) -> &'a [f32],
+    distance: &DistanceTracker,
+    rng: &mut rand_chacha::ChaCha20Rng,
+) {
     // early return if there are only 0,1 or 2 elements left
     match tmp.len() {
         0 => return,
         1 => {
-            tmp[0].dist = 0.0;
+            tmp[0].set_dist(0.0);
             return;
         }
         2 => {
-            let pt_0 = data.get(tmp[0].id);
-            let pt_1 = data.get(tmp[1].id);
-            tmp[0].dist = distance.distance(pt_0, pt_1);
-            tmp[1].dist = 0.0;
+            let pt_0 = data_get(&tmp[0]);
+            let pt_1 = data_get(&tmp[1]);
+            tmp[0].set_dist(distance.distance(pt_0, pt_1));
+            tmp[1].set_dist(0.0);
             return;
         }
         _ => {}
     }
     // select a random index and swap it with the first element:
-    tmp.swap(select_random_point(tmp, data), 0);
-    let vp_pt = data.get(tmp[0].id);
+    tmp.swap(select_random_point(tmp, rng), 0);
+    let vp_pt = data_get(&tmp[0]);
     // calculate distances to each other element:
     for i in 1..tmp.len() {
         let other = &mut tmp[i];
-        let other_pt = data.get(other.id);
-        other.dist = distance.distance(vp_pt, other_pt);
+        let other_pt = data_get(other);
+        other.set_dist(distance.distance(vp_pt, other_pt));
     }
     // partition into points closer and further to median:
     let median_i = quick_select_median_dist(&mut tmp[1..]) + 1;
     // assert!(median_i >= 2);
     // set the median distance on the root node, then build left and right sub-trees
-    let median_dist = tmp[median_i].dist;
-    tmp[0].dist = median_dist;
-    arrange_into_vp_tree(&mut tmp[1..median_i], data, distance);
-    arrange_into_vp_tree(&mut tmp[median_i..], data, distance);
+    let median_dist = tmp[median_i].dist();
+    tmp[0].set_dist(median_dist);
+    arrange_into_vp_tree(&mut tmp[1..median_i], data_get, distance, rng);
+    arrange_into_vp_tree(&mut tmp[median_i..], data_get, distance, rng);
 }
 
-fn select_random_point(tmp: &[Node], _data: &dyn DatasetT) -> usize {
-    let mut rng = ChaCha20Rng::seed_from_u64(42);
+#[inline]
+fn select_random_point<T>(tmp: &[T], rng: &mut rand_chacha::ChaCha20Rng) -> usize {
     // right now this is very simple, todo! make configurable later, use data to find good points
     rng.gen_range(0..tmp.len())
 }
@@ -408,13 +423,13 @@ fn select_random_point(tmp: &[Node], _data: &dyn DatasetT) -> usize {
 /// Returns an index into the second partition.
 ///
 /// Second partition's size is always >= first partition.
-fn quick_select_median_dist(tmp: &mut [Node]) -> usize {
+fn quick_select_median_dist<T: StoresDistT>(tmp: &mut [T]) -> usize {
     let rank = first_element_idx_of_second_part(tmp.len());
     _quick_select(tmp, rank);
     return rank;
 
     /// Note: idx rank will be part of second partition.
-    fn _quick_select(tmp: &mut [Node], rank: usize) {
+    fn _quick_select<T: StoresDistT>(tmp: &mut [T], rank: usize) {
         if tmp.len() <= 1 {
             return;
         }
@@ -430,18 +445,18 @@ fn quick_select_median_dist(tmp: &mut [Node]) -> usize {
     }
 
     /// the i returned here is the last index of the first partition
-    fn _partition(tmp: &mut [Node]) -> usize {
+    fn _partition<T: StoresDistT>(tmp: &mut [T]) -> usize {
         let pivot_i = 0;
-        let pivot_dist = tmp[pivot_i].dist;
+        let pivot_dist = tmp[pivot_i].dist();
         let mut i: i32 = -1;
         let mut j = tmp.len();
         loop {
             i += 1;
-            while tmp[i as usize].dist < pivot_dist {
+            while tmp[i as usize].dist() < pivot_dist {
                 i += 1;
             }
             j -= 1;
-            while tmp[j].dist > pivot_dist {
+            while tmp[j].dist() > pivot_dist {
                 j -= 1;
             }
             if i as usize >= j {

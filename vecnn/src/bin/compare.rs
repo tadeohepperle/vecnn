@@ -14,47 +14,100 @@ use rand::{seq::SliceRandom, thread_rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use vecnn::{
     dataset::{DatasetT, FlatDataSet},
-    distance::{cos, dot, l2, Distance::*, DistanceFn},
-    hnsw::{Hnsw, HnswParams},
-    hnsw2::Hnsw2,
-    nn_descent::{RNNGraph, RNNGraphParams},
-    transition::{
-        build_hnsw_by_transition, build_hnsw_by_vp_tree_ensemble, EnsembleTransitionParams,
-        StitchMode, TransitionParams,
+    distance::{
+        cos, dot, l2,
+        Distance::{self, *},
+        DistanceFn,
     },
-    utils::{linear_knn_search, random_data_set},
-    vp_tree::Stats,
+    hnsw::{Hnsw, HnswParams},
+    nn_descent::{RNNGraph, RNNGraphParams},
+    slice_hnsw::SliceHnsw,
+    transition::{
+        build_hnsw_by_transition, build_hnsw_by_vp_tree_ensemble,
+        build_hnsw_by_vp_tree_ensemble_multi_layer, EnsembleParams, StitchMode, TransitionParams,
+    },
+    utils::{linear_knn_search, random_data_set, Stats},
 };
 
 const RNG_SEED: u64 = 21321424198;
 fn main() {
-    let same_chunk_max_neighbors: usize = 20;
-    let neg_fraction: f32 = 0.3;
+    let transition_params = TransitionParams {
+        max_chunk_size: 256,
+        same_chunk_max_neighbors: 20,
+        neg_fraction: 0.3,
+        keep_fraction: 0.1,
+        x: 4,
+        stop_after_stitching_n_chunks: None,
+        distance: Distance::Dot,
+        stitch_mode: StitchMode::BestXofRandomXTimesX,
+    };
 
     let n = 6000;
     let k = 30;
     let k_samples = 300;
     let mut models: Vec<ModelParams> = vec![];
     for ef_construction in [50] {
-        for n in [200000] {
+        for n in [10000] {
             eval_models_on_laion(
                 n,
                 k_samples,
                 &[
-                    ModelParams::Hnsw(HnswParams {
-                        level_norm_param: 0.5,
-                        ef_construction,
-                        m_max: 20,
+                    // ModelParams::Hnsw(HnswParams {
+                    //     level_norm_param: 0.5,
+                    //     ef_construction,
+                    //     m_max: 20,
+                    //     m_max_0: 40,
+                    //     distance: Dot,
+                    // }),
+                    // ModelParams::Hnsw2(HnswParams {
+                    //     level_norm_param: 0.5,
+                    //     ef_construction,
+                    //     m_max: 20,
+                    //     m_max_0: 40,
+                    //     distance: Dot,
+                    // }),
+                    // ModelParams::RNNGraph(RNNGraphParams {
+                    //     outer_loops: 3,
+                    //     inner_loops: 7,
+                    //     max_neighbors_after_reverse_pruning: 20,
+                    //     initial_neighbors: 20,
+                    //     distance: Distance::Dot,
+                    // }),
+                    ModelParams::EnsembleTransition(EnsembleParams {
+                        n_vp_trees: 3,
+                        max_chunk_size: 256,
+                        same_chunk_m_max: 20,
+                        m_max: 40,
                         m_max_0: 40,
-                        distance: Dot,
+                        distance: Distance::Dot,
+                        level_norm: 0.0,
                     }),
-                    ModelParams::Hnsw2(HnswParams {
-                        level_norm_param: 0.5,
-                        ef_construction,
-                        m_max: 20,
+                    ModelParams::EnsembleTransition(EnsembleParams {
+                        n_vp_trees: 3,
+                        max_chunk_size: 256,
+                        same_chunk_m_max: 20,
+                        m_max: 40,
                         m_max_0: 40,
-                        distance: Dot,
+                        distance: Distance::Dot,
+                        level_norm: 0.4,
                     }),
+                    // bad // ModelParams::Transition(TransitionParams {
+                    // bad //     stitch_mode: StitchMode::RandomNegToPosCenterAndBack,
+                    // bad //     ..transition_params
+                    // bad // }),
+                    // bad
+                    // bad // ModelParams::Transition(TransitionParams {
+                    // bad //     stitch_mode: StitchMode::RandomSubsetOfSubset,
+                    // bad //     ..transition_params
+                    // bad // }),
+                    // ModelParams::Transition(TransitionParams {
+                    // stitch_mode: StitchMode::RandomNegToRandomPosAndBack,
+                    // ..transition_params
+                    // }),
+                    // ModelParams::Transition(TransitionParams {
+                    // stitch_mode: StitchMode::DontStarveXXSearch,
+                    // ..transition_params
+                    // }),
                 ],
                 SearchParams {
                     k,
@@ -129,7 +182,7 @@ enum ModelParams {
     Hnsw(HnswParams),
     Hnsw2(HnswParams),
     Transition(TransitionParams),
-    EnsembleTransition(EnsembleTransitionParams),
+    EnsembleTransition(EnsembleParams),
     RNNGraph(RNNGraphParams),
 }
 
@@ -147,7 +200,7 @@ impl ModelParams {
 
 enum Model {
     Hnsw(Hnsw),
-    Hnsw2(Hnsw2),
+    Hnsw2(SliceHnsw),
     HnswTransition(Hnsw),
     VpTreeEnsemble(Hnsw),
     RNNGraph(RNNGraph),
@@ -176,13 +229,6 @@ impl Model {
 
     pub fn hnsw_transition(data: Arc<dyn DatasetT>, params: TransitionParams) -> Self {
         Self::HnswTransition(build_hnsw_by_transition(data, params))
-    }
-
-    pub fn vp_tree_ensemble_transition(
-        data: Arc<dyn DatasetT>,
-        params: EnsembleTransitionParams,
-    ) -> Self {
-        Self::VpTreeEnsemble(build_hnsw_by_vp_tree_ensemble(data, params))
     }
 
     pub fn rnn_graph(data: Arc<dyn DatasetT>, params: RNNGraphParams) -> Self {
@@ -334,9 +380,17 @@ fn eval_models(
             ModelParams::Transition(params) => Model::hnsw_transition(data.clone(), params),
             ModelParams::RNNGraph(params) => Model::rnn_graph(data, params),
             ModelParams::EnsembleTransition(params) => {
-                Model::vp_tree_ensemble_transition(data, params)
+                // todo! a bit hacky!! move the specialization to the transition module instead.
+                // if params.level_norm == 0.0 {
+                //     Model::Hnsw(build_hnsw_by_vp_tree_ensemble(data, params))
+                // } else {
+                //     Model::Hnsw2(build_hnsw_by_vp_tree_ensemble_multi_layer(data, params))
+                // }
+
+                // Model::Hnsw2(build_hnsw_by_vp_tree_ensemble(data, params))
+                Model::Hnsw2(build_hnsw_by_vp_tree_ensemble_multi_layer(data, params))
             }
-            ModelParams::Hnsw2(params) => Model::Hnsw2(Hnsw2::new(data, params)),
+            ModelParams::Hnsw2(params) => Model::Hnsw2(SliceHnsw::new(data, params)),
         };
         models.push(model);
     }

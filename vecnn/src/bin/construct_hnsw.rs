@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 use vecnn::{
     distance::{self, cos, dot, l2, Distance},
     hnsw::{Hnsw, HnswParams},
-    hnsw2::Hnsw2,
+    slice_hnsw::SliceHnsw,
     utils::{linear_knn_search, random_data_set},
 };
 

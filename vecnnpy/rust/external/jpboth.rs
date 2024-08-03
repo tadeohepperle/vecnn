@@ -9,7 +9,7 @@ use space::Neighbor;
 use vecnn::{
     dataset::DatasetT,
     distance::{dot, l2},
-    vp_tree::Stats,
+    utils::Stats,
 };
 
 type ParameterizedJpBothHnsw = jpboth_hnsw::hnsw::Hnsw<'static, f32, DistDot>;
