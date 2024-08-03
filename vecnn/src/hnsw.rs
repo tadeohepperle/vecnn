@@ -147,8 +147,8 @@ impl LayerEntry {
 }
 
 impl Hnsw {
-    pub fn new(data: Arc<dyn DatasetT>, params: HnswParams) -> Self {
-        construct_hnsw(data, params)
+    pub fn new(data: Arc<dyn DatasetT>, params: HnswParams, seed: u64) -> Self {
+        construct_hnsw(data, params, seed)
     }
     pub fn new_empty(data: Arc<dyn DatasetT>, params: HnswParams) -> Self {
         Hnsw {
@@ -199,7 +199,7 @@ impl Hnsw {
     }
 }
 
-fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams) -> Hnsw {
+fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams, seed: u64) -> Hnsw {
     let tracker = DistanceTracker::new(params.distance);
     let start = Instant::now();
 
@@ -223,7 +223,7 @@ fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams) -> Hnsw {
     // insert the rest of the points one by one
     let mut insert_ctx = InsertCtx::new(&hnsw.params);
     for id in 1..len {
-        insert(&mut hnsw, id, &tracker, &mut insert_ctx);
+        insert(&mut hnsw, id, &tracker, &mut insert_ctx, seed);
     }
 
     hnsw.build_stats = Stats {
@@ -253,7 +253,7 @@ impl InsertCtx {
     }
 }
 
-fn insert(hnsw: &mut Hnsw, q: usize, distance: &DistanceTracker, ctx: &mut InsertCtx) {
+fn insert(hnsw: &mut Hnsw, q: usize, distance: &DistanceTracker, ctx: &mut InsertCtx, seed: u64) {
     let q_data = hnsw.data.get(q);
 
     ctx.ep_idxs_in_layer.clear();
@@ -262,7 +262,7 @@ fn insert(hnsw: &mut Hnsw, q: usize, distance: &DistanceTracker, ctx: &mut Inser
     // /////////////////////////////////////////////////////////////////////////////
     // Phase 0: insert the element on all levels (with empty neighbors)
     // /////////////////////////////////////////////////////////////////////////////
-    let mut rng = ChaCha20Rng::seed_from_u64(q as u64);
+    let mut rng = ChaCha20Rng::seed_from_u64(seed ^ q as u64);
 
     let top_l = if hnsw.layers.is_empty() {
         0
@@ -680,6 +680,7 @@ mod tests {
                 m_max_0: 3,
                 distance: Distance::L2,
             },
+            42,
         );
 
         dbg!(hnsw);

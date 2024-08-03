@@ -17,6 +17,7 @@ fn main() {
             m_max_0: 20,
             distance: Distance::L2,
         },
+        42,
     );
     for _ in 0..10 {
         for i in 0..data.dims() {

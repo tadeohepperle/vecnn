@@ -8,7 +8,7 @@ use std::{
 };
 
 use nanoserde::{DeJson, SerJson};
-use rand::{seq::SliceRandom, Rng, SeedableRng};
+use rand::{seq::SliceRandom, thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
 use crate::{
@@ -38,6 +38,7 @@ pub struct EnsembleParams {
 pub fn build_hnsw_by_vp_tree_ensemble(
     data: Arc<dyn DatasetT>,
     params: EnsembleParams,
+    seed: u64,
 ) -> SliceHnsw {
     let mut hnsw_layer = slice_hnsw::Layer::new(params.m_max_0);
     hnsw_layer.entries_cap = data.len();
@@ -52,7 +53,7 @@ pub fn build_hnsw_by_vp_tree_ensemble(
 
     let mut distance = DistanceTracker::new(params.distance);
     let start = Instant::now();
-    let mut rng = ChaCha20Rng::seed_from_u64(42);
+    let mut rng = ChaCha20Rng::seed_from_u64(seed);
 
     // setup buffers to operate in:
     let chunks = make_chunks(data.len(), max_chunk_size);
@@ -144,9 +145,10 @@ pub fn build_hnsw_by_vp_tree_ensemble(
 pub fn build_hnsw_by_vp_tree_ensemble_multi_layer(
     data: Arc<dyn DatasetT>,
     params: EnsembleParams,
+    seed: u64,
 ) -> SliceHnsw {
     let start_time = Instant::now();
-    let mut rng = ChaCha20Rng::seed_from_u64(42);
+    let mut rng = ChaCha20Rng::seed_from_u64(seed);
     let mut layers = super::slice_hnsw::create_hnsw_layers_with_empty_neighbors(
         data.len(),
         params.m_max,
@@ -161,13 +163,18 @@ pub fn build_hnsw_by_vp_tree_ensemble_multi_layer(
             // brute force connect neighbors!
             fill_hnsw_layer_range_by_brute_force(&*data, &distance, layer);
         } else {
-            fill_hnsw_layer_by_vp_tree_ensemble(&*data, &distance, layer, &params, rng.clone());
+            fill_hnsw_layer_by_vp_tree_ensemble(&*data, &distance, layer, &params, &mut rng);
         }
     }
     let build_stats = Stats {
         duration: start_time.elapsed(),
         num_distance_calculations: distance.num_calculations(),
     };
+
+    println!(
+        "{:?}",
+        layers.iter().map(|e| e.entries.len()).collect::<Vec<_>>()
+    );
     SliceHnsw {
         data,
         layers,
@@ -216,7 +223,7 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
     distance: &DistanceTracker,
     layer: &mut super::slice_hnsw::Layer,
     params: &EnsembleParams,
-    mut rng: ChaCha20Rng,
+    rng: &mut ChaCha20Rng,
 ) {
     struct VpTreeNode {
         id: u32, // u32 for better align
@@ -254,9 +261,8 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
         slice_binary_heap_arena::<DistAnd<usize>>(n_entries, same_chunk_m_max);
     // Note: The vp_tree_neighbors are aligned with the nodes in the vp_tree (vp_tree[i] has neighbors stored in vp_tree_neighbors[i]),
     // but the indices stored in the neighbors lists, refer to indices of the hnsw layer!
-
     for _ in 0..params.n_vp_trees {
-        arrange_into_vp_tree(&mut vp_tree, &data_get, distance, &mut rng);
+        arrange_into_vp_tree(&mut vp_tree, &data_get, distance, rng);
 
         for (chunk_i, chunk) in chunks.iter().enumerate() {
             let chunk_size = chunk.range.len();
@@ -320,13 +326,17 @@ pub struct TransitionParams {
     pub stitch_mode: StitchMode,
 }
 
-pub fn build_hnsw_by_transition(data: Arc<dyn DatasetT>, params: TransitionParams) -> Hnsw {
+pub fn build_hnsw_by_transition(
+    data: Arc<dyn DatasetT>,
+    params: TransitionParams,
+    seed: u64,
+) -> Hnsw {
     let max_chunk_size = params.max_chunk_size;
     let same_chunk_max_neighbors = params.same_chunk_max_neighbors;
     assert!(same_chunk_max_neighbors <= NEIGHBORS_LIST_MAX_LEN);
     let mut distance = DistanceTracker::new(params.distance);
     let start = Instant::now();
-    let mut rng = ChaCha20Rng::seed_from_u64(42);
+    let mut rng = ChaCha20Rng::seed_from_u64(seed);
 
     let mut vp_tree: Vec<vp_tree::Node> = Vec::with_capacity(data.len());
     for idx in 0..data.len() {

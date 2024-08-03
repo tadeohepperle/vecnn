@@ -10,7 +10,7 @@ use prettytable::{
     format::{FormatBuilder, LineSeparator, TableFormat},
     row, AsTableSlice, Slice, Table,
 };
-use rand::{seq::SliceRandom, thread_rng, SeedableRng};
+use rand::{seq::SliceRandom, thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use vecnn::{
     dataset::{DatasetT, FlatDataSet},
@@ -42,12 +42,22 @@ fn main() {
         stitch_mode: StitchMode::BestXofRandomXTimesX,
     };
 
-    let n = 6000;
+    let ensemble_params = EnsembleParams {
+        n_vp_trees: 4,
+        max_chunk_size: 256,
+        same_chunk_m_max: 16,
+        m_max: 20,
+        m_max_0: 40,
+        distance: Distance::Dot,
+        level_norm: 0.0,
+    };
+
+    let n = 40000;
     let k = 30;
     let k_samples = 300;
     let mut models: Vec<ModelParams> = vec![];
     for ef_construction in [50] {
-        for n in [10000] {
+        for n in [40000] {
             eval_models_on_laion(
                 n,
                 k_samples,
@@ -74,23 +84,30 @@ fn main() {
                     //     distance: Distance::Dot,
                     // }),
                     ModelParams::EnsembleTransition(EnsembleParams {
-                        n_vp_trees: 3,
-                        max_chunk_size: 256,
-                        same_chunk_m_max: 20,
-                        m_max: 40,
-                        m_max_0: 40,
-                        distance: Distance::Dot,
-                        level_norm: 0.0,
+                        level_norm: -1.0,
+                        ..ensemble_params
                     }),
                     ModelParams::EnsembleTransition(EnsembleParams {
-                        n_vp_trees: 3,
-                        max_chunk_size: 256,
-                        same_chunk_m_max: 20,
-                        m_max: 40,
-                        m_max_0: 40,
-                        distance: Distance::Dot,
-                        level_norm: 0.4,
+                        level_norm: 0.0,
+                        ..ensemble_params
                     }),
+                    ModelParams::EnsembleTransition(EnsembleParams {
+                        level_norm: -1.0,
+                        ..ensemble_params
+                    }),
+                    ModelParams::EnsembleTransition(EnsembleParams {
+                        level_norm: 0.0,
+                        ..ensemble_params
+                    }),
+                    // ModelParams::EnsembleTransition(EnsembleParams {
+                    //     level_norm: 0.0,
+                    //     ..ensemble_params
+                    // }),
+                    // ModelParams::EnsembleTransition(EnsembleParams {
+                    //     level_norm: 0.0,
+                    //     ..ensemble_params
+                    // }),
+
                     // bad // ModelParams::Transition(TransitionParams {
                     // bad //     stitch_mode: StitchMode::RandomNegToPosCenterAndBack,
                     // bad //     ..transition_params
@@ -115,6 +132,7 @@ fn main() {
                     start_candidates: 1,
                     ef: 60,
                 },
+                true,
             )
         }
     }
@@ -223,18 +241,6 @@ impl Display for SearchParams {
 }
 
 impl Model {
-    pub fn hnsw(data: Arc<dyn DatasetT>, params: HnswParams) -> Self {
-        Self::Hnsw(Hnsw::new(data, params))
-    }
-
-    pub fn hnsw_transition(data: Arc<dyn DatasetT>, params: TransitionParams) -> Self {
-        Self::HnswTransition(build_hnsw_by_transition(data, params))
-    }
-
-    pub fn rnn_graph(data: Arc<dyn DatasetT>, params: RNNGraphParams) -> Self {
-        Self::RNNGraph(RNNGraph::new(data, params))
-    }
-
     /// returns recall and search stats
     pub fn knn_search(
         &self,
@@ -290,6 +296,7 @@ fn eval_models_on_laion(
     queries_subsample_n: usize,
     params: &[ModelParams],
     search_params: SearchParams,
+    random_seeds: bool,
 ) {
     let data_path = "../vecnnpy/laion_data_(300000, 768).bin";
     let queries_path = "../vecnnpy/laion_queries_(10000, 768).bin";
@@ -334,7 +341,7 @@ fn eval_models_on_laion(
 
     let data = data_set_from_path(data_path, data_len, dims, data_subsample_n);
     let queries = data_set_from_path(queries_path, queries_len, dims, queries_subsample_n);
-    eval_models(data, queries, params, search_params)
+    eval_models(data, queries, params, search_params, random_seeds)
 }
 
 fn eval_models_random_data(
@@ -343,10 +350,11 @@ fn eval_models_random_data(
     n_queries: usize,
     params: &[ModelParams],
     search_params: SearchParams,
+    random_seeds: bool,
 ) {
     let data = random_data_set(n_data, dims);
     let queries = random_data_set(n_queries, dims);
-    eval_models(data, queries, params, search_params)
+    eval_models(data, queries, params, search_params, random_seeds)
 }
 
 fn eval_models(
@@ -354,6 +362,7 @@ fn eval_models(
     queries: Arc<dyn DatasetT>,
     params: &[ModelParams],
     search_params: SearchParams,
+    random_seeds: bool,
 ) {
     let n_queries = queries.len();
 
@@ -374,21 +383,24 @@ fn eval_models(
 
     let mut models: Vec<Model> = vec![];
     for &param in params.iter() {
+        let seed: u64 = if random_seeds { thread_rng().gen() } else { 42 };
         let data = data.clone();
         let model = match param {
-            ModelParams::Hnsw(params) => Model::hnsw(data, params),
-            ModelParams::Transition(params) => Model::hnsw_transition(data.clone(), params),
-            ModelParams::RNNGraph(params) => Model::rnn_graph(data, params),
+            ModelParams::Hnsw(params) => Model::Hnsw(Hnsw::new(data, params, seed)),
+            ModelParams::Transition(params) => {
+                Model::HnswTransition(build_hnsw_by_transition(data, params, seed))
+            }
+            ModelParams::RNNGraph(params) => Model::RNNGraph(RNNGraph::new(data, params, seed)),
+
             ModelParams::EnsembleTransition(params) => {
                 // todo! a bit hacky!! move the specialization to the transition module instead.
-                // if params.level_norm == 0.0 {
-                //     Model::Hnsw(build_hnsw_by_vp_tree_ensemble(data, params))
-                // } else {
-                //     Model::Hnsw2(build_hnsw_by_vp_tree_ensemble_multi_layer(data, params))
-                // }
-
-                // Model::Hnsw2(build_hnsw_by_vp_tree_ensemble(data, params))
-                Model::Hnsw2(build_hnsw_by_vp_tree_ensemble_multi_layer(data, params))
+                if params.level_norm == -1.0 {
+                    Model::Hnsw2(build_hnsw_by_vp_tree_ensemble(data, params, seed))
+                } else {
+                    Model::Hnsw2(build_hnsw_by_vp_tree_ensemble_multi_layer(
+                        data, params, seed,
+                    ))
+                }
             }
             ModelParams::Hnsw2(params) => Model::Hnsw2(SliceHnsw::new(data, params)),
         };

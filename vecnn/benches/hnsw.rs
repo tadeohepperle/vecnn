@@ -23,6 +23,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                     m_max_0: 10,
                     distance: L2,
                 },
+                42,
             );
         })
     });

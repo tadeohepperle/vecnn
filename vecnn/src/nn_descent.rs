@@ -172,12 +172,16 @@ impl RNNGraph {
         }
     }
 
-    pub fn new(data: Arc<dyn DatasetT>, params: RNNGraphParams) -> Self {
-        construct_relative_nn_graph(data, params)
+    pub fn new(data: Arc<dyn DatasetT>, params: RNNGraphParams, seed: u64) -> Self {
+        construct_relative_nn_graph(data, params, seed)
     }
 }
 
-fn construct_relative_nn_graph(data: Arc<dyn DatasetT>, params: RNNGraphParams) -> RNNGraph {
+fn construct_relative_nn_graph(
+    data: Arc<dyn DatasetT>,
+    params: RNNGraphParams,
+    seed: u64,
+) -> RNNGraph {
     let distance_tracker = DistanceTracker::new(params.distance);
     let distance =
         |i: usize, j: usize| -> f32 { distance_tracker.distance(data.get(i), data.get(j)) };
@@ -185,7 +189,7 @@ fn construct_relative_nn_graph(data: Arc<dyn DatasetT>, params: RNNGraphParams) 
     let start = Instant::now();
 
     let mut nodes: Vec<Vec<Neighbor>> =
-        random_nn_graph_nodes(data.len(), &distance, params.initial_neighbors);
+        random_nn_graph_nodes(data.len(), &distance, params.initial_neighbors, seed);
     let mut two_sided_neighbors: Vec<Vec<Neighbor>> =
         (0..nodes.len()).map(|_| Vec::new()).collect();
 
@@ -342,10 +346,11 @@ fn random_nn_graph_nodes(
     n: usize,
     distance: &impl Fn(usize, usize) -> f32,
     initial_neighbors_num: usize,
+    seed: u64,
 ) -> Vec<Vec<Neighbor>> {
     let mut nodes: Vec<Vec<Neighbor>> = Vec::with_capacity(n);
 
-    let mut rng = ChaCha20Rng::seed_from_u64(42);
+    let mut rng = ChaCha20Rng::seed_from_u64(seed);
 
     for idx in 0..n {
         let mut neighbors: Vec<Neighbor> = Vec::with_capacity(initial_neighbors_num);
@@ -381,7 +386,7 @@ mod tests {
     #[test]
     fn relative_nn_construction() {
         let data = crate::utils::random_data_set(1000, 20);
-        let graph = RNNGraph::new(data, RNNGraphParams::default());
+        let graph = RNNGraph::new(data, RNNGraphParams::default(), 42);
         std::fs::write("graph.txt", format!("{graph:?}"));
     }
 }

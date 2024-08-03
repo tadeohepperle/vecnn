@@ -1,2 +1,5 @@
-  n       search_params                          params                                                                                                   build_ndc    build_ms      recall_mean    ndc_mean    time_ms_mean  
-  5000    {k:30, ef: 60, start_candidates: 1}    HNSW2HnswParams { level_norm_param: 0.8, ef_construction: 20, m_max: 20, m_max_0: 20, distance: Dot }    1473420      161.858756    0.851          513.067     0.073  
+ build_ndc    build_ms       recall_mean    ndc_mean    time_ms_mean  
+ 14579864     1258.821626    0.838          682.510     0.261  
+ 16902933     1472.029135    0.887          1283.257    0.402  
+ 25055194     2143.448394    0.886          1366.637    0.410  
+ 30199818     2643.203149    0.906          1466.230    0.424  
