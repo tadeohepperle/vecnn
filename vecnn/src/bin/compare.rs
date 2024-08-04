@@ -19,7 +19,7 @@ use vecnn::{
         Distance::{self, *},
         DistanceFn,
     },
-    hnsw::{Hnsw, HnswParams},
+    hnsw::{self, Hnsw, HnswParams},
     nn_descent::{RNNGraph, RNNGraphParams},
     slice_hnsw::SliceHnsw,
     transition::{
@@ -33,13 +33,14 @@ const RNG_SEED: u64 = 21321424198;
 fn main() {
     let transition_params = TransitionParams {
         max_chunk_size: 256,
-        same_chunk_max_neighbors: 20,
+        same_chunk_m_max: 20,
         neg_fraction: 0.3,
         keep_fraction: 0.1,
         x: 4,
         stop_after_stitching_n_chunks: None,
         distance: Distance::Dot,
         stitch_mode: StitchMode::BestXofRandomXTimesX,
+        m_max: 40,
     };
 
     let ensemble_params = EnsembleParams {
@@ -83,22 +84,34 @@ fn main() {
                     //     initial_neighbors: 20,
                     //     distance: Distance::Dot,
                     // }),
-                    ModelParams::EnsembleTransition(EnsembleParams {
+                    ModelParams::VpTreeEnsemble(EnsembleParams {
                         level_norm: -1.0,
                         ..ensemble_params
                     }),
-                    ModelParams::EnsembleTransition(EnsembleParams {
+                    ModelParams::VpTreeEnsemble(EnsembleParams {
                         level_norm: 0.0,
                         ..ensemble_params
                     }),
-                    ModelParams::EnsembleTransition(EnsembleParams {
-                        level_norm: -1.0,
+                    ModelParams::VpTreeEnsemble(EnsembleParams {
+                        level_norm: 0.5,
                         ..ensemble_params
                     }),
-                    ModelParams::EnsembleTransition(EnsembleParams {
-                        level_norm: 0.0,
+                    ModelParams::VpTreeEnsemble(EnsembleParams {
+                        level_norm: 1.0,
                         ..ensemble_params
                     }),
+                    ModelParams::VpTreeEnsemble(EnsembleParams {
+                        level_norm: 1.5,
+                        ..ensemble_params
+                    }),
+                    // ModelParams::EnsembleTransition(EnsembleParams {
+                    //     level_norm: -1.0,
+                    //     ..ensemble_params
+                    // }),
+                    // ModelParams::EnsembleTransition(EnsembleParams {
+                    //     level_norm: 0.0,
+                    //     ..ensemble_params
+                    // }),
                     // ModelParams::EnsembleTransition(EnsembleParams {
                     //     level_norm: 0.0,
                     //     ..ensemble_params
@@ -198,9 +211,9 @@ fn main() {
 #[derive(Debug, Clone, Copy)]
 enum ModelParams {
     Hnsw(HnswParams),
-    Hnsw2(HnswParams),
+    ConstHnsw(HnswParams),
     Transition(TransitionParams),
-    EnsembleTransition(EnsembleParams),
+    VpTreeEnsemble(EnsembleParams),
     RNNGraph(RNNGraphParams),
 }
 
@@ -208,19 +221,19 @@ impl ModelParams {
     pub fn to_string(&self) -> String {
         match self {
             ModelParams::Hnsw(e) => format!("{e:?}"),
-            ModelParams::Hnsw2(e) => format!("HNSW2{e:?}"),
+            ModelParams::ConstHnsw(e) => format!("HNSW2{e:?}"),
             ModelParams::Transition(e) => format!("{e:?}"),
-            ModelParams::EnsembleTransition(e) => format!("{e:?}"),
+            ModelParams::VpTreeEnsemble(e) => format!("{e:?}"),
             ModelParams::RNNGraph(e) => format!("{e:?}"),
         }
     }
 }
 
 enum Model {
-    Hnsw(Hnsw),
-    Hnsw2(SliceHnsw),
-    HnswTransition(Hnsw),
-    VpTreeEnsemble(Hnsw),
+    ConstHnsw(Hnsw),
+    Hnsw(SliceHnsw),
+    HnswTransition(SliceHnsw),
+    VpTreeEnsemble(SliceHnsw),
     RNNGraph(RNNGraph),
 }
 
@@ -252,7 +265,7 @@ impl Model {
         let found: HashSet<usize>;
         let stats: Stats;
         match self {
-            Model::Hnsw(hnsw) | Model::HnswTransition(hnsw) | Model::VpTreeEnsemble(hnsw) => {
+            Model::ConstHnsw(hnsw) => {
                 let res = hnsw.knn_search(q_data, search_params.k, search_params.ef);
                 found = res
                     .0
@@ -261,13 +274,7 @@ impl Model {
                     .collect::<HashSet<usize>>();
                 stats = res.1
             }
-            Model::RNNGraph(rnn_graph) => {
-                let res =
-                    rnn_graph.knn_search(q_data, search_params.k, search_params.start_candidates);
-                found = res.0.iter().map(|e| e.1).collect::<HashSet<usize>>();
-                stats = res.1;
-            }
-            Model::Hnsw2(hnsw) => {
+            Model::Hnsw(hnsw) | Model::HnswTransition(hnsw) | Model::VpTreeEnsemble(hnsw) => {
                 let res = hnsw.knn_search(q_data, search_params.k, search_params.ef);
                 found = res
                     .0
@@ -275,6 +282,12 @@ impl Model {
                     .map(|e| e.1 as usize)
                     .collect::<HashSet<usize>>();
                 stats = res.1
+            }
+            Model::RNNGraph(rnn_graph) => {
+                let res =
+                    rnn_graph.knn_search(q_data, search_params.k, search_params.start_candidates);
+                found = res.0.iter().map(|e| e.1).collect::<HashSet<usize>>();
+                stats = res.1;
             }
         };
         let recall_n = true_res.iter().filter(|i| found.contains(i)).count();
@@ -286,7 +299,7 @@ impl Model {
         match self {
             Model::Hnsw(e) | Model::HnswTransition(e) | Model::VpTreeEnsemble(e) => e.build_stats,
             Model::RNNGraph(e) => e.build_stats,
-            Model::Hnsw2(e) => e.build_stats,
+            Model::ConstHnsw(e) => e.build_stats,
         }
     }
 }
@@ -386,23 +399,22 @@ fn eval_models(
         let seed: u64 = if random_seeds { thread_rng().gen() } else { 42 };
         let data = data.clone();
         let model = match param {
-            ModelParams::Hnsw(params) => Model::Hnsw(Hnsw::new(data, params, seed)),
+            ModelParams::Hnsw(params) => Model::Hnsw(SliceHnsw::new(data, params, seed)),
+            ModelParams::ConstHnsw(params) => Model::ConstHnsw(Hnsw::new(data, params, seed)),
             ModelParams::Transition(params) => {
                 Model::HnswTransition(build_hnsw_by_transition(data, params, seed))
             }
             ModelParams::RNNGraph(params) => Model::RNNGraph(RNNGraph::new(data, params, seed)),
-
-            ModelParams::EnsembleTransition(params) => {
+            ModelParams::VpTreeEnsemble(params) => {
                 // todo! a bit hacky!! move the specialization to the transition module instead.
                 if params.level_norm == -1.0 {
-                    Model::Hnsw2(build_hnsw_by_vp_tree_ensemble(data, params, seed))
+                    Model::VpTreeEnsemble(build_hnsw_by_vp_tree_ensemble(data, params, seed))
                 } else {
-                    Model::Hnsw2(build_hnsw_by_vp_tree_ensemble_multi_layer(
+                    Model::VpTreeEnsemble(build_hnsw_by_vp_tree_ensemble_multi_layer(
                         data, params, seed,
                     ))
                 }
             }
-            ModelParams::Hnsw2(params) => Model::Hnsw2(SliceHnsw::new(data, params)),
         };
         models.push(model);
     }

@@ -23,6 +23,7 @@ impl RNNGraph {
         max_neighbors_after_reverse_pruning: usize,
         initial_neighbors: usize,
         distance: String,
+        seed: u64,
     ) -> PyResult<Self> {
         let params = RNNGraphParams {
             outer_loops,
@@ -31,7 +32,7 @@ impl RNNGraph {
             initial_neighbors,
             distance: dist_from_str(&distance)?,
         };
-        let hnsw = vecnn::nn_descent::RNNGraph::new(data.as_dyn_dataset(), params);
+        let hnsw = vecnn::nn_descent::RNNGraph::new(data.as_dyn_dataset(), params, seed);
         Ok(RNNGraph(hnsw))
     }
 

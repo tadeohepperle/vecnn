@@ -1,14 +1,20 @@
 from typing import Literal, Optional, Callable, Tuple
 import numpy as np
 
-type DistanceFn = Literal['l1', 'l2', 'cos', 'dot']
+type Distance = Literal['l1', 'l2', 'cos', 'dot']
 
 def sum_as_string(a: int, b: int) -> str:
     "adds two numbers and returns their sum as a string"
 
 
-def build_hnsw_by_transition(data: Dataset, max_chunk_size: int, same_chunk_max_neighbors: int, neg_fraction: float, distance_fn: DistanceFn) -> Hnsw:
+def build_hnsw_by_transition(data: Dataset, max_chunk_size: int, same_chunk_m_max: int, m_max: int, neg_fraction: float,  keep_fraction: float, distance: Distance, seed: int) -> Hnsw:
     pass
+
+
+
+def build_hnsw_by_vp_tree_ensemble(data: Dataset, max_chunk_size: int, same_chunk_m_max: int, m_max: int,  m_max_0: int, n_vp_trees: int, level_norm: float, distance: Distance, seed: int) -> Hnsw:
+    pass
+
 
 class Dataset(): 
     '''A dataset, wrapping a 2d-numpy array'''
@@ -39,7 +45,7 @@ class VpTree():
     '''A vp-tree, built on a DataSet'''
     num_distance_calculations_in_build: int
     
-    def __init__(self, data: Dataset):
+    def __init__(self, data: Dataset, seed: int):
         """constructs a new vp-tree on the dataset passed in."""
         pass
 
@@ -60,7 +66,7 @@ class KnnResult():
     """how many distance calculations were performed during build."""
 
 
-def linear_knn(data: Dataset, query: np.ndarray, k: int, distance_fn: DistanceFn) -> KnnResult:
+def linear_knn(data: Dataset, query: np.ndarray, k: int, distance: Distance) -> KnnResult:
     """performs a linear knn search thorugh the entire data.
 
     query: 1-dimensional numpy array of type float32."""
@@ -81,7 +87,7 @@ class Hnsw():
     num_distance_calculations_in_build: int
 
     
-    def __init__(self, data: Dataset, level_norm_param: float, ef_construction: int, m_max: int, m_max_0: int, distance_fn: DistanceFn):
+    def __init__(self, data: Dataset, level_norm_param: float, ef_construction: int, m_max: int, m_max_0: int, distance: Distance, use_const_impl: bool, seed: int):
         """constructs a new hnsw on the dataset."""
         pass
 
@@ -135,13 +141,10 @@ class JpBothHnsw():
         """
         pass
 
-
-
-
 class RNNGraph:
     num_distance_calculations_in_build: int
 
-    def __init__(self, data: Dataset, outer_loops: int, inner_loops: int, max_neighbors_after_reverse_pruning: int, initial_neighbors: int, distance_fn: DistanceFn):
+    def __init__(self, data: Dataset, outer_loops: int, inner_loops: int, max_neighbors_after_reverse_pruning: int, initial_neighbors: int, distance: Distance, seed: int):
         pass
 
     def knn(self, query: np.ndarray, k: int, start_candidates: int) -> KnnResult:

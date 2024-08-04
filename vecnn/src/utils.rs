@@ -228,6 +228,7 @@ mod binary_heap {
 
     use super::SlicesMemory;
 
+    /// allocate a slice of slices as a backing memory for a sequence of `SliceBinaryHeap`s.
     pub fn slice_binary_heap_arena<T: Ord>(
         n_slices: usize,
         n_elements_per_slice: usize,
@@ -317,6 +318,14 @@ mod binary_heap {
                     return true;
                 }
             }
+        }
+
+        #[inline]
+        pub fn insert_if_better_with_max_len(&mut self, item: T, max_len: usize) -> bool {
+            if self.len > max_len {
+                self.len = max_len;
+            }
+            self.insert_if_better(item)
         }
 
         unsafe fn sift_up(&mut self, start: usize, pos: usize) -> usize {

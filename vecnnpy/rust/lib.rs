@@ -18,9 +18,9 @@ mod utils;
 mod vp_tree;
 
 use crate::dataset::Dataset;
-use crate::hnsw::build_hnsw_by_transition;
+use crate::hnsw::{build_hnsw_by_transition, build_hnsw_by_vp_tree_ensemble};
 use crate::nn_descent::RNNGraph;
-use crate::utils::{pyarray1_to_slice, static_python, KnnResult};
+use crate::utils::{pyarray1_to_slice, KnnResult};
 use crate::vp_tree::VpTree;
 
 // fn foo() {}
@@ -43,6 +43,7 @@ fn _lib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(knn_recall, m)?)?;
     m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
     m.add_function(wrap_pyfunction!(build_hnsw_by_transition, m)?)?;
+    m.add_function(wrap_pyfunction!(build_hnsw_by_vp_tree_ensemble, m)?)?;
     Ok(())
 }
 
@@ -58,10 +59,10 @@ fn linear_knn<'py>(
     data: crate::Dataset,
     query: Py<PyArray1<f32>>,
     k: usize,
-    distance_fn: String,
+    distance: String,
 ) -> PyResult<KnnResult> {
     let q = pyarray1_to_slice(query, Some(data.dims()))?;
-    let distance = dist_from_str(&distance_fn)?;
+    let distance = dist_from_str(&distance)?;
     let results =
         vecnn::utils::linear_knn_search(data.as_dyn_dataset_ref(), q, k, distance.to_fn());
     let indices: Py<PyArray1<usize>> =

@@ -26,9 +26,11 @@ pub struct SliceHnsw {
     pub build_stats: Stats,
 }
 
+pub type Layers = heapless::Vec<Layer, MAX_LAYERS>;
+
 impl SliceHnsw {
-    pub fn new(data: Arc<dyn DatasetT>, params: HnswParams) -> Self {
-        construct_hnsw(data, params)
+    pub fn new(data: Arc<dyn DatasetT>, params: HnswParams, seed: u64) -> Self {
+        construct_hnsw(data, params, seed)
     }
 
     pub fn new_empty(data: Arc<dyn DatasetT>, params: HnswParams) -> Self {
@@ -195,12 +197,12 @@ pub struct LayerEntry {
 pub type Neighbor = DistAnd<usize>;
 pub type Neighbors = SliceBinaryHeap<'static, Neighbor>;
 
-fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams) -> SliceHnsw {
+fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams, seed: u64) -> SliceHnsw {
     let start_time = Instant::now();
     // /////////////////////////////////////////////////////////////////////////////
     // Step 1: Create all the layers
     // /////////////////////////////////////////////////////////////////////////////
-    let mut rng = ChaCha20Rng::seed_from_u64(42);
+    let mut rng = ChaCha20Rng::seed_from_u64(seed);
     let data_len = data.len();
 
     let (mut layers, insert_levels) =
@@ -591,7 +593,7 @@ pub fn create_hnsw_layers_with_empty_neighbors(
 
     // exit early for the special case that only 1 layer is needed (skip all the random level selection stuff):
     if level_norm_param == 0.0 {
-        let mut layer = Layer::new(m_max);
+        let mut layer = Layer::new(m_max_0);
         layer.entries_cap = data_len;
         layer.allocate_neighbors_memory();
         for id in 0..data_len {

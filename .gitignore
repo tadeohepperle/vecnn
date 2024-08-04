@@ -1,6 +1,9 @@
 /target
 /data
 /vecnnpy/.venv
+/eval/.venv
+/eval/experiments
+/eval/*.bin
 /vecnnpy/scripts/mlruns/*
 /vecnn/perf.data
 /vecnn/perf.data.old

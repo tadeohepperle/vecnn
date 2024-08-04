@@ -66,10 +66,8 @@ pub struct VpTree {
 }
 
 impl VpTree {
-    pub fn new(data: Arc<dyn DatasetT>, distance: Distance) -> Self {
-        let seed: u64 = 42;
-        let builder = VpTreeBuilder::new(seed, data, distance);
-        builder.build()
+    pub fn new(data: Arc<dyn DatasetT>, distance: Distance, seed: u64) -> Self {
+        construct_vp_tree(data, distance, seed)
     }
 
     pub fn iter_levels(&self, f: &mut impl FnMut(usize, &Node)) {
@@ -282,13 +280,6 @@ pub fn right(nodes: &[Node]) -> &[Node] {
     &nodes[start_idx..]
 }
 
-struct VpTreeBuilder {
-    nodes: Vec<Node>,
-    data: Arc<dyn DatasetT>,
-    rng: ChaCha12Rng,
-    distance: Distance,
-}
-
 #[derive(Clone, Copy, PartialEq)]
 pub struct Node {
     /// id into the dataset
@@ -321,38 +312,27 @@ impl Debug for Node {
     }
 }
 
-impl VpTreeBuilder {
-    pub fn new(seed: u64, data: Arc<dyn DatasetT>, distance: Distance) -> Self {
-        let mut nodes: Vec<Node> = Vec::with_capacity(data.len());
-        for idx in 0..data.len() {
-            nodes.push(Node { id: idx, dist: 0.0 });
-        }
-        VpTreeBuilder {
-            nodes,
-            data,
-            distance,
-            rng: ChaCha12Rng::seed_from_u64(seed),
-        }
+pub fn construct_vp_tree(data: Arc<dyn DatasetT>, distance: Distance, seed: u64) -> VpTree {
+    let mut nodes: Vec<Node> = Vec::with_capacity(data.len());
+    for idx in 0..data.len() {
+        nodes.push(Node { id: idx, dist: 0.0 });
     }
+    let distance_tracker = DistanceTracker::new(distance);
+    let start = Instant::now();
+    let mut rng = ChaCha20Rng::seed_from_u64(seed);
+    // arrange items in self.tmp into a vp tree
+    let data_get = |e: &Node| data.get(e.id);
+    arrange_into_vp_tree(&mut nodes, &data_get, &distance_tracker, &mut rng);
 
-    pub fn build(mut self) -> VpTree {
-        let tracker = DistanceTracker::new(self.distance);
-        let start = Instant::now();
-        let mut rng = ChaCha20Rng::seed_from_u64(42);
-        // arrange items in self.tmp into a vp tree
-        let data_get = |e: &Node| self.data.get(e.id);
-        arrange_into_vp_tree(&mut self.nodes, &data_get, &tracker, &mut rng);
-
-        let build_stats = Stats {
-            num_distance_calculations: tracker.num_calculations(),
-            duration: start.elapsed(),
-        };
-        VpTree {
-            nodes: self.nodes,
-            data: self.data,
-            distance: self.distance,
-            build_stats,
-        }
+    let build_stats = Stats {
+        num_distance_calculations: distance_tracker.num_calculations(),
+        duration: start.elapsed(),
+    };
+    VpTree {
+        nodes,
+        data,
+        distance,
+        build_stats,
     }
 }
 
@@ -572,7 +552,7 @@ pub mod tests {
             for _ in 0..20 {
                 let query_idx = thread_rng().gen_range(0..data.len());
                 let query = data.get(query_idx);
-                let vp_tree = VpTree::new(data.clone(), Distance::L2);
+                let vp_tree = VpTree::new(data.clone(), Distance::L2, 42);
                 let nn = vp_tree.knn_search(query, 1).0[0];
                 assert_eq!(nn.1, query_idx);
                 assert_eq!(nn.dist(), 0.0);
@@ -609,7 +589,7 @@ pub mod tests {
 
         for i in 0..10 {
             let q = data.get(i);
-            let tree = VpTree::new(data.clone(), Distance::L2);
+            let tree = VpTree::new(data.clone(), Distance::L2, 42);
             dbg!(i);
             println!("{:?}", &tree.nodes);
             let tree_l = left(&tree.nodes);

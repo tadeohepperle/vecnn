@@ -317,9 +317,10 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
 #[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson)]
 pub struct TransitionParams {
     pub max_chunk_size: usize,
-    pub same_chunk_max_neighbors: usize,
+    pub same_chunk_m_max: usize,
     pub neg_fraction: f32,
     pub keep_fraction: f32,
+    pub m_max: usize, // max number of neighbors in hnsw
     pub x: usize,
     pub stop_after_stitching_n_chunks: Option<usize>,
     pub distance: Distance,
@@ -330,10 +331,10 @@ pub fn build_hnsw_by_transition(
     data: Arc<dyn DatasetT>,
     params: TransitionParams,
     seed: u64,
-) -> Hnsw {
+) -> SliceHnsw {
     let max_chunk_size = params.max_chunk_size;
-    let same_chunk_max_neighbors = params.same_chunk_max_neighbors;
-    assert!(same_chunk_max_neighbors <= NEIGHBORS_LIST_MAX_LEN);
+    let same_chunk_m_max = params.same_chunk_m_max;
+    assert!(same_chunk_m_max <= NEIGHBORS_LIST_MAX_LEN);
     let mut distance = DistanceTracker::new(params.distance);
     let start = Instant::now();
     let mut rng = ChaCha20Rng::seed_from_u64(seed);
@@ -347,13 +348,11 @@ pub fn build_hnsw_by_transition(
     arrange_into_vp_tree(&mut vp_tree, &data_get, &mut distance, &mut rng);
 
     // create an hnsw layer with same order as vp-tree but no neighbors:
-    let mut entries: Vec<hnsw::LayerEntry> = Vec::with_capacity(data.len());
+    let mut layer = slice_hnsw::Layer::new(params.m_max);
+    layer.entries_cap = data.len();
+    layer.allocate_neighbors_memory();
     for node in vp_tree.iter() {
-        entries.push(LayerEntry {
-            id: node.id,
-            lower_level_idx: usize::MAX,
-            neighbors: Neighbors::new(),
-        })
+        layer.add_entry_assuming_allocated_memory(node.id, usize::MAX);
     }
 
     let mut chunks = make_chunks(vp_tree.len(), max_chunk_size);
@@ -380,7 +379,7 @@ pub fn build_hnsw_by_transition(
 
         // connect each node in the chunk to each other node (except itself)
         for i in 0..chunk_size {
-            let entry = &mut entries[chunk.range.start + i];
+            let entry = &mut layer.entries[chunk.range.start + i];
 
             if_tracking!(Tracking.pt_meta(entry.id).chunk = chunk_i);
 
@@ -388,13 +387,12 @@ pub fn build_hnsw_by_transition(
                 if j == i {
                     continue;
                 }
-                let neighbor_idx_in_layer = (chunk.range.start + j);
+                let neighbor_idx_in_layer = chunk.range.start + j;
                 let neighbor_dist = chunk_dst_mat[chunk_dst_mat_idx(i, j)];
 
-                entry.neighbors.insert_if_better(
-                    neighbor_idx_in_layer,
-                    neighbor_dist,
-                    same_chunk_max_neighbors,
+                entry.neighbors.insert_if_better_with_max_len(
+                    DistAnd(neighbor_dist, neighbor_idx_in_layer),
+                    same_chunk_m_max,
                 );
             }
         }
@@ -416,7 +414,7 @@ pub fn build_hnsw_by_transition(
             &distance,
             &chunks[pos_idx],
             &chunks[neg_idx],
-            &mut entries,
+            &mut layer.entries,
             &params,
             &mut rng,
         );
@@ -432,17 +430,18 @@ pub fn build_hnsw_by_transition(
 
     // insert a representative of each cluster (first element?)
 
-    Hnsw {
+    let mut layers = slice_hnsw::Layers::new();
+    layers.push(layer);
+
+    let build_stats = Stats {
+        num_distance_calculations: distance.num_calculations(),
+        duration: start.elapsed(),
+    };
+    SliceHnsw {
         params: Default::default(),
         data,
-        layers: vec![hnsw::Layer {
-            level: 0,
-            entries: entries,
-        }],
-        build_stats: Stats {
-            num_distance_calculations: distance.num_calculations(),
-            duration: start.elapsed(),
-        },
+        layers,
+        build_stats,
     }
 }
 
@@ -451,7 +450,7 @@ fn stitch_chunks(
     distance: &DistanceTracker,
     pos_chunk: &Chunk,
     neg_chunk: &Chunk,
-    entries: &mut [LayerEntry],
+    entries: &mut [slice_hnsw::LayerEntry],
     params: &TransitionParams,
     rng: &mut ChaCha20Rng,
 ) -> Chunk {
@@ -475,16 +474,14 @@ fn stitch_chunks(
 
     for c in stitch_candidates.iter() {
         let pos_entry = &mut entries[c.pos_cand_idx];
-        let pos_to_neg_inserted =
-            pos_entry
-                .neighbors
-                .insert_if_better(c.neg_cand_idx, c.dist, NEIGHBORS_LIST_MAX_LEN); // todo! no simple push!!! check len of neighbors and if better
+        let pos_to_neg_inserted = pos_entry
+            .neighbors
+            .insert_if_better(DistAnd(c.dist, c.neg_cand_idx)); // todo! no simple push!!! check len of neighbors and if better
 
         let neg_entry = &mut entries[c.neg_cand_idx];
-        let neg_to_pos_inserted =
-            neg_entry
-                .neighbors
-                .insert_if_better(c.pos_cand_idx, c.dist, NEIGHBORS_LIST_MAX_LEN);
+        let neg_to_pos_inserted = neg_entry
+            .neighbors
+            .insert_if_better(DistAnd(c.dist, c.pos_cand_idx));
 
         if_tracking!(
             let pos_cand_id = entries[c.pos_cand_idx].id;
@@ -582,7 +579,7 @@ fn generate_stitch_candidates(
     distance: &DistanceTracker,
     pos_chunk: &Chunk,
     neg_chunk: &Chunk,
-    entries: &[LayerEntry],
+    entries: &[slice_hnsw::LayerEntry],
     params: &TransitionParams,
     rng: &mut ChaCha20Rng,
 ) -> HashSet<StitchCandidate> {
@@ -862,7 +859,7 @@ fn generate_stitch_candidates(
 fn greedy_search_in_range(
     data: &dyn DatasetT,
     distance: &DistanceTracker,
-    entries: &[LayerEntry],
+    entries: &[slice_hnsw::LayerEntry],
     range: Range<usize>,
     start_idx: usize,
     query: &[f32],
