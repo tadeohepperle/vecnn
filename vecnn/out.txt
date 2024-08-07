@@ -1,5 +1,20 @@
- build_ndc    build_ms       recall_mean    ndc_mean    time_ms_mean  
- 14579864     1258.821626    0.838          682.510     0.261  
- 16902933     1472.029135    0.887          1283.257    0.402  
- 25055194     2143.448394    0.886          1366.637    0.410  
- 30199818     2643.203149    0.906          1466.230    0.424  
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/tadeo/Desktop/master/vecnn/vecnnpy/Cargo.toml
+workspace: /home/tadeo/Desktop/master/vecnn/Cargo.toml
+warning: /home/tadeo/Desktop/master/vecnn/Cargo.toml: unused manifest key: workspace.name
+warning: /home/tadeo/Desktop/master/vecnn/vecnnpy/Cargo.toml: unused manifest key: env
+   Compiling vecnn v0.0.1 (/home/tadeo/Desktop/master/vecnn/vecnn)
+    Finished `release` profile [optimized] target(s) in 0.14s
+     Running `/home/tadeo/Desktop/master/vecnn/target/release/construct`
+(0, InsertPosition { level: 0, highest_level: 0, idx_in_layer: 0 })
+(1, InsertPosition { level: 0, highest_level: 0, idx_in_layer: 1 })
+(2, InsertPosition { level: 0, highest_level: 0, idx_in_layer: 2 })
+(3, InsertPosition { level: 0, highest_level: 0, idx_in_layer: 3 })
+(4, InsertPosition { level: 5, highest_level: 0, idx_in_layer: 0 })
+(5, InsertPosition { level: 1, highest_level: 5, idx_in_layer: 1 })
+search bottom layer: [LayerEntry { id: 4, lower_level_idx: 4, neighbors: [] }, LayerEntry { id: 5, lower_level_idx: 5, neighbors: [] }]
+found: []
+(6, InsertPosition { level: 0, highest_level: 5, idx_in_layer: 6 })
+insert_positions: [InsertPosition { level: 0, highest_level: 0, idx_in_layer: 0 }, InsertPosition { level: 0, highest_level: 0, idx_in_layer: 1 }, InsertPosition { level: 0, highest_level: 0, idx_in_layer: 2 }, InsertPosition { level: 0, highest_level: 0, idx_in_layer: 3 }, InsertPosition { level: 5, highest_level: 0, idx_in_layer: 0 }, InsertPosition { level: 1, highest_level: 5, idx_in_layer: 1 }, InsertPosition { level: 0, highest_level: 5, idx_in_layer: 6 }]
+bottom_layer: [LayerEntry { id: 0, lower_level_idx: 18446744073709551615, neighbors: [3: 11.537, 1: 11.033, 2: 11.273] }, LayerEntry { id: 1, lower_level_idx: 18446744073709551615, neighbors: [2: 11.878, 0: 11.033, 3: 11.302] }, LayerEntry { id: 2, lower_level_idx: 18446744073709551615, neighbors: [1: 11.878, 0: 11.273, 3: 11.380] }, LayerEntry { id: 3, lower_level_idx: 18446744073709551615, neighbors: [0: 11.537, 2: 11.380, 1: 11.302] }, LayerEntry { id: 4, lower_level_idx: 18446744073709551615, neighbors: [5: 11.343, 6: 10.939] }, LayerEntry { id: 5, lower_level_idx: 18446744073709551615, neighbors: [4: 11.343, 6: 11.288] }, LayerEntry { id: 6, lower_level_idx: 18446744073709551615, neighbors: [5: 11.288, 4: 10.939] }]
+layers: [[LayerEntry { id: 4, lower_level_idx: 4, neighbors: [1: 11.343] }, LayerEntry { id: 5, lower_level_idx: 5, neighbors: [0: 11.343] }], [LayerEntry { id: 4, lower_level_idx: 0, neighbors: [] }], [LayerEntry { id: 4, lower_level_idx: 0, neighbors: [] }], [LayerEntry { id: 4, lower_level_idx: 0, neighbors: [] }], [LayerEntry { id: 4, lower_level_idx: 0, neighbors: [] }]]

@@ -13,6 +13,7 @@ use prettytable::{
 use rand::{seq::SliceRandom, thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use vecnn::{
+    const_hnsw::ConstHnsw,
     dataset::{DatasetT, FlatDataSet},
     distance::{
         cos, dot, l2,
@@ -44,7 +45,7 @@ fn main() {
     };
 
     let ensemble_params = EnsembleParams {
-        n_vp_trees: 4,
+        n_vp_trees: 10,
         max_chunk_size: 256,
         same_chunk_m_max: 16,
         m_max: 20,
@@ -53,12 +54,12 @@ fn main() {
         level_norm: 0.0,
     };
 
-    let n = 40000;
+    let n = 10000;
     let k = 30;
     let k_samples = 300;
     let mut models: Vec<ModelParams> = vec![];
     for ef_construction in [50] {
-        for n in [40000] {
+        for n in [20000] {
             eval_models_on_laion(
                 n,
                 k_samples,
@@ -88,56 +89,27 @@ fn main() {
                         level_norm: -1.0,
                         ..ensemble_params
                     }),
-                    ModelParams::VpTreeEnsemble(EnsembleParams {
-                        level_norm: 0.0,
-                        ..ensemble_params
+                    ModelParams::ConstHnsw(HnswParams {
+                        level_norm_param: 0.5,
+                        ef_construction,
+                        m_max: 20,
+                        m_max_0: 40,
+                        distance: Dot,
                     }),
-                    ModelParams::VpTreeEnsemble(EnsembleParams {
-                        level_norm: 0.5,
-                        ..ensemble_params
+                    ModelParams::OldHnsw(HnswParams {
+                        level_norm_param: 0.5,
+                        ef_construction,
+                        m_max: 20,
+                        m_max_0: 40,
+                        distance: Dot,
                     }),
-                    ModelParams::VpTreeEnsemble(EnsembleParams {
-                        level_norm: 1.0,
-                        ..ensemble_params
+                    ModelParams::Hnsw(HnswParams {
+                        level_norm_param: 0.5,
+                        ef_construction,
+                        m_max: 20,
+                        m_max_0: 40,
+                        distance: Dot,
                     }),
-                    ModelParams::VpTreeEnsemble(EnsembleParams {
-                        level_norm: 1.5,
-                        ..ensemble_params
-                    }),
-                    // ModelParams::EnsembleTransition(EnsembleParams {
-                    //     level_norm: -1.0,
-                    //     ..ensemble_params
-                    // }),
-                    // ModelParams::EnsembleTransition(EnsembleParams {
-                    //     level_norm: 0.0,
-                    //     ..ensemble_params
-                    // }),
-                    // ModelParams::EnsembleTransition(EnsembleParams {
-                    //     level_norm: 0.0,
-                    //     ..ensemble_params
-                    // }),
-                    // ModelParams::EnsembleTransition(EnsembleParams {
-                    //     level_norm: 0.0,
-                    //     ..ensemble_params
-                    // }),
-
-                    // bad // ModelParams::Transition(TransitionParams {
-                    // bad //     stitch_mode: StitchMode::RandomNegToPosCenterAndBack,
-                    // bad //     ..transition_params
-                    // bad // }),
-                    // bad
-                    // bad // ModelParams::Transition(TransitionParams {
-                    // bad //     stitch_mode: StitchMode::RandomSubsetOfSubset,
-                    // bad //     ..transition_params
-                    // bad // }),
-                    // ModelParams::Transition(TransitionParams {
-                    // stitch_mode: StitchMode::RandomNegToRandomPosAndBack,
-                    // ..transition_params
-                    // }),
-                    // ModelParams::Transition(TransitionParams {
-                    // stitch_mode: StitchMode::DontStarveXXSearch,
-                    // ..transition_params
-                    // }),
                 ],
                 SearchParams {
                     k,
@@ -151,6 +123,56 @@ fn main() {
     }
 }
 
+// ModelParams::VpTreeEnsemble(EnsembleParams {
+//     level_norm: 0.0,
+//     ..ensemble_params
+// }),
+// ModelParams::VpTreeEnsemble(EnsembleParams {
+//     level_norm: 0.5,
+//     ..ensemble_params
+// }),
+// ModelParams::VpTreeEnsemble(EnsembleParams {
+//     level_norm: 1.0,
+//     ..ensemble_params
+// }),
+// ModelParams::VpTreeEnsemble(EnsembleParams {
+//     level_norm: 1.5,
+//     ..ensemble_params
+// }),
+// ModelParams::EnsembleTransition(EnsembleParams {
+//     level_norm: -1.0,
+//     ..ensemble_params
+// }),
+// ModelParams::EnsembleTransition(EnsembleParams {
+//     level_norm: 0.0,
+//     ..ensemble_params
+// }),
+// ModelParams::EnsembleTransition(EnsembleParams {
+//     level_norm: 0.0,
+//     ..ensemble_params
+// }),
+// ModelParams::EnsembleTransition(EnsembleParams {
+//     level_norm: 0.0,
+//     ..ensemble_params
+// }),
+
+// bad // ModelParams::Transition(TransitionParams {
+// bad //     stitch_mode: StitchMode::RandomNegToPosCenterAndBack,
+// bad //     ..transition_params
+// bad // }),
+// bad
+// bad // ModelParams::Transition(TransitionParams {
+// bad //     stitch_mode: StitchMode::RandomSubsetOfSubset,
+// bad //     ..transition_params
+// bad // }),
+// ModelParams::Transition(TransitionParams {
+// stitch_mode: StitchMode::RandomNegToRandomPosAndBack,
+// ..transition_params
+// }),
+// ModelParams::Transition(TransitionParams {
+// stitch_mode: StitchMode::DontStarveXXSearch,
+// ..transition_params
+// }),
 // eval_models_random_data(
 //     n,
 //     768,
@@ -212,6 +234,7 @@ fn main() {
 enum ModelParams {
     Hnsw(HnswParams),
     ConstHnsw(HnswParams),
+    OldHnsw(HnswParams),
     Transition(TransitionParams),
     VpTreeEnsemble(EnsembleParams),
     RNNGraph(RNNGraphParams),
@@ -221,7 +244,8 @@ impl ModelParams {
     pub fn to_string(&self) -> String {
         match self {
             ModelParams::Hnsw(e) => format!("{e:?}"),
-            ModelParams::ConstHnsw(e) => format!("HNSW2{e:?}"),
+            ModelParams::ConstHnsw(e) => format!("Const {e:?}"),
+            ModelParams::OldHnsw(e) => format!("Old {e:?}"),
             ModelParams::Transition(e) => format!("{e:?}"),
             ModelParams::VpTreeEnsemble(e) => format!("{e:?}"),
             ModelParams::RNNGraph(e) => format!("{e:?}"),
@@ -230,7 +254,8 @@ impl ModelParams {
 }
 
 enum Model {
-    ConstHnsw(Hnsw),
+    ConstHnsw(ConstHnsw),
+    OldHnsw(Hnsw),
     Hnsw(SliceHnsw),
     HnswTransition(SliceHnsw),
     VpTreeEnsemble(SliceHnsw),
@@ -270,6 +295,15 @@ impl Model {
                 found = res
                     .0
                     .iter()
+                    .map(|e| e.1 as usize)
+                    .collect::<HashSet<usize>>();
+                stats = res.1
+            }
+            Model::OldHnsw(hnsw) => {
+                let res = hnsw.knn_search(q_data, search_params.k, search_params.ef);
+                found = res
+                    .0
+                    .iter()
                     .map(|e| e.id as usize)
                     .collect::<HashSet<usize>>();
                 stats = res.1
@@ -300,6 +334,7 @@ impl Model {
             Model::Hnsw(e) | Model::HnswTransition(e) | Model::VpTreeEnsemble(e) => e.build_stats,
             Model::RNNGraph(e) => e.build_stats,
             Model::ConstHnsw(e) => e.build_stats,
+            Model::OldHnsw(e) => e.build_stats,
         }
     }
 }
@@ -311,8 +346,8 @@ fn eval_models_on_laion(
     search_params: SearchParams,
     random_seeds: bool,
 ) {
-    let data_path = "../vecnnpy/laion_data_(300000, 768).bin";
-    let queries_path = "../vecnnpy/laion_queries_(10000, 768).bin";
+    let data_path = "../eval/laion_data_(300000, 768).bin";
+    let queries_path = "../eval/laion_queries_(10000, 768).bin";
 
     let data_len = 300000;
     let dims = 768;
@@ -400,7 +435,8 @@ fn eval_models(
         let data = data.clone();
         let model = match param {
             ModelParams::Hnsw(params) => Model::Hnsw(SliceHnsw::new(data, params, seed)),
-            ModelParams::ConstHnsw(params) => Model::ConstHnsw(Hnsw::new(data, params, seed)),
+            ModelParams::OldHnsw(params) => Model::OldHnsw(Hnsw::new(data, params, seed)),
+            ModelParams::ConstHnsw(params) => Model::ConstHnsw(ConstHnsw::new(data, params, seed)),
             ModelParams::Transition(params) => {
                 Model::HnswTransition(build_hnsw_by_transition(data, params, seed))
             }

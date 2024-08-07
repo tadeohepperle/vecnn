@@ -113,6 +113,7 @@ impl Hnsw {
         m_max: usize,
         m_max_0: usize,
         distance: String,
+        mutli_threaded: bool,
         use_const_impl: bool,
         seed: u64,
     ) -> PyResult<Self> {
@@ -125,6 +126,11 @@ impl Hnsw {
         };
 
         if use_const_impl {
+            if mutli_threaded {
+                return Err(PyTypeError::new_err(
+                    "Multithreaded not supported in const impl of vecnn Hnsw",
+                ));
+            }
             let hnsw = vecnn::hnsw::Hnsw::new(data.as_dyn_dataset(), params, seed);
             Ok(Hnsw(Inner::ConstImpl(hnsw)))
         } else {

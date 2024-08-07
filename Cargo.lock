@@ -1266,6 +1266,7 @@ dependencies = [
  "pyo3",
  "rand",
  "rand_chacha",
+ "rayon",
  "space",
  "vecnn",
 ]

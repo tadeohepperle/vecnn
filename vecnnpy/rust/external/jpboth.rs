@@ -4,6 +4,7 @@ use crate::utils::{extend_lifetime, pyarray1_to_slice, KnnResult};
 use jpboth_hnsw::api::AnnT;
 use numpy::{IntoPyArray, PyArray1};
 use pyo3::{exceptions::PyTypeError, pyclass, pymethods, Bound, Py, PyResult, Python};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rust_cv_hnsw::Searcher;
 use space::Neighbor;
 use vecnn::{
@@ -31,14 +32,26 @@ pub struct JpBothHnsw {
 #[pymethods]
 impl JpBothHnsw {
     #[new]
-    fn new(data: crate::Dataset, ef_construction: usize, m_max: usize) -> Self {
+    fn new(
+        data: crate::Dataset,
+        ef_construction: usize,
+        m_max: usize,
+        multi_threaded: bool,
+    ) -> Self {
         let max_layer = 10;
         let hnsw: ParameterizedJpBothHnsw =
             jpboth_hnsw::hnsw::Hnsw::new(m_max, data.len(), max_layer, ef_construction, DistDot);
         let ds = data.as_dyn_dataset();
-        for id in 0..ds.len() {
-            hnsw.insert_slice((ds.get(id), id))
+        if multi_threaded {
+            (0..data.len())
+                .into_par_iter()
+                .for_each(|id| hnsw.insert_slice((ds.get(id), id)));
+        } else {
+            for id in 0..ds.len() {
+                hnsw.insert_slice((ds.get(id), id))
+            }
         }
+
         JpBothHnsw { inner: hnsw, ds }
     }
 

@@ -2,6 +2,7 @@
 #![feature(binary_heap_as_slice)]
 #![feature(iter_array_chunks)]
 
+pub mod const_hnsw;
 pub mod dataset;
 pub mod distance;
 pub mod nn_descent;

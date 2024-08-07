@@ -124,7 +124,7 @@ class RustCvHnsw():
 class JpBothHnsw():
     '''An HNSW, from https://github.com/jean-pierreBoth/hnswlib-rs'''
 
-    def __init__(self, data: Dataset, ef_construction: int, m_max: int):
+    def __init__(self, data: Dataset, ef_construction: int, m_max: int, multi_threaded: bool):
         """constructs a new hnsw on the dataset.
         
         ef_construction: size of priority queue when searching for insertion point in each layer.

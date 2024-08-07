@@ -18,7 +18,7 @@ use crate::{
     utils::{SliceBinaryHeap, SlicesMemory},
 };
 
-pub const MAX_LAYERS: usize = 30;
+pub const MAX_LAYERS: usize = 16;
 pub struct SliceHnsw {
     pub data: Arc<dyn DatasetT>,
     pub layers: heapless::Vec<Layer, MAX_LAYERS>,
