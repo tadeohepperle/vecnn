@@ -54,72 +54,63 @@ fn main() {
         level_norm: 0.0,
     };
 
-    let n = 10000;
+    let hnsw_params = HnswParams {
+        level_norm_param: 1.3,
+        ef_construction: 20,
+        m_max: 10,
+        m_max_0: 20,
+        distance: Dot,
+    };
+
     let k = 30;
     let k_samples = 300;
     let mut models: Vec<ModelParams> = vec![];
-    for ef_construction in [50] {
-        for n in [20000] {
-            eval_models_on_laion(
-                n,
-                k_samples,
-                &[
-                    // ModelParams::Hnsw(HnswParams {
-                    //     level_norm_param: 0.5,
-                    //     ef_construction,
-                    //     m_max: 20,
-                    //     m_max_0: 40,
-                    //     distance: Dot,
-                    // }),
-                    // ModelParams::Hnsw2(HnswParams {
-                    //     level_norm_param: 0.5,
-                    //     ef_construction,
-                    //     m_max: 20,
-                    //     m_max_0: 40,
-                    //     distance: Dot,
-                    // }),
-                    // ModelParams::RNNGraph(RNNGraphParams {
-                    //     outer_loops: 3,
-                    //     inner_loops: 7,
-                    //     max_neighbors_after_reverse_pruning: 20,
-                    //     initial_neighbors: 20,
-                    //     distance: Distance::Dot,
-                    // }),
-                    ModelParams::VpTreeEnsemble(EnsembleParams {
-                        level_norm: -1.0,
-                        ..ensemble_params
-                    }),
-                    ModelParams::ConstHnsw(HnswParams {
-                        level_norm_param: 0.5,
-                        ef_construction,
-                        m_max: 20,
-                        m_max_0: 40,
-                        distance: Dot,
-                    }),
-                    ModelParams::OldHnsw(HnswParams {
-                        level_norm_param: 0.5,
-                        ef_construction,
-                        m_max: 20,
-                        m_max_0: 40,
-                        distance: Dot,
-                    }),
-                    ModelParams::Hnsw(HnswParams {
-                        level_norm_param: 0.5,
-                        ef_construction,
-                        m_max: 20,
-                        m_max_0: 40,
-                        distance: Dot,
-                    }),
-                ],
-                SearchParams {
-                    k,
-                    truth_distance: dot,
-                    start_candidates: 1,
-                    ef: 60,
-                },
-                true,
-            )
-        }
+
+    use HnswKind::*;
+
+    for n in [20000] {
+        eval_models_on_laion(
+            n,
+            k_samples,
+            &[
+                // ModelParams::Hnsw(HnswParams {
+                //     level_norm_param: 0.5,
+                //     ef_construction,
+                //     m_max: 20,
+                //     m_max_0: 40,
+                //     distance: Dot,
+                // }),
+                // ModelParams::Hnsw2(HnswParams {
+                //     level_norm_param: 0.5,
+                //     ef_construction,
+                //     m_max: 20,
+                //     m_max_0: 40,
+                //     distance: Dot,
+                // }),
+                // ModelParams::RNNGraph(RNNGraphParams {
+                //     outer_loops: 3,
+                //     inner_loops: 7,
+                //     max_neighbors_after_reverse_pruning: 20,
+                //     initial_neighbors: 20,
+                //     distance: Distance::Dot,
+                // }),
+                // ModelParams::VpTreeEnsemble(EnsembleParams {
+                //     level_norm: -1.0,
+                //     ..ensemble_params
+                // }),
+                ModelParams::Hnsw(hnsw_params, Const),
+                ModelParams::Hnsw(hnsw_params, Slice2),
+                // ModelParams::Hnsw(hnsw_params, Old),
+                // ModelParams::Hnsw(hnsw_params, Slice),
+            ],
+            SearchParams {
+                k,
+                truth_distance: dot,
+                start_candidates: 1,
+                ef: 60,
+            },
+            true,
+        )
     }
 }
 
@@ -232,9 +223,7 @@ fn main() {
 // }),
 #[derive(Debug, Clone, Copy)]
 enum ModelParams {
-    Hnsw(HnswParams),
-    ConstHnsw(HnswParams),
-    OldHnsw(HnswParams),
+    Hnsw(HnswParams, HnswKind),
     Transition(TransitionParams),
     VpTreeEnsemble(EnsembleParams),
     RNNGraph(RNNGraphParams),
@@ -243,22 +232,26 @@ enum ModelParams {
 impl ModelParams {
     pub fn to_string(&self) -> String {
         match self {
-            ModelParams::Hnsw(e) => format!("{e:?}"),
-            ModelParams::ConstHnsw(e) => format!("Const {e:?}"),
-            ModelParams::OldHnsw(e) => format!("Old {e:?}"),
+            ModelParams::Hnsw(e, kind) => format!("{kind:?}{e:?}"),
             ModelParams::Transition(e) => format!("{e:?}"),
             ModelParams::VpTreeEnsemble(e) => format!("{e:?}"),
             ModelParams::RNNGraph(e) => format!("{e:?}"),
         }
     }
 }
+#[derive(Debug, Clone, Copy)]
+enum HnswKind {
+    Old,
+    Const,
+    Slice,
+    Slice2,
+}
 
 enum Model {
     ConstHnsw(ConstHnsw),
     OldHnsw(Hnsw),
-    Hnsw(SliceHnsw),
-    HnswTransition(SliceHnsw),
-    VpTreeEnsemble(SliceHnsw),
+    SliceHnsw(SliceHnsw),
+    SliceHnsw2(vecnn::slice_hnsw_2::SliceHnsw),
     RNNGraph(RNNGraph),
 }
 
@@ -308,7 +301,16 @@ impl Model {
                     .collect::<HashSet<usize>>();
                 stats = res.1
             }
-            Model::Hnsw(hnsw) | Model::HnswTransition(hnsw) | Model::VpTreeEnsemble(hnsw) => {
+            Model::SliceHnsw(hnsw) => {
+                let res = hnsw.knn_search(q_data, search_params.k, search_params.ef);
+                found = res
+                    .0
+                    .iter()
+                    .map(|e| e.1 as usize)
+                    .collect::<HashSet<usize>>();
+                stats = res.1
+            }
+            Model::SliceHnsw2(hnsw) => {
                 let res = hnsw.knn_search(q_data, search_params.k, search_params.ef);
                 found = res
                     .0
@@ -331,7 +333,8 @@ impl Model {
 
     pub fn build_stats(&self) -> Stats {
         match self {
-            Model::Hnsw(e) | Model::HnswTransition(e) | Model::VpTreeEnsemble(e) => e.build_stats,
+            Model::SliceHnsw(e) => e.build_stats,
+            Model::SliceHnsw2(e) => e.build_stats,
             Model::RNNGraph(e) => e.build_stats,
             Model::ConstHnsw(e) => e.build_stats,
             Model::OldHnsw(e) => e.build_stats,
@@ -434,19 +437,24 @@ fn eval_models(
         let seed: u64 = if random_seeds { thread_rng().gen() } else { 42 };
         let data = data.clone();
         let model = match param {
-            ModelParams::Hnsw(params) => Model::Hnsw(SliceHnsw::new(data, params, seed)),
-            ModelParams::OldHnsw(params) => Model::OldHnsw(Hnsw::new(data, params, seed)),
-            ModelParams::ConstHnsw(params) => Model::ConstHnsw(ConstHnsw::new(data, params, seed)),
+            ModelParams::Hnsw(params, kind) => match kind {
+                HnswKind::Old => Model::OldHnsw(Hnsw::new(data, params, seed)),
+                HnswKind::Const => Model::ConstHnsw(ConstHnsw::new(data, params, seed)),
+                HnswKind::Slice => Model::SliceHnsw(SliceHnsw::new(data, params, seed)),
+                HnswKind::Slice2 => {
+                    Model::SliceHnsw2(vecnn::slice_hnsw_2::SliceHnsw::new(data, params, seed))
+                }
+            },
             ModelParams::Transition(params) => {
-                Model::HnswTransition(build_hnsw_by_transition(data, params, seed))
+                Model::SliceHnsw(build_hnsw_by_transition(data, params, seed))
             }
             ModelParams::RNNGraph(params) => Model::RNNGraph(RNNGraph::new(data, params, seed)),
             ModelParams::VpTreeEnsemble(params) => {
                 // todo! a bit hacky!! move the specialization to the transition module instead.
                 if params.level_norm == -1.0 {
-                    Model::VpTreeEnsemble(build_hnsw_by_vp_tree_ensemble(data, params, seed))
+                    Model::SliceHnsw(build_hnsw_by_vp_tree_ensemble(data, params, seed))
                 } else {
-                    Model::VpTreeEnsemble(build_hnsw_by_vp_tree_ensemble_multi_layer(
+                    Model::SliceHnsw(build_hnsw_by_vp_tree_ensemble_multi_layer(
                         data, params, seed,
                     ))
                 }

@@ -19,7 +19,7 @@ use crate::{
 
 pub const MAX_LAYERS: usize = 16;
 
-pub const M_MAX: usize = 20;
+pub const M_MAX: usize = 10;
 pub const M_MAX_0: usize = M_MAX * 2;
 
 pub struct ConstHnsw {

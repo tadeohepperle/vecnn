@@ -8,6 +8,7 @@ pub mod distance;
 pub mod nn_descent;
 pub mod schubert_distance;
 pub mod slice_hnsw;
+pub mod slice_hnsw_2;
 pub mod transition;
 pub mod utils;
 pub mod vp_tree;
