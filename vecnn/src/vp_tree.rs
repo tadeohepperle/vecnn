@@ -16,6 +16,10 @@ use crate::{
     utils::{KnnHeap, Stats},
     Float,
 };
+use rayon::{
+    iter::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
+    slice::ParallelSliceMut,
+};
 
 /// # VpTree
 ///
@@ -65,9 +69,23 @@ pub struct VpTree {
     pub build_stats: Stats,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VpTreeParams {
+    pub distance: Distance,
+    pub threaded: bool,
+}
+impl Default for VpTreeParams {
+    fn default() -> Self {
+        Self {
+            distance: Distance::L2,
+            threaded: false,
+        }
+    }
+}
+
 impl VpTree {
-    pub fn new(data: Arc<dyn DatasetT>, distance: Distance, seed: u64) -> Self {
-        construct_vp_tree(data, distance, seed)
+    pub fn new(data: Arc<dyn DatasetT>, params: VpTreeParams, seed: u64) -> Self {
+        construct_vp_tree(data, params.distance, seed, params.threaded)
     }
 
     pub fn iter_levels(&self, f: &mut impl FnMut(usize, &Node)) {
@@ -82,6 +100,15 @@ impl VpTree {
             }
         }
         slice_iter(&self.nodes, 0, f);
+    }
+
+    pub fn knn_search_approximative(
+        &self,
+        q: &[Float],
+        k: usize,
+        max_visited_elements: usize,
+    ) -> (Vec<DistAnd<usize>>, Stats) {
+        todo!()
     }
 
     pub fn knn_search(&self, q: &[Float], k: usize) -> (Vec<DistAnd<usize>>, Stats) {
@@ -128,133 +155,6 @@ impl VpTree {
 
         (heap.as_sorted_vec(), stats)
     }
-
-    // pub fn knn_search(&self, q: &[Float], k: usize) -> (Vec<DistAnd<usize>>, Stats) {
-    //     let tracker = DistanceTracker::new(self.distance_fn);
-    //     let start = Instant::now();
-    //     let dist_to_q = |idx| {
-    //         let p = self.data.get(idx);
-    //         tracker.distance(p, q)
-    //     };
-
-    //     fn search_tree(
-    //         tree: &[Node],
-    //         k: usize,
-    //         t: Float,
-    //         heap: &mut BinaryHeap<DistAnd<usize>>,
-    //         dist_to_q: &impl Fn(usize) -> Float,
-    //     ) {
-    //         if tree.len() == 0 {
-    //             return;
-    //         }
-    //         let mut tau = t;
-    //         let root = &tree[0];
-    //         let dist = dist_to_q(root.idx);
-
-    //         if dist < tau {
-    //             heap.push(DistAnd { dist, i: root.idx });
-    //             if heap.len() > k {
-    //                 heap.pop();
-    //             }
-    //             if heap.len() == k {
-    //                 tau = heap.peek().unwrap().dist;
-    //             }
-
-    //             if tree.len() == 1 {
-    //                 return;
-    //             }
-
-    //             if dist < root.dist {
-    //                 search_tree(left(tree), k, tau, heap, dist_to_q);
-    //                 if dist + tau >= root.dist {
-    //                     search_tree(right(tree), k, t, heap, dist_to_q);
-    //                 }
-    //             } else {
-    //                 search_tree(right(tree), k, t, heap, dist_to_q);
-    //                 if (dist - tau) <= root.dist {
-    //                     search_tree(left(tree), k, t, heap, dist_to_q);
-    //                 }
-    //             }
-    //         }
-    //     }
-
-    //     let mut heap: BinaryHeap<DistAnd<usize>> = BinaryHeap::new();
-    //     search_tree(&self.nodes, k, 10000000.0, &mut heap, &dist_to_q);
-    //     let mut res = Vec::from(heap);
-    //     res.sort();
-
-    //     let stats = Stats {
-    //         num_distance_calculations: tracker.num_calculations(),
-    //         duration: start.elapsed(),
-    //     };
-
-    //     (res, stats)
-    // }
-    /*
-
-
-
-    void VPTreeknnSearch(int query, vptree* node, int k, std::priority_queue<HeapItem>* heap, double t, int threadID, int* numNodesVP) {
-        if (node == NULL) return;
-
-        // numNodes contains the number of number of nodes each thread has visited
-        numNodesVP[threadID]++;
-
-        int d = node->D;
-        int n = node->N;
-        double tau = t;
-
-        // Find the distance of query point and vantage point
-        double dist = 0.0;
-        int vantagePointIdx = node->ivp;
-        double* queryCoords = (double*)malloc(d * sizeof(double));
-
-        for (int i = 0; i < d; i++) {
-            queryCoords[i] = node->A[query * d + i];
-
-            dist += pow(queryCoords[i] - node->VPCords[i], 2);
-        }
-        dist = sqrt(dist);
-
-        free(queryCoords);
-
-        if (dist < tau) {
-            heap->push(HeapItem(vantagePointIdx, dist));
-            if (heap->size() == k + 1) {
-                heap->pop();
-            }
-            if (heap->size() == k) {
-                tau = heap->top().dist;
-            }
-        }
-
-        if (node->inner == NULL && node->outer == NULL) {
-            return;
-        }
-
-        if (dist < node->median) {
-            // Search inner subtree first
-            VPTreeknnSearch(query, node->inner, k, heap, tau, threadID, numNodesVP);
-            if (dist + tau >= node->median) {
-                VPTreeknnSearch(query, node->outer, k, heap, tau, threadID, numNodesVP);
-            }
-
-        }
-        else {
-            // Search outer subtree first
-            VPTreeknnSearch(query, node->outer, k, heap, tau, threadID, numNodesVP);
-            if (dist - tau <= node->median) {
-                VPTreeknnSearch(query, node->inner, k, heap, tau, threadID, numNodesVP);
-            }
-
-        }
-    }
-
-
-
-
-
-         */
 }
 
 #[inline(always)]
@@ -312,7 +212,12 @@ impl Debug for Node {
     }
 }
 
-pub fn construct_vp_tree(data: Arc<dyn DatasetT>, distance: Distance, seed: u64) -> VpTree {
+pub fn construct_vp_tree(
+    data: Arc<dyn DatasetT>,
+    distance: Distance,
+    seed: u64,
+    parallel: bool,
+) -> VpTree {
     let mut nodes: Vec<Node> = Vec::with_capacity(data.len());
     for idx in 0..data.len() {
         nodes.push(Node { id: idx, dist: 0.0 });
@@ -322,7 +227,11 @@ pub fn construct_vp_tree(data: Arc<dyn DatasetT>, distance: Distance, seed: u64)
     let mut rng = ChaCha20Rng::seed_from_u64(seed);
     // arrange items in self.tmp into a vp tree
     let data_get = |e: &Node| data.get(e.id);
-    arrange_into_vp_tree(&mut nodes, &data_get, &distance_tracker, &mut rng);
+    if parallel {
+        arrange_into_vp_tree_parallel(&mut nodes, &data_get, &distance_tracker, &mut rng);
+    } else {
+        arrange_into_vp_tree(&mut nodes, &data_get, &distance_tracker, &mut rng);
+    }
 
     let build_stats = Stats {
         num_distance_calculations: distance_tracker.num_calculations(),
@@ -349,6 +258,81 @@ impl StoresDistT for Node {
     #[inline(always)]
     fn set_dist(&mut self, dist: f32) {
         self.dist = dist;
+    }
+}
+
+pub fn arrange_into_vp_tree_parallel<'a, T, F>(
+    tmp: &mut [T],
+    data_get: &'a F,
+    distance: &DistanceTracker,
+    rng: &mut rand_chacha::ChaCha20Rng,
+) where
+    T: StoresDistT + Send + Sync,
+    F: Fn(&T) -> &'a [f32] + Send + Sync,
+{
+    // how big a chunk needs to be to be split in two parallel operations or to calculate distances in parallel.
+    const PAR_DISTANCE_CALCS_MIN_SIZE: usize = 256;
+    const PAR_DISTANCE_CALCS_CHUNK_SIZE: usize = 64;
+    const PAR_SPLIT_MIN_SIZE: usize = 256;
+
+    // early return if there are only 0,1 or 2 elements left
+    let tmp_len = tmp.len();
+    match tmp_len {
+        0 => return,
+        1 => {
+            tmp[0].set_dist(0.0);
+            return;
+        }
+        2 => {
+            let pt_0 = data_get(&tmp[0]);
+            let pt_1 = data_get(&tmp[1]);
+            tmp[0].set_dist(distance.distance(pt_0, pt_1));
+            tmp[1].set_dist(0.0);
+            return;
+        }
+        _ => {}
+    }
+    // select a random index and swap it with the first element:
+    tmp.swap(select_random_point(tmp, rng), 0);
+    let vp_pt = data_get(&tmp[0]);
+
+    // calculate distances to each other element:
+    if tmp_len >= PAR_DISTANCE_CALCS_MIN_SIZE {
+        // parallel:
+        tmp[1..]
+            .par_chunks_mut(PAR_DISTANCE_CALCS_CHUNK_SIZE)
+            .for_each(|chunk| {
+                for other in chunk.iter_mut() {
+                    let other_pt = data_get(other);
+                    other.set_dist(distance.distance(vp_pt, other_pt));
+                }
+            });
+    } else {
+        // sequential
+        for i in 1..tmp_len {
+            let other = &mut tmp[i];
+            let other_pt = data_get(other);
+            other.set_dist(distance.distance(vp_pt, other_pt));
+        }
+    }
+
+    // partition into points closer and further to median:
+    let median_i = quick_select_median_dist(&mut tmp[1..]) + 1;
+    // assert!(median_i >= 2);
+    // set the median distance on the root node, then build left and right sub-trees
+    let median_dist = tmp[median_i].dist();
+    tmp[0].set_dist(median_dist);
+
+    if tmp_len >= PAR_SPLIT_MIN_SIZE {
+        let (part_a, part_b) = tmp.split_at_mut(median_i);
+        let mut rng_a = rng.clone();
+        rayon::join(
+            || arrange_into_vp_tree_parallel(&mut part_a[1..], data_get, distance, &mut rng_a),
+            || arrange_into_vp_tree_parallel(part_b, data_get, distance, rng),
+        );
+    } else {
+        arrange_into_vp_tree_parallel(&mut tmp[1..median_i], data_get, distance, rng);
+        arrange_into_vp_tree_parallel(&mut tmp[median_i..], data_get, distance, rng);
     }
 }
 
@@ -471,7 +455,7 @@ pub mod tests {
         dataset::DatasetT,
         distance::{l2, Distance},
         utils::{linear_knn_search, random_data_set, simple_test_set},
-        vp_tree::{left, left_with_root, right},
+        vp_tree::{left, left_with_root, right, VpTreeParams},
         Float,
     };
 
@@ -552,7 +536,7 @@ pub mod tests {
             for _ in 0..20 {
                 let query_idx = thread_rng().gen_range(0..data.len());
                 let query = data.get(query_idx);
-                let vp_tree = VpTree::new(data.clone(), Distance::L2, 42);
+                let vp_tree = VpTree::new(data.clone(), VpTreeParams::default(), 42);
                 let nn = vp_tree.knn_search(query, 1).0[0];
                 assert_eq!(nn.1, query_idx);
                 assert_eq!(nn.dist(), 0.0);
@@ -589,7 +573,7 @@ pub mod tests {
 
         for i in 0..10 {
             let q = data.get(i);
-            let tree = VpTree::new(data.clone(), Distance::L2, 42);
+            let tree = VpTree::new(data.clone(), VpTreeParams::default(), 42);
             dbg!(i);
             println!("{:?}", &tree.nodes);
             let tree_l = left(&tree.nodes);

@@ -45,7 +45,7 @@ class VpTree():
     '''A vp-tree, built on a DataSet'''
     num_distance_calculations_in_build: int
     
-    def __init__(self, data: Dataset, seed: int):
+    def __init__(self, data: Dataset, distance: Distance, threaded: bool, seed: int):
         """constructs a new vp-tree on the dataset passed in."""
         pass
 
@@ -87,7 +87,7 @@ class Hnsw():
     num_distance_calculations_in_build: int
 
     
-    def __init__(self, data: Dataset, level_norm_param: float, ef_construction: int, m_max: int, m_max_0: int, distance: Distance, use_const_impl: bool, seed: int):
+    def __init__(self, data: Dataset, level_norm_param: float, ef_construction: int, m_max: int, m_max_0: int, distance: Distance, use_const_impl: bool,threaded: bool,  seed: int):
         """constructs a new hnsw on the dataset."""
         pass
 
@@ -124,7 +124,7 @@ class RustCvHnsw():
 class JpBothHnsw():
     '''An HNSW, from https://github.com/jean-pierreBoth/hnswlib-rs'''
 
-    def __init__(self, data: Dataset, ef_construction: int, m_max: int, multi_threaded: bool):
+    def __init__(self, data: Dataset, ef_construction: int, m_max: int, threaded: bool):
         """constructs a new hnsw on the dataset.
         
         ef_construction: size of priority queue when searching for insertion point in each layer.

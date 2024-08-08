@@ -28,6 +28,7 @@ use vecnn::{
         build_hnsw_by_vp_tree_ensemble_multi_layer, EnsembleParams, StitchMode, TransitionParams,
     },
     utils::{linear_knn_search, random_data_set, Stats},
+    vp_tree::{VpTree, VpTreeParams},
 };
 
 const RNG_SEED: u64 = 21321424198;
@@ -55,38 +56,23 @@ fn main() {
     };
 
     let hnsw_params = HnswParams {
-        level_norm_param: 1.3,
-        ef_construction: 20,
-        m_max: 10,
-        m_max_0: 20,
+        level_norm_param: 0.8,
+        ef_construction: 50,
+        m_max: 20,
+        m_max_0: 40,
         distance: Dot,
     };
 
     let k = 30;
-    let k_samples = 300;
-    let mut models: Vec<ModelParams> = vec![];
+    let k_samples = 3;
 
     use HnswKind::*;
 
-    for n in [20000] {
+    for n in [100000] {
         eval_models_on_laion(
             n,
             k_samples,
             &[
-                // ModelParams::Hnsw(HnswParams {
-                //     level_norm_param: 0.5,
-                //     ef_construction,
-                //     m_max: 20,
-                //     m_max_0: 40,
-                //     distance: Dot,
-                // }),
-                // ModelParams::Hnsw2(HnswParams {
-                //     level_norm_param: 0.5,
-                //     ef_construction,
-                //     m_max: 20,
-                //     m_max_0: 40,
-                //     distance: Dot,
-                // }),
                 // ModelParams::RNNGraph(RNNGraphParams {
                 //     outer_loops: 3,
                 //     inner_loops: 7,
@@ -98,16 +84,36 @@ fn main() {
                 //     level_norm: -1.0,
                 //     ..ensemble_params
                 // }),
-                ModelParams::Hnsw(hnsw_params, Const),
-                ModelParams::Hnsw(hnsw_params, Slice2),
-                // ModelParams::Hnsw(hnsw_params, Old),
-                // ModelParams::Hnsw(hnsw_params, Slice),
+                // ModelParams::Hnsw(hnsw_params, Const),
+                // ModelParams::Hnsw(hnsw_params, SliceS1),
+                // ModelParams::Hnsw(hnsw_params, SliceParralelRayon),
+                // ModelParams::Hnsw(hnsw_params, SliceParralelThreadPool),
+                // ModelParams::Hnsw(hnsw_params, SliceParralelRayon),
+                // ModelParams::Hnsw(hnsw_params, SliceParralelThreadPool),
+                // ModelParams::Hnsw(hnsw_params, SliceParralelRayon),
+                // ModelParams::Hnsw(hnsw_params, SliceParralelThreadPool),
+                ModelParams::VpTree(VpTreeParams {
+                    distance: Dot,
+                    threaded: false,
+                }),
+                ModelParams::VpTree(VpTreeParams {
+                    distance: Dot,
+                    threaded: true,
+                }),
+                // ModelParams::Hnsw(hnsw_params, SliceS2),
+                // ModelParams::Hnsw(hnsw_params, SliceParralel),
+                // ModelParams::Hnsw(hnsw_params, SliceS2),
+                // ModelParams::Hnsw(hnsw_params, SliceParralel),
+                // ModelParams::Hnsw(hnsw_params, SliceS2),
+                // ModelParams::Hnsw(hnsw_params, SliceParralel),
+                // ModelParams::Hnsw(hnsw_params, SliceS2),
             ],
             SearchParams {
                 k,
                 truth_distance: dot,
                 start_candidates: 1,
                 ef: 60,
+                vp_max_visits: 0,
             },
             true,
         )
@@ -227,6 +233,7 @@ enum ModelParams {
     Transition(TransitionParams),
     VpTreeEnsemble(EnsembleParams),
     RNNGraph(RNNGraphParams),
+    VpTree(VpTreeParams),
 }
 
 impl ModelParams {
@@ -236,6 +243,7 @@ impl ModelParams {
             ModelParams::Transition(e) => format!("{e:?}"),
             ModelParams::VpTreeEnsemble(e) => format!("{e:?}"),
             ModelParams::RNNGraph(e) => format!("{e:?}"),
+            ModelParams::VpTree(e) => format!("{e:?}"),
         }
     }
 }
@@ -243,16 +251,19 @@ impl ModelParams {
 enum HnswKind {
     Old,
     Const,
-    Slice,
-    Slice2,
+    SliceS1,
+    SliceS2,
+    SliceParralelRayon,
+    SliceParralelThreadPool,
 }
 
 enum Model {
     ConstHnsw(ConstHnsw),
     OldHnsw(Hnsw),
     SliceHnsw(SliceHnsw),
-    SliceHnsw2(vecnn::slice_hnsw_2::SliceHnsw),
+    SliceHnswParallel(vecnn::slice_hnsw_par::SliceHnsw),
     RNNGraph(RNNGraph),
+    VpTree(VpTree),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -261,13 +272,25 @@ struct SearchParams {
     k: usize,
     start_candidates: usize, // for RNN graph
     ef: usize,               // for HNSW
+    vp_max_visits: usize,
 }
 impl Display for SearchParams {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "{{k:{}, ef: {}, start_candidates: {}}}",
-            self.k, self.ef, self.start_candidates
-        ))
+        match (self.start_candidates == 0, self.vp_max_visits == 0) {
+            (true, true) => f.write_fmt(format_args!("{{k:{}, ef: {}}}", self.k, self.ef,)),
+            (true, false) => f.write_fmt(format_args!(
+                "{{k:{}, ef: {}, vp_max_visits: {}}}",
+                self.k, self.ef, self.vp_max_visits
+            )),
+            (false, true) => f.write_fmt(format_args!(
+                "{{k:{}, ef: {}, start_candidates: {}}}",
+                self.k, self.ef, self.start_candidates
+            )),
+            (false, false) => f.write_fmt(format_args!(
+                "{{k:{}, ef: {}, start_candidates: {}, vp_max_visits: {}}}",
+                self.k, self.ef, self.start_candidates, self.vp_max_visits
+            )),
+        }
     }
 }
 
@@ -283,15 +306,6 @@ impl Model {
         let found: HashSet<usize>;
         let stats: Stats;
         match self {
-            Model::ConstHnsw(hnsw) => {
-                let res = hnsw.knn_search(q_data, search_params.k, search_params.ef);
-                found = res
-                    .0
-                    .iter()
-                    .map(|e| e.1 as usize)
-                    .collect::<HashSet<usize>>();
-                stats = res.1
-            }
             Model::OldHnsw(hnsw) => {
                 let res = hnsw.knn_search(q_data, search_params.k, search_params.ef);
                 found = res
@@ -310,7 +324,7 @@ impl Model {
                     .collect::<HashSet<usize>>();
                 stats = res.1
             }
-            Model::SliceHnsw2(hnsw) => {
+            Model::SliceHnswParallel(hnsw) => {
                 let res = hnsw.knn_search(q_data, search_params.k, search_params.ef);
                 found = res
                     .0
@@ -325,6 +339,32 @@ impl Model {
                 found = res.0.iter().map(|e| e.1).collect::<HashSet<usize>>();
                 stats = res.1;
             }
+            Model::ConstHnsw(hnsw) => {
+                let res = hnsw.knn_search(q_data, search_params.k, search_params.ef);
+                found = res
+                    .0
+                    .iter()
+                    .map(|e| e.1 as usize)
+                    .collect::<HashSet<usize>>();
+                stats = res.1
+            }
+            Model::VpTree(vp_tree) => {
+                let res = if search_params.vp_max_visits == 0 {
+                    vp_tree.knn_search(q_data, search_params.k)
+                } else {
+                    vp_tree.knn_search_approximative(
+                        q_data,
+                        search_params.k,
+                        search_params.vp_max_visits,
+                    )
+                };
+                found = res
+                    .0
+                    .iter()
+                    .map(|e| e.1 as usize)
+                    .collect::<HashSet<usize>>();
+                stats = res.1
+            }
         };
         let recall_n = true_res.iter().filter(|i| found.contains(i)).count();
         let r = recall_n as f64 / search_params.k as f64;
@@ -334,10 +374,11 @@ impl Model {
     pub fn build_stats(&self) -> Stats {
         match self {
             Model::SliceHnsw(e) => e.build_stats,
-            Model::SliceHnsw2(e) => e.build_stats,
             Model::RNNGraph(e) => e.build_stats,
             Model::ConstHnsw(e) => e.build_stats,
             Model::OldHnsw(e) => e.build_stats,
+            Model::SliceHnswParallel(e) => e.build_stats,
+            Model::VpTree(e) => e.build_stats,
         }
     }
 }
@@ -440,10 +481,18 @@ fn eval_models(
             ModelParams::Hnsw(params, kind) => match kind {
                 HnswKind::Old => Model::OldHnsw(Hnsw::new(data, params, seed)),
                 HnswKind::Const => Model::ConstHnsw(ConstHnsw::new(data, params, seed)),
-                HnswKind::Slice => Model::SliceHnsw(SliceHnsw::new(data, params, seed)),
-                HnswKind::Slice2 => {
-                    Model::SliceHnsw2(vecnn::slice_hnsw_2::SliceHnsw::new(data, params, seed))
+                HnswKind::SliceS1 => {
+                    Model::SliceHnsw(SliceHnsw::new_strategy_1(data, params, seed))
                 }
+                HnswKind::SliceS2 => {
+                    Model::SliceHnsw(SliceHnsw::new_strategy_2(data, params, seed))
+                }
+                HnswKind::SliceParralelRayon => Model::SliceHnswParallel(
+                    vecnn::slice_hnsw_par::SliceHnsw::new(data, params, seed),
+                ),
+                HnswKind::SliceParralelThreadPool => Model::SliceHnswParallel(
+                    vecnn::slice_hnsw_par::SliceHnsw::new_with_thread_pool(data, params, seed),
+                ),
             },
             ModelParams::Transition(params) => {
                 Model::SliceHnsw(build_hnsw_by_transition(data, params, seed))
@@ -459,6 +508,7 @@ fn eval_models(
                     ))
                 }
             }
+            ModelParams::VpTree(params) => Model::VpTree(VpTree::new(data, params, seed)),
         };
         models.push(model);
     }

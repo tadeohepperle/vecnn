@@ -30,7 +30,15 @@ pub type Layers = heapless::Vec<Layer, MAX_LAYERS>;
 
 impl SliceHnsw {
     pub fn new(data: Arc<dyn DatasetT>, params: HnswParams, seed: u64) -> Self {
-        construct_hnsw(data, params, seed)
+        Self::new_strategy_1(data, params, seed)
+    }
+
+    pub fn new_strategy_1(data: Arc<dyn DatasetT>, params: HnswParams, seed: u64) -> Self {
+        s1_construct_hnsw(data, params, seed)
+    }
+
+    pub fn new_strategy_2(data: Arc<dyn DatasetT>, params: HnswParams, seed: u64) -> Self {
+        s2_construct_hnsw(data, params, seed)
     }
 
     pub fn new_empty(data: Arc<dyn DatasetT>, params: HnswParams) -> Self {
@@ -52,24 +60,24 @@ impl SliceHnsw {
         let top_layer = self.layers.len() - 1;
         for l in (1..=top_layer).rev() {
             let layer = &self.layers[l];
-            // search_layer(
-            //     &*self.data,
-            //     &distance,
-            //     &mut buffers,
-            //     layer,
-            //     q_data,
-            //     1,
-            //     &[ep_idx],
-            // );
-            // let this_layer_ep_idx = buffers.found.as_slice()[0].1;
-            let this_layer_ep_idx = search_layer_ef_1(
+            search_layer(
                 &*self.data,
                 &distance,
-                &mut buffers.visited,
+                &mut buffers,
                 layer,
                 q_data,
-                ep_idx,
+                1,
+                &[ep_idx],
             );
+            let this_layer_ep_idx = buffers.found.as_slice()[0].1;
+            // let this_layer_ep_idx = search_layer_ef_1(
+            //     &*self.data,
+            //     &distance,
+            //     &mut buffers.visited,
+            //     layer,
+            //     q_data,
+            //     ep_idx,
+            // );
             ep_idx = layer.entries[this_layer_ep_idx].lower_level_idx;
         }
         let layer_0 = &self.layers[0];
@@ -119,6 +127,17 @@ pub struct Layer {
     pub entries_cap: usize, // how many entries should this layer be max able to hold
     pub entries: Vec<LayerEntry>,
 }
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct LayerEntry {
+    pub id: usize,
+    pub lower_level_idx: usize,
+    pub neighbors: Neighbors,
+}
+
+pub type Neighbor = DistAnd<usize>;
+pub type Neighbors = SliceBinaryHeap<'static, Neighbor>;
 
 impl Layer {
     /// just leave entries_cap_hint at 0 if you don't know yet.
@@ -186,28 +205,18 @@ impl Layer {
     }
 }
 
-#[derive(Debug)]
-#[repr(C)]
-pub struct LayerEntry {
-    pub id: usize,
-    pub lower_level_idx: usize,
-    pub neighbors: Neighbors,
-}
+// /////////////////////////////////////////////////////////////////////////////
+// SECTION: Insert Strategy 1: preallocate layers memory and determine levels, but insert pts sequentially
+// /////////////////////////////////////////////////////////////////////////////
 
-pub type Neighbor = DistAnd<usize>;
-pub type Neighbors = SliceBinaryHeap<'static, Neighbor>;
-
-fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams, seed: u64) -> SliceHnsw {
+fn s1_construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams, seed: u64) -> SliceHnsw {
     let start_time = Instant::now();
-    // /////////////////////////////////////////////////////////////////////////////
-    // Step 1: Create all the layers
-    // /////////////////////////////////////////////////////////////////////////////
     let mut rng = ChaCha20Rng::seed_from_u64(seed);
     let data_len = data.len();
 
     let (mut layers, insert_levels) =
-        determine_insert_levels_and_allocate_layers_memory(data_len, &params, &mut rng);
-    // we assume that the layers have len 0, and just ignore all the empty layers that already have been preallocated.
+        s1_determine_insert_levels_and_allocate_layers_memory(data_len, &params, &mut rng);
+
     let mut ctx = InsertCtx {
         distance: DistanceTracker::new(params.distance),
         params,
@@ -219,7 +228,7 @@ fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams, seed: u64) -> Sli
         top_level: 0,
     };
     for id in 0..data_len {
-        insert_element(&mut ctx, id, insert_levels[id]);
+        s1_insert_element(&mut ctx, id, insert_levels[id]);
     }
     assert_eq!(ctx.top_level + 1, ctx.layers.len());
 
@@ -236,12 +245,40 @@ fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams, seed: u64) -> Sli
     }
 }
 
+/// returns layers and insert level of each node in the dataset
+fn s1_determine_insert_levels_and_allocate_layers_memory(
+    data_len: usize,
+    params: &HnswParams,
+    rng: &mut ChaCha20Rng,
+) -> (heapless::Vec<Layer, MAX_LAYERS>, Vec<usize>) {
+    let mut layers: heapless::Vec<Layer, MAX_LAYERS> = Default::default();
+    let mut insert_levels: Vec<usize> = Vec::with_capacity(data_len);
+    for _ in 0..data_len {
+        let level = random_level(params.level_norm_param, rng);
+        insert_levels.push(level);
+        for l in 0..=level {
+            if l >= layers.len() {
+                let m_max = if layers.len() == 0 {
+                    params.m_max_0
+                } else {
+                    params.m_max
+                };
+                let mut layer = Layer::new(m_max);
+                layer.entries_cap = 1;
+                layers.push(layer).unwrap();
+            } else {
+                layers[l].entries_cap += 1;
+            }
+        }
+    }
+    for layer in layers.iter_mut() {
+        layer.allocate_neighbors_memory();
+    }
+    (layers, insert_levels)
+}
+
 // assumes the levels are known, the layers have all been filled with preallocated blocks of memory, etc.
-fn insert_element(ctx: &mut InsertCtx<'_>, id: usize, insert_level: usize) {
-    // println!(
-    //     "insert element {id} at {insert_level} (top level: {})",
-    //     ctx.top_level
-    // );
+fn s1_insert_element(ctx: &mut InsertCtx<'_>, id: usize, insert_level: usize) {
     // /////////////////////////////////////////////////////////////////////////////
     // SECTION 0: add entries and sub-allocate neighbors lists on all levels 0..=insert_level
     // /////////////////////////////////////////////////////////////////////////////
@@ -269,7 +306,6 @@ fn insert_element(ctx: &mut InsertCtx<'_>, id: usize, insert_level: usize) {
             &[ep_idx],
         );
         let this_layer_ep_idx = search_buffers.found.as_slice()[0].1;
-
         // let this_layer_ep_idx = search_layer_ef_1(
         //     ctx.data,
         //     &ctx.distance,
@@ -289,7 +325,6 @@ fn insert_element(ctx: &mut InsertCtx<'_>, id: usize, insert_level: usize) {
     entry_points.clear();
     entry_points.push(ep_idx);
     for l in (0..=ctx.top_level.min(insert_level)).rev() {
-        // println!("  SECTION 2, level {l}");
         let layer = &mut ctx.layers[l];
         if layer.entries.len() == 1 {
             assert!(l == 0); // could come here, if top_level should actually be -1 (not possible because of usize, then no other nodes exist at this level and we can break out)
@@ -315,17 +350,11 @@ fn insert_element(ctx: &mut InsertCtx<'_>, id: usize, insert_level: usize) {
         }
         // select the m_max neighbors from found that should be used for bidirectional connections. (because m_max << ef usually).
         // Attention: select_neighbors mutates the scratch space of search_buffers.found! (for efficiency reasons)
-        select_neighbors(&mut search_buffers.found, selected_neighbors, layer.m_max);
-        // select_neighbors_heuristic(
-        //     q_data,
-        //     ctx.data,
-        //     &ctx.distance,
-        //     layer,
-        //     &mut search_buffers.found,
-        //     &mut search_buffers.frontier,
-        //     layer.m_max,
-        //     selected_neighbors,
-        // );
+        select_neighbors(
+            &mut search_buffers.found,
+            selected_neighbors,
+            ctx.params.m_max,
+        ); // Note: m_max better than m_max_0 here for recall even on layer 0!
         let q_idx = layer.entries.len() - 1; // q is the last entry in the layer
 
         // add bidirectional connections for each neighbor:
@@ -343,14 +372,189 @@ fn insert_element(ctx: &mut InsertCtx<'_>, id: usize, insert_level: usize) {
     if ctx.top_level < insert_level {
         ctx.top_level = insert_level;
     }
-    // println!("Layers:");
-    // for (i, layer) in ctx.layers[0..=ctx.top_level].iter().enumerate().rev() {
-    //     println!("    Layer {i}");
-    //     for e in layer.entries.iter() {
-    //         println!("      {:?}", e);
-    //     }
-    // }
 }
+
+// /////////////////////////////////////////////////////////////////////////////
+// SECTION: Insert Strategy 2: Predetermine levels and insert all elements with empty neighbors lists first.
+// This establishes links to lower lists already. Afterwards the insertion does not need to add layer entries anymore.
+// -> Good step towards more parallelism without locks on layers.
+// /////////////////////////////////////////////////////////////////////////////
+
+fn s2_construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams, seed: u64) -> SliceHnsw {
+    let start_time = Instant::now();
+    let mut rng = ChaCha20Rng::seed_from_u64(seed);
+    let (mut layers, insert_positions) =
+        s2_make_layers_with_empty_neighbors(data.len(), params, &mut rng);
+    assert_eq!(insert_positions.len(), data.len());
+    let mut ctx = InsertCtx {
+        distance: DistanceTracker::new(params.distance),
+        params,
+        data: &*data,
+        layers: &mut layers,
+        search_buffers: SearchBuffers::new(),
+        selected_neighbors: vec![],
+        entry_points: vec![],
+        top_level: 0,
+    };
+
+    for id in 1..data.len() {
+        let pos = insert_positions[id];
+        s2_insert_element(&mut ctx, id, pos.level, pos.idx_in_layer);
+    }
+    assert_eq!(ctx.top_level + 1, ctx.layers.len());
+
+    let build_stats = Stats {
+        num_distance_calculations: ctx.distance.num_calculations(),
+        duration: start_time.elapsed(),
+    };
+
+    SliceHnsw {
+        data,
+        layers,
+        params,
+        build_stats,
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct InsertPosition {
+    level: usize,
+    idx_in_layer: usize,
+}
+
+fn s2_make_layers_with_empty_neighbors(
+    data_len: usize,
+    params: HnswParams,
+    rng: &mut ChaCha20Rng,
+) -> (heapless::Vec<Layer, MAX_LAYERS>, Vec<InsertPosition>) {
+    let mut layers: heapless::Vec<Layer, MAX_LAYERS> = heapless::Vec::new();
+    for l in 0..MAX_LAYERS {
+        let m_max = if l == 0 { params.m_max_0 } else { params.m_max };
+        layers.push(Layer::new(m_max)).unwrap();
+    }
+
+    let mut insert_positions: Vec<InsertPosition> = Vec::with_capacity(data_len);
+    for id in 0..data_len {
+        let level = random_level(params.level_norm_param, rng);
+        let mut lower_level_idx = usize::MAX;
+        for l in 0..=level {
+            lower_level_idx = layers[l].add_entry_with_uninit_neighbors(id, lower_level_idx);
+        }
+        insert_positions.push(InsertPosition {
+            level,
+            idx_in_layer: lower_level_idx,
+        })
+    }
+    while let Some(layer) = layers.last() {
+        // remove unused empty layers
+        if layer.entries.is_empty() {
+            layers.pop();
+        } else {
+            break;
+        }
+    }
+    for layer in layers.iter_mut() {
+        layer.allocate_neighbors_memory_and_suballocate_neighbors_lists()
+    }
+
+    (layers, insert_positions)
+}
+
+// Note: Assumes that the first element ever is skipped (no need to do stuff anyway)
+// Panics if the first element is not skipped.
+// assumes the levels are known, the layers have all been filled with preallocated blocks of memory, etc.
+fn s2_insert_element(
+    ctx: &mut InsertCtx<'_>,
+    id: usize,
+    insert_level: usize,
+    mut idx_in_layer: usize,
+) {
+    // walk the graph down to the level where search starts (only relevant if insert_level > top_level)
+    for l in (ctx.top_level + 1..=insert_level).rev() {
+        idx_in_layer = ctx.layers[l].entries[idx_in_layer].lower_level_idx;
+    }
+
+    // /////////////////////////////////////////////////////////////////////////////
+    // SECTION 1: Search with ef=1 until the insert level is reached.
+    // /////////////////////////////////////////////////////////////////////////////
+    let q_data = ctx.data.get(id);
+    let search_buffers = &mut ctx.search_buffers;
+    let mut ep_idx: usize = 0;
+    for l in (insert_level + 1..=ctx.top_level).rev() {
+        let layer = &ctx.layers[l];
+        search_layer(
+            ctx.data,
+            &ctx.distance,
+            search_buffers,
+            layer,
+            q_data,
+            1,
+            &[ep_idx],
+        );
+        let this_layer_ep_idx = search_buffers.found.as_slice()[0].1;
+        ep_idx = layer.entries[this_layer_ep_idx].lower_level_idx;
+    }
+
+    // /////////////////////////////////////////////////////////////////////////////
+    // SECTION 2: now we have the ep_idx at layer insert_level. Search with ef=ef_construction to find neighbors for the new point here
+    // /////////////////////////////////////////////////////////////////////////////
+    let selected_neighbors = &mut ctx.selected_neighbors;
+    let entry_points = &mut ctx.entry_points;
+    entry_points.clear();
+    entry_points.push(ep_idx);
+    for l in (0..=ctx.top_level.min(insert_level)).rev() {
+        let layer = &mut ctx.layers[l];
+        search_layer(
+            ctx.data,
+            &ctx.distance,
+            search_buffers,
+            layer,
+            q_data,
+            ctx.params.ef_construction,
+            &entry_points,
+        );
+        // the next entry points are the found elements. Lower the idx of each of them for search in the next layer:
+        if l != 0 {
+            entry_points.clear();
+            for f in search_buffers.found.iter() {
+                let f_idx_this_level = f.1;
+                let f_idx_lower_level = layer.entries[f_idx_this_level].lower_level_idx;
+                entry_points.push(f_idx_lower_level);
+            }
+        }
+
+        // select the m_max neighbors from found that should be used for bidirectional connections. (because m_max << ef usually).
+        // Attention: select_neighbors mutates the scratch space of search_buffers.found! (for efficiency reasons)
+        select_neighbors(
+            &mut search_buffers.found,
+            selected_neighbors,
+            ctx.params.m_max,
+        ); // TODO! figure out why params.m_max is better than layer.m_max for recall! (ignoring m_max_0)
+
+        // add bidirectional connections for each neighbor:
+        for &DistAnd(nei_dist_to_q, nei_idx) in selected_neighbors.iter() {
+            if nei_idx == idx_in_layer {
+                println!("{nei_idx} != {idx_in_layer}, {selected_neighbors:?}")
+            }
+            assert!(nei_idx != idx_in_layer);
+            layer.entries[nei_idx]
+                .neighbors
+                .insert_if_better(DistAnd(nei_dist_to_q, idx_in_layer));
+            layer.entries[idx_in_layer]
+                .neighbors
+                .push_asserted(DistAnd(nei_dist_to_q, nei_idx)); // should always have space.
+        }
+        idx_in_layer = layer.entries[idx_in_layer].lower_level_idx;
+    }
+
+    if ctx.top_level < insert_level {
+        ctx.top_level = insert_level;
+    }
+}
+
+// /////////////////////////////////////////////////////////////////////////////
+// SECTION: helper structs and functions
+// /////////////////////////////////////////////////////////////////////////////
 
 fn select_neighbors(
     found: &mut BinaryHeap<DistAnd<usize>>,
@@ -548,37 +752,16 @@ impl SearchBuffers {
     }
 }
 
-/// returns layers and insert level of each node in the dataset
-fn determine_insert_levels_and_allocate_layers_memory(
-    data_len: usize,
-    params: &HnswParams,
-    rng: &mut ChaCha20Rng,
-) -> (heapless::Vec<Layer, MAX_LAYERS>, Vec<usize>) {
-    let mut layers: heapless::Vec<Layer, MAX_LAYERS> = Default::default();
-    let mut insert_levels: Vec<usize> = Vec::with_capacity(data_len);
-    for _ in 0..data_len {
-        let level = random_level(params.level_norm_param, rng);
-        insert_levels.push(level);
-        for l in 0..=level {
-            if l >= layers.len() {
-                let m_max = if layers.len() == 0 {
-                    params.m_max_0
-                } else {
-                    params.m_max
-                };
-                let mut layer = Layer::new(m_max);
-                layer.entries_cap = 1;
-                layers.push(layer).unwrap();
-            } else {
-                layers[l].entries_cap += 1;
-            }
-        }
-    }
-    for layer in layers.iter_mut() {
-        layer.allocate_neighbors_memory();
-    }
-    (layers, insert_levels)
+#[inline]
+pub fn random_level(level_norm_param: f32, rng: &mut ChaCha20Rng) -> usize {
+    let f = rng.gen::<f32>();
+    let level = (-f.ln() * level_norm_param).floor() as usize;
+    level.min(MAX_LAYERS - 1)
 }
+
+// /////////////////////////////////////////////////////////////////////////////
+// SECTION: Exposed functions for VP-Tree to HNSW Transition
+// /////////////////////////////////////////////////////////////////////////////
 
 /// Note: the elements will get inserted at random heights and point to lower level indices.
 /// Memory for the neighbors will also be allocated sufficiently, but all neighbors lists will be fresh and empty.
@@ -631,11 +814,4 @@ pub fn create_hnsw_layers_with_empty_neighbors(
     }
 
     layers
-}
-
-#[inline]
-pub fn random_level(level_norm_param: f32, rng: &mut ChaCha20Rng) -> usize {
-    let f = rng.gen::<f32>();
-    let level = (-f.ln() * level_norm_param).floor() as usize;
-    level.min(MAX_LAYERS - 1)
 }

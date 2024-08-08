@@ -95,10 +95,10 @@ class ModelParams:
 
 class SearchParams:
     k: int
-    distance_fn: str
-    def __init__(self, k: int, distance_fn: str, **kwargs) -> None:
+    distance: str
+    def __init__(self, k: int, distance: str, **kwargs) -> None:
         self.k = k
-        self.distance_fn = distance_fn
+        self.distance = distance
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -116,15 +116,19 @@ class Model:
         if params.kind == 'vecnn_vptree':
             dataset = vecnn.Dataset(data) # not ideal
             start = time.time()
-            vptree = vecnn.VpTree(dataset, params.seed)
+            vptree = vecnn.VpTree(dataset, params.distance, params.threaded, params.seed)
             build_time =  time.time() - start
             self.build_metrics = BuildMetrics(build_time=build_time, num_distance_calculations=vptree.num_distance_calculations_in_build)
             self.vecnn_vptree = vptree
         elif params.kind == 'vecnn_hnsw':
             dataset = vecnn.Dataset(data) # not ideal
             start = time.time()
-            use_const_impl = True
-            hnsw = vecnn.Hnsw(dataset, params.level_norm_param, params.ef_construction, params.m_max, params.m_max_0, params.distance_fn, params.multi_threaded, use_const_impl, params.seed)
+            use_const_impl = False
+            if hasattr(params, 'm_max_0'):
+                m_max_0 = params.m_max_0
+            else:
+                m_max_0 = params.m_max*2
+            hnsw = vecnn.Hnsw(dataset, params.level_norm, params.ef_construction, params.m_max, m_max_0, params.distance, params.threaded, use_const_impl, params.seed)
             build_time =  time.time() - start
             self.build_metrics =  BuildMetrics(build_time=build_time, num_distance_calculations=hnsw.num_distance_calculations_in_build)
             self.vecnn_hsnw = hnsw
@@ -145,14 +149,14 @@ class Model:
         elif params.kind == 'jpboth_hnsw':
             dataset = vecnn.Dataset(data) # not ideal
             start = time.time()
-            hnsw = vecnn.JpBothHnsw(dataset, params.ef_construction, params.m_max, params.multi_threaded)
+            hnsw = vecnn.JpBothHnsw(dataset, params.ef_construction, params.m_max, params.threaded)
             build_time =  time.time() - start
             self.build_metrics = BuildMetrics(build_time=build_time)
             self.jpboth_hnsw = hnsw
         elif params.kind == 'vecnn_rnn_descent':
             dataset = vecnn.Dataset(data) # not ideal
             start = time.time()
-            rnn_graph = vecnn.RNNGraph(dataset, params.outer_loops, params.inner_loops, params.max_neighbors_after_reverse_pruning, params.initial_neighbors, params.distance_fn, params.seed)
+            rnn_graph = vecnn.RNNGraph(dataset, params.outer_loops, params.inner_loops, params.max_neighbors_after_reverse_pruning, params.initial_neighbors, params.distance, params.seed)
             build_time =  time.time() - start
             self.build_metrics =  BuildMetrics(build_time=build_time, num_distance_calculations=rnn_graph.num_distance_calculations_in_build)
             self.vecnn_rnn_descent = rnn_graph
@@ -175,15 +179,15 @@ class Model:
             ids = np.arange(n)
             start = time.time()
             space = ''
-            if params.distance_fn == "l2":
+            if params.distance == "l2":
                 space = "l2"
-            elif params.distance_fn == "dot":
+            elif params.distance == "dot":
                 space = "ip" # see https://github.com/nmslib/hnswlib
-            elif params.distance_fn == "cos":
+            elif params.distance == "cos":
                 space = 'cosine'
             hnswlib_hnsw = hnswlib.Index(space = space, dim = dim) 
             hnswlib_hnsw.init_index(max_elements = n, ef_construction = params.ef_construction, M = params.m_max)
-            hnswlib_hnsw.add_items(data, ids, num_threads = -1 if params.multi_threaded else 1) #   # add_items(data, ids, num_threads = -1, replace_deleted = False)
+            hnswlib_hnsw.add_items(data, ids, num_threads = -1 if params.threaded else 1) #   # add_items(data, ids, num_threads = -1, replace_deleted = False)
             build_time =  time.time() - start
             self.build_metrics =  BuildMetrics(build_time=build_time)
             self.hnswlib_hnsw = hnswlib_hnsw
@@ -295,7 +299,7 @@ class Model:
             num_distance_calculations = None
         return SearchMetrics(search_time=search_time, recall=recall, num_distance_calculations=num_distance_calculations)
     
-def linear_search_true_knn(data: np.ndarray, queries: np.ndarray, k: int, distance_fn: str) -> Tuple[np.ndarray, float]:
+def linear_search_true_knn(data: np.ndarray, queries: np.ndarray, k: int, distance: str) -> Tuple[np.ndarray, float]:
     """Args:
     data: 2-d np.ndarray of float32
     queries: 2-d np.ndarray of float32
@@ -310,7 +314,7 @@ def linear_search_true_knn(data: np.ndarray, queries: np.ndarray, k: int, distan
     dataset = vecnn.Dataset(data)
     for i in range(n_queries):
         start = time.time()
-        res = vecnn.linear_knn(dataset, queries[i,:], k, distance_fn)
+        res = vecnn.linear_knn(dataset, queries[i,:], k, distance)
         search_time += time.time() - start
         truth_indices[i:] = res.indices
     search_time /= n_queries
@@ -330,14 +334,14 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
 
     for s in search_params:
         print(f"Benchmark {len(models)} models for search params: {s.to_dict()}")
-        (truth_indices, linear_time) = linear_search_true_knn(data, queries, s.k, s.distance_fn)
+        (truth_indices, linear_time) = linear_search_true_knn(data, queries, s.k, s.distance)
         i = -1
         for model in models:
             i+=1
             print(f"    Model {i+1}/{len(models)}")
             metrics = model.knn(queries, s, truth_indices)
             s_dict = s.to_dict().copy()
-            del s_dict["distance_fn"]
+            del s_dict["distance"]
 
             table.add(
                 **model.params.to_dict(),
@@ -365,14 +369,15 @@ m_max = 20
 # (truth_indices, search_time) = linear_search_true_knn(data, queries, k, "dot")
 model_params: list[ModelParams] = [
     # ModelParams('vecnn_vptree'),
-    # ModelParams('vecnn_rnn_descent',outer_loops=3, inner_loops=5, max_neighbors_after_reverse_pruning=20, initial_neighbors = 10, distance_fn = "dot"),
+    # ModelParams('vecnn_rnn_descent',outer_loops=3, inner_loops=5, max_neighbors_after_reverse_pruning=20, initial_neighbors = 10, distance = "dot"),
     # ModelParams('rustcv_hnsw', ef_construction=ef_construction),
-    ModelParams('jpboth_hnsw', ef_construction=ef_construction, m_max=m_max, multi_threaded=False),
-    ModelParams('jpboth_hnsw', ef_construction=ef_construction, m_max=m_max, multi_threaded=True),
-    ModelParams('vecnn_hnsw', level_norm_param=0.5, ef_construction=ef_construction, m_max=m_max, m_max_0=m_max*2, distance_fn = "dot", multi_threaded=True),
-    # ModelParams('hnswlib_hnsw', ef_construction=ef_construction, m_max=m_max, distance_fn = "dot"),
-    # ModelParams('faiss_hnsw', ef_construction=ef_construction, m_max=m_max, distance_fn = "dot"),
-    # ModelParams('vecnn_rnn_descent',outer_loops=50, inner_loops=1, max_neighbors_after_reverse_pruning=4, initial_neighbors = 10, distance_fn = "dot"),
+    # ModelParams('jpboth_hnsw', ef_construction=ef_construction, m_max=m_max, threaded=False),
+    # ModelParams('jpboth_hnsw', ef_construction=ef_construction, m_max=m_max, threaded=True),
+    ModelParams('vecnn_hnsw', level_norm=0.5, ef_construction=ef_construction, m_max=m_max, distance = "dot", threaded=True),
+    ModelParams('vecnn_hnsw', level_norm=0.5, ef_construction=ef_construction, m_max=m_max, distance = "dot", threaded=False),
+    # ModelParams('hnswlib_hnsw', ef_construction=ef_construction, m_max=m_max, distance = "dot"),
+    # ModelParams('faiss_hnsw', ef_construction=ef_construction, m_max=m_max, distance = "dot"),
+    # ModelParams('vecnn_rnn_descent',outer_loops=50, inner_loops=1, max_neighbors_after_reverse_pruning=4, initial_neighbors = 10, distance = "dot"),
     # ModelParams('vecnn_vptree'),
 ]
 search_params: list[SearchParams] = [
@@ -388,6 +393,6 @@ filename = table.save(f"experiments/experiment{datetime.datetime.now()} Total ti
 
 HNSW_LIB_BEST_CONSTRUCTION_TIME = [
     ModelParams('rustcv_hnsw', ef_construction=200),
-    ModelParams('vecnn_hnsw', level_norm_param=0.3, ef_construction=200, m_max=30, m_max_0=30, distance_fn = "dot"),
-    ModelParams('hnswlib_hnsw', ef_construction=200, m_max=30, distance_fn = "dot", multi_threaded=False),
+    ModelParams('vecnn_hnsw', level_norm=0.3, ef_construction=200, m_max=30, m_max_0=30, distance = "dot"),
+    ModelParams('hnswlib_hnsw', ef_construction=200, m_max=30, distance = "dot", threaded=False),
 ]

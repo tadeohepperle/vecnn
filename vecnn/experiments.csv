@@ -753,3 +753,285 @@ n,search_params,params,build_ndc,build_ms,recall_mean,ndc_mean,time_ms_mean
 20000,"{k:30, ef: 60, start_candidates: 1}","Slice2HnswParams { level_norm_param: 1.3, ef_construction: 40, m_max: 10, m_max_0: 20, distance: Dot }",11031133,2094.043693,0.805,622.300,0.158
 20000,"{k:30, ef: 60, start_candidates: 1}","ConstHnswParams { level_norm_param: 1.3, ef_construction: 20, m_max: 10, m_max_0: 20, distance: Dot }",7612388,1313.9608759999999,0.854,613.793,0.174
 20000,"{k:30, ef: 60, start_candidates: 1}","Slice2HnswParams { level_norm_param: 1.3, ef_construction: 20, m_max: 10, m_max_0: 20, distance: Dot }",7313280,1151.135442,0.749,582.560,0.149
+20000,"{k:30, ef: 60, start_candidates: 1}","ConstHnswParams { level_norm_param: 1.3, ef_construction: 20, m_max: 10, m_max_0: 20, distance: Dot }",7493691,1282.002743,0.860,618.930,0.220
+20000,"{k:30, ef: 60, start_candidates: 1}","Slice2HnswParams { level_norm_param: 1.3, ef_construction: 20, m_max: 10, m_max_0: 20, distance: Dot }",7434760,1228.208634,0.732,599.603,0.163
+20000,"{k:30, ef: 60, start_candidates: 1}","ConstHnswParams { level_norm_param: 1.3, ef_construction: 20, m_max: 10, m_max_0: 20, distance: Dot }",7481592,1239.278452,0.848,602.670,0.186
+20000,"{k:30, ef: 60, start_candidates: 1}","Slice2HnswParams { level_norm_param: 1.3, ef_construction: 20, m_max: 10, m_max_0: 20, distance: Dot }",7631183,1115.797884,0.728,602.830,0.146
+20000,"{k:30, ef: 60, start_candidates: 1}","ConstHnswParams { level_norm_param: 0.4, ef_construction: 20, m_max: 20, m_max_0: 40, distance: Dot }",8319253,1655.549704,0.951,876.230,0.299
+20000,"{k:30, ef: 60, start_candidates: 1}","Slice2HnswParams { level_norm_param: 0.4, ef_construction: 20, m_max: 20, m_max_0: 40, distance: Dot }",7977816,1563.072137,0.952,849.230,0.235
+20000,"{k:30, ef: 60, start_candidates: 1}","ConstHnswParams { level_norm_param: 0.4, ef_construction: 20, m_max: 20, m_max_0: 40, distance: Dot }",8190101,1597.253136,0.950,882.827,0.364
+20000,"{k:30, ef: 60, start_candidates: 1}","Slice2HnswParams { level_norm_param: 0.4, ef_construction: 20, m_max: 20, m_max_0: 40, distance: Dot }",8264798,1491.2246460000001,0.950,884.357,0.244
+20000,"{k:30, ef: 60, start_candidates: 1}","ConstHnswParams { level_norm_param: 0.8, ef_construction: 20, m_max: 20, m_max_0: 40, distance: Dot }",9858128,1851.473853,0.952,910.553,0.327
+20000,"{k:30, ef: 60, start_candidates: 1}","Slice2HnswParams { level_norm_param: 0.8, ef_construction: 20, m_max: 20, m_max_0: 40, distance: Dot }",10039435,1817.4401030000001,0.951,929.850,0.249
+20000,"{k:30, ef: 60, start_candidates: 1}","ConstHnswParams { level_norm_param: 0.8, ef_construction: 20, m_max: 20, m_max_0: 40, distance: Dot }",9987762,1899.3981079999999,0.951,925.523,0.305
+20000,"{k:30, ef: 60, start_candidates: 1}","Slice2HnswParams { level_norm_param: 0.8, ef_construction: 20, m_max: 20, m_max_0: 40, distance: Dot }",10042146,1764.685503,0.953,925.840,0.247
+20000,"{k:30, ef: 60, start_candidates: 1}","ConstHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16777815,3667.2032249999997,0.965,944.130,0.306
+20000,"{k:30, ef: 60, start_candidates: 1}","Slice2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16299483,3313.991954,0.946,936.647,0.245
+20000,"{k:30, ef: 60, start_candidates: 1}","ConstHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 10, m_max_0: 20, distance: Dot }",10281746,2169.823226,0.907,570.827,0.194
+20000,"{k:30, ef: 60, start_candidates: 1}","Slice2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 10, m_max_0: 20, distance: Dot }",10042059,2020.2579790000002,0.840,556.243,0.154
+20000,"{k:30, ef: 60, start_candidates: 1}","ConstHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 10, m_max_0: 20, distance: Dot }",10190755,2028.997802,0.825,580.377,0.184
+20000,"{k:30, ef: 60, start_candidates: 1}","Slice2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 10, m_max_0: 20, distance: Dot }",10235669,1882.865352,0.831,573.397,0.152
+20000,"{k:30, ef: 60, start_candidates: 1}","ConstHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 10, m_max_0: 20, distance: Dot }",10081145,1996.477836,0.827,571.703,0.184
+20000,"{k:30, ef: 60, start_candidates: 1}","Slice2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 10, m_max_0: 20, distance: Dot }",10258910,1877.1128740000001,0.843,581.950,0.154
+20000,"{k:30, ef: 60, start_candidates: 1}","ConstHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 10, m_max_0: 20, distance: Dot }",10430142,3094.039491,0.903,581.140,0.254
+20000,"{k:30, ef: 60, start_candidates: 1}","Slice2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 10, m_max_0: 20, distance: Dot }",10398918,2916.7284809999996,0.905,568.860,0.215
+20000,"{k:30, ef: 60, start_candidates: 1}","ConstHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16771783,5154.755037,0.964,944.730,0.371
+20000,"{k:30, ef: 60, start_candidates: 1}","Slice2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16704404,4740.432309,0.969,938.580,0.341
+20000,"{k:30, ef: 60, start_candidates: 1}","OldHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",17532564,4557.120641,0.964,996.510,0.331
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16466787,4555.554943,0.964,938.813,0.335
+20000,"{k:30, ef: 60, start_candidates: 1}","ConstHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16675528,3880.658549,0.968,940.397,0.366
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS1HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16674582,4798.223144,0.964,942.723,0.337
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16722816,4751.328141,0.964,949.210,0.338
+20000,"{k:30, ef: 60, start_candidates: 1}","OldHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",17479145,4503.434545,0.965,990.143,0.328
+20000,"{k:30, ef: 60, start_candidates: 1}","ConstHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16904954,3660.493057,0.968,951.497,0.287
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS1HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16798294,3371.220535,0.964,948.557,0.264
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16871731,3439.984727,0.967,935.670,0.259
+20000,"{k:30, ef: 60, start_candidates: 1}","OldHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",17478858,3485.440312,0.968,974.917,0.258
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16720576,4718.371607,0.965,950.170,0.355
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16737609,4625.426686,0.964,944.447,0.345
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16689164,3881.787173,0.969,945.000,0.356
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16796095,4744.4817920000005,0.969,937.017,0.346
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16724424,4129.754093,0.965,953.320,0.349
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16625214,4696.865148,0.966,948.597,0.338
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16622773,4795.601774,0.964,932.677,0.343
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16677007,4579.9889,0.964,938.947,0.334
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16647127,832.913742,0.962,946.610,0.269
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16704844,3620.011575,0.964,946.050,0.259
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",15912785,789.146995,0.901,943.423,0.261
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16721490,3534.466155,0.964,945.207,0.258
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",15459576,596.125488,0.840,922.640,0.258
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16693919,3246.134482,0.968,940.660,0.257
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",15550032,593.9618330000001,0.839,929.450,0.262
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16566038,3352.420649,0.969,935.447,0.254
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16983762,3771.158623,0.964,948.833,0.357
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16714971,4310.071949,0.964,944.787,0.348
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16750864,3666.2421,0.968,948.280,0.358
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16700336,3817.525182,0.964,943.143,0.349
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16791745,3093.619872,0.967,958.283,0.350
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16725875,5152.031048,0.965,950.717,0.338
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16827038,1023.550299,0.967,965.070,0.357
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16851735,5223.405293,0.964,954.797,0.349
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16714686,830.452167,0.968,951.800,0.351
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16860370,4147.760253,0.963,950.143,0.339
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16662905,2474.884681,0.965,934.733,0.346
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16737020,4963.818657,0.965,941.450,0.335
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16664897,811.101741,0.965,944.573,0.343
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16598558,4473.1913429999995,0.964,938.507,0.336
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16866027,2466.302183,0.964,962.340,0.352
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16816717,4975.178803000001,0.964,954.527,0.344
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16837624,2327.659524,0.963,957.910,0.351
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16671079,4900.015837,0.964,939.940,0.341
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16678238,2120.272305,0.967,945.593,0.351
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16513458,5273.475229,0.965,935.520,0.340
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16750409,2115.045506,0.970,938.457,0.347
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16561367,5033.817254,0.967,932.337,0.338
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",17020884,2055.5367800000004,0.962,955.663,0.352
+20000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",16737280,4916.831558,0.964,939.580,0.340
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7511030,354.4986,0.970,884.183,0.196
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7484920,1196.802979,0.974,890.770,0.191
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7532089,348.49616100000003,0.973,900.103,0.200
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7465486,1220.057744,0.973,888.580,0.200
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7526796,354.273285,0.969,901.587,0.209
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7469610,1225.08828,0.973,889.247,0.195
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7465768,333.507849,0.968,885.830,0.204
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7595974,1236.7028719999998,0.972,906.130,0.202
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7434382,339.434477,0.973,885.597,0.203
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7489180,1240.211518,0.974,886.120,0.201
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7507686,342.07058,0.970,893.243,0.203
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7593401,1270.907878,0.973,898.160,0.202
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7405636,381.303295,0.971,884.397,0.295
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7447518,2024.4156539999997,0.972,888.527,0.281
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7522246,901.643377,0.973,897.850,0.307
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7565964,2189.600281,0.973,888.573,0.292
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7530414,353.666775,0.976,902.747,0.212
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7423287,1261.710842,0.972,886.000,0.203
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7474050,342.765781,0.971,887.637,0.192
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7485409,1145.665214,0.972,885.780,0.193
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7471313,282.121973,0.973,887.617,0.192
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7561809,1213.254716,0.973,895.083,0.187
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7507809,360.18567,0.971,890.727,0.205
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7569897,1265.862758,0.973,895.263,0.203
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7545758,278.490377,0.972,904.940,0.218
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7441249,1203.821933,0.973,886.017,0.195
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7462172,281.850505,0.973,887.443,0.201
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7436404,1223.361002,0.973,888.070,0.199
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7581481,346.784505,0.973,909.890,0.218
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7459381,1245.345507,0.974,888.153,0.197
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7562741,354.364427,0.975,895.463,0.206
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7625352,1282.651263,0.972,901.703,0.204
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7553920,281.10080500000004,0.972,888.183,0.205
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7419588,1243.777183,0.973,888.533,0.200
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7475004,294.169396,0.974,905.490,0.219
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7474478,1311.258114,0.973,885.993,0.205
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7425318,352.783433,0.972,885.397,0.205
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7542979,1233.75462,0.973,895.303,0.225
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7522586,352.360075,0.971,900.557,0.219
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7506218,1314.856933,0.973,883.663,0.210
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7545197,346.400651,0.975,894.930,0.210
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7563351,1305.8474609999998,0.972,888.727,0.205
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7602055,296.595244,0.972,898.550,0.307
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7535311,1889.600238,0.973,890.820,0.300
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7435901,1246.202767,0.974,881.393,0.207
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7470540,1575.3772999999999,0.975,892.100,0.282
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7428701,1690.8897080000002,0.973,888.213,0.280
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7485718,1202.849308,0.973,895.597,0.192
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7568563,1230.833559,0.973,893.080,0.237
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7451081,1822.3118339999999,0.973,881.957,0.273
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7406819,574.2322330000001,0.970,879.160,0.674
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7561935,943.81551,0.968,903.570,0.736
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7458041,948.7425659999999,0.971,894.510,0.703
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7420663,923.438415,0.969,884.417,0.646
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7548632,913.897883,0.973,895.573,0.697
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7461023,929.122069,0.970,887.150,0.743
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7499549,756.045167,0.972,894.630,0.516
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7411028,587.724469,0.973,887.507,0.631
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7583466,894.5706260000001,0.974,891.480,0.676
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7509563,1024.4219859999998,0.972,903.413,0.827
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7473023,919.744057,0.970,894.647,0.741
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7431113,933.213641,0.974,882.240,0.700
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7449997,868.216819,0.971,902.787,0.685
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7503849,285.419116,0.972,894.377,0.207
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7534918,341.92422,0.972,903.863,0.214
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7503249,1458.674097,0.971,896.050,0.601
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7439143,344.363718,0.974,894.817,0.208
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7417650,361.067899,0.970,893.650,0.257
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7503692,776.136379,0.971,891.897,0.668
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7430286,877.4023920000001,0.969,886.757,0.641
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7438038,717.558312,0.970,884.533,0.761
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7511990,805.5083950000001,0.974,884.793,0.712
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7481086,335.552179,0.969,897.570,0.213
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7506527,336.509997,0.975,891.307,0.209
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7527525,342.476963,0.972,893.640,0.206
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7667206,346.88262100000003,0.973,908.203,0.206
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7498898,339.417999,0.972,896.760,0.206
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7490437,339.16296,0.971,893.880,0.207
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7570568,342.471297,0.974,906.303,0.208
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7504846,335.73055800000003,0.973,898.957,0.203
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7558141,339.879296,0.971,903.177,0.201
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7549061,341.550388,0.975,892.367,0.207
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7475462,337.073821,0.970,882.957,0.202
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7479979,337.753212,0.973,885.517,0.200
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7407137,357.22925,0.968,894.043,0.211
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7475056,358.911338,0.972,891.010,0.202
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7416936,353.546849,0.971,877.783,0.200
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7486916,353.568696,0.974,896.190,0.204
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7558957,357.529833,0.972,898.867,0.203
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7524688,357.43201899999997,0.972,890.050,0.200
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7469117,271.940873,0.974,887.340,0.213
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7606299,313.396433,0.969,903.213,0.209
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7510492,281.288775,0.968,890.363,0.206
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7471035,325.807185,0.975,902.073,0.211
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7488052,290.252245,0.971,897.550,0.208
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7485137,319.850011,0.972,889.980,0.207
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7551361,280.12041999999997,0.973,894.680,0.215
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7437159,313.61483400000003,0.973,900.637,0.210
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7431157,275.137375,0.971,879.703,0.204
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7376401,315.00687100000005,0.975,879.790,0.208
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7535426,293.566274,0.972,889.580,0.205
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7621858,334.016723,0.971,900.893,0.207
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7382558,273.372556,0.972,878.853,0.210
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7507977,322.62807399999997,0.974,895.330,0.219
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7475997,276.136348,0.973,899.907,0.209
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7465823,313.48086400000005,0.975,892.690,0.207
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7487604,285.894452,0.968,893.887,0.206
+10000,"{k:30, ef: 60, start_candidates: 1}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",7552866,324.622847,0.975,899.413,0.208
+10000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,114996,12.294075,0.999,9953.560,1.902
+10000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,114996,11.117014,1.000,9947.993,1.907
+10000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,114996,11.266599000000001,0.999,9899.193,1.888
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,215.641469,1.000,94281.233,22.055
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,199.056085,1.000,94358.490,22.244
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,101.386966,1.000,94230.900,22.243
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,205.204216,1.000,95015.270,22.422
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,100.046258,1.000,94209.380,22.405
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,201.559275,1.000,93843.730,21.845
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,81.038145,1.000,94165.120,21.853
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,200.56115799999998,1.000,94596.520,22.078
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,89.74855099999999,1.000,93812.800,21.761
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,205.021107,1.000,93872.850,21.750
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,93.279955,1.000,93707.460,21.701
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,223.877657,1.000,98187.667,24.051
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,93.35990299999999,1.000,98043.000,22.859
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,201.228558,1.000,98111.667,25.532
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,102.108665,1.000,97915.333,23.507
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,204.835247,1.000,98063.333,23.258
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,93.159215,1.000,97704.667,22.585
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,204.77082199999998,1.000,98115.000,23.386
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,89.61275400000001,1.000,97845.333,23.364
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,209.74143,1.000,98411.667,23.951
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,93.379308,1.000,97495.333,23.133
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,204.019337,1.000,98304.000,23.574
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,93.44261900000001,1.000,97638.000,22.816
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,207.09436300000002,1.000,97643.333,23.244
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,117.775781,1.000,98127.333,22.884
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,203.035674,1.000,97966.667,23.277
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,102.145477,1.000,97578.000,22.617
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,204.281036,1.000,97340.000,23.191
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,95.86803,1.000,97447.000,22.685
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,206.81042,1.000,98173.333,23.459
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,95.87832999999999,1.000,98067.667,23.145
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,210.113247,1.000,97714.000,24.966
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,94.063212,1.000,97873.000,23.162
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,200.840127,1.000,97790.333,27.769
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,82.07146,1.000,98183.000,25.360
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,204.576254,1.000,97945.333,23.616
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,92.902358,1.000,98013.667,23.233
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,211.724529,1.000,98257.333,24.138
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,82.30919,1.000,98111.333,23.706
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,207.10934,1.000,98073.333,23.926
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,98.090552,1.000,98112.667,24.221
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,205.360591,1.000,98050.000,24.088
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,100.060778,1.000,97683.000,23.143
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,212.546293,1.000,97834.667,25.397
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,86.445727,1.000,97552.000,23.536
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,211.458089,1.000,98066.333,23.560
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,96.251373,1.000,97858.667,23.087
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,210.04021600000002,1.000,97628.333,23.756
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,93.440065,1.000,98269.000,23.375
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,218.546706,1.000,98115.667,29.310
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,94.37029,1.000,97792.333,25.063
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,209.213056,1.000,97786.667,28.475
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,106.305232,1.000,97783.000,29.593
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,221.787801,1.000,97649.333,29.986
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,138.877613,1.000,97813.667,29.895
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,246.124405,1.000,98141.000,31.156
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,128.181496,1.000,98007.333,30.838
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,235.73512399999998,1.000,98143.667,30.431
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,121.539126,1.000,98176.667,30.072
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,229.40827,1.000,97546.000,30.202
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,122.881314,1.000,97563.667,29.921
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,302.39806899999996,1.000,98016.333,35.745
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,154.420523,1.000,97835.667,34.899
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,217.722777,1.000,97988.000,31.116
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,116.430804,1.000,97294.000,29.851
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,310.70139,1.000,97795.333,35.293
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,159.251485,1.000,98437.667,34.305
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,227.402071,1.000,98161.667,32.401
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,124.0493,1.000,97983.333,30.357
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,288.633814,1.000,97857.333,36.277
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,137.48006099999998,1.000,97192.000,33.882
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,237.82704900000002,1.000,97558.333,31.789
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,129.233953,1.000,97594.000,31.436
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,241.11501299999998,1.000,97903.667,32.649
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,102.768952,1.000,98163.667,30.929
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,305.550082,1.000,97715.667,34.610
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,149.007482,1.000,97950.333,33.479
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,231.539029,1.000,98166.667,32.760
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,108.349803,1.000,97853.667,31.575
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,216.893564,1.000,97311.000,30.581
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,121.071635,1.000,97611.000,29.997
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,296.561815,1.000,97993.333,34.745
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,148.782802,1.000,97686.667,33.469
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,234.24212799999998,1.000,98266.667,32.728
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,102.61687599999999,1.000,97811.000,31.776
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,242.152061,1.000,98350.000,31.068
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,102.08031700000001,1.000,97776.000,30.618
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,253.366633,1.000,97680.000,32.291
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,133.14679500000003,1.000,98090.333,31.603
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,215.70682699999998,1.000,97627.000,26.853
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,102.37513299999999,1.000,97936.667,27.015
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,202.870183,1.000,97868.667,23.885
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,93.57785,1.000,97598.667,23.016
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,205.392519,1.000,97964.667,25.462
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,102.345227,1.000,97982.000,23.736
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,211.16818600000002,1.000,98024.667,24.856
+100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,97.534852,1.000,97841.333,23.372

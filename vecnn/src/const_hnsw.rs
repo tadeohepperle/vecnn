@@ -19,7 +19,7 @@ use crate::{
 
 pub const MAX_LAYERS: usize = 16;
 
-pub const M_MAX: usize = 10;
+pub const M_MAX: usize = 20;
 pub const M_MAX_0: usize = M_MAX * 2;
 
 pub struct ConstHnsw {
@@ -176,6 +176,25 @@ fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams, seed: u64) -> Con
         duration: start_time.elapsed(),
     };
 
+    println!("Const HNSW layers:");
+    println!(
+        "   Layer 0: len: {} neighbors: {}",
+        bottom_layer.len(),
+        bottom_layer
+            .iter()
+            .map(|e| e.neighbors.len())
+            .sum::<usize>() as f32
+            / bottom_layer.len() as f32
+    );
+    for (l, layer) in layers.iter().enumerate() {
+        println!(
+            "   Layer {}: len: {} neighbors: {}",
+            l + 1,
+            layer.len(),
+            layer.iter().map(|e| e.neighbors.len()).sum::<usize>() as f32 / layer.len() as f32
+        );
+    }
+
     ConstHnsw {
         data,
         bottom_layer,
@@ -289,7 +308,8 @@ fn insert_element(ctx: &mut InsertCtx<'_>, id: usize, insert_position: InsertPos
         &entry_points,
     );
 
-    select_neighbors(&mut search_buffers.found, selected_neighbors, M_MAX);
+    // interesting observation: M_MAX -> better recall
+    select_neighbors(&mut search_buffers.found, selected_neighbors, M_MAX); // TODO: explain why M_MAX instead of M_MAX_0 leads to better recall here!!
     for &DistAnd(nei_dist_to_q, nei_idx) in selected_neighbors.iter() {
         assert!(nei_idx != q_idx);
         neighbors_insert_if_better(&mut layer[nei_idx].neighbors, DistAnd(nei_dist_to_q, q_idx));

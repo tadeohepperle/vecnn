@@ -1,6 +1,7 @@
 #![feature(const_trait_impl)]
 #![feature(binary_heap_as_slice)]
 #![feature(iter_array_chunks)]
+#![feature(const_collections_with_hasher)]
 
 pub mod const_hnsw;
 pub mod dataset;
@@ -8,7 +9,7 @@ pub mod distance;
 pub mod nn_descent;
 pub mod schubert_distance;
 pub mod slice_hnsw;
-pub mod slice_hnsw_2;
+pub mod slice_hnsw_par;
 pub mod transition;
 pub mod utils;
 pub mod vp_tree;

@@ -10,11 +10,11 @@ use vecnn::{
 
 fn main() {
     let dims = 768;
-    let data = random_data_set(7000, dims);
+    let data = random_data_set(20000, dims);
 
     let distance = Distance::L2;
 
-    let hnsw = vecnn::slice_hnsw_2::SliceHnsw::new(
+    let hnsw = vecnn::slice_hnsw_par::SliceHnsw::new(
         data.clone(),
         HnswParams {
             level_norm_param: 0.8,
@@ -23,7 +23,7 @@ fn main() {
             m_max_0: 40,
             distance,
         },
-        12,
+        2342,
     );
 
     // println!(

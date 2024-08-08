@@ -39,9 +39,9 @@ impl Default for HnswParams {
     fn default() -> Self {
         Self {
             level_norm_param: 0.5,
-            ef_construction: 20,
+            ef_construction: 30,
             m_max: 10,
-            m_max_0: 10,
+            m_max_0: 20,
             distance: Distance::L2,
         }
     }
@@ -330,7 +330,7 @@ fn insert(hnsw: &mut Hnsw, q: usize, distance: &DistanceTracker, ctx: &mut Inser
         select_neighbors(
             layer,
             &mut ctx.search_ctx.search_res,
-            NEIGHBORS_LIST_MAX_LEN,
+            hnsw.params.m_max, // Note: m_max not m_max_0, even if on bottom layer!!!
             &mut ctx.select_neighbors_res,
         );
         // select_neighbors_heuristic(

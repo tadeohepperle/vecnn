@@ -85,6 +85,7 @@ unsafe impl Send for Hnsw {}
 enum Inner {
     ConstImpl(vecnn::hnsw::Hnsw),
     SliceImpl(vecnn::slice_hnsw::SliceHnsw),
+    SliceImplThreaded(vecnn::slice_hnsw_par::SliceHnsw),
 }
 
 impl Inner {
@@ -92,6 +93,7 @@ impl Inner {
         match self {
             Inner::ConstImpl(hnsw) => hnsw.build_stats,
             Inner::SliceImpl(hnsw) => hnsw.build_stats,
+            Inner::SliceImplThreaded(hnsw) => hnsw.build_stats,
         }
     }
 
@@ -99,6 +101,7 @@ impl Inner {
         match self {
             Inner::ConstImpl(hnsw) => &*hnsw.data,
             Inner::SliceImpl(hnsw) => &*hnsw.data,
+            Inner::SliceImplThreaded(hnsw) => &*hnsw.data,
         }
     }
 }
@@ -113,7 +116,7 @@ impl Hnsw {
         m_max: usize,
         m_max_0: usize,
         distance: String,
-        mutli_threaded: bool,
+        threaded: bool,
         use_const_impl: bool,
         seed: u64,
     ) -> PyResult<Self> {
@@ -126,7 +129,7 @@ impl Hnsw {
         };
 
         if use_const_impl {
-            if mutli_threaded {
+            if threaded {
                 return Err(PyTypeError::new_err(
                     "Multithreaded not supported in const impl of vecnn Hnsw",
                 ));
@@ -134,8 +137,14 @@ impl Hnsw {
             let hnsw = vecnn::hnsw::Hnsw::new(data.as_dyn_dataset(), params, seed);
             Ok(Hnsw(Inner::ConstImpl(hnsw)))
         } else {
-            let hnsw = vecnn::slice_hnsw::SliceHnsw::new(data.as_dyn_dataset(), params, seed);
-            Ok(Hnsw(Inner::SliceImpl(hnsw)))
+            if threaded {
+                let hnsw =
+                    vecnn::slice_hnsw_par::SliceHnsw::new(data.as_dyn_dataset(), params, seed);
+                Ok(Hnsw(Inner::SliceImplThreaded(hnsw)))
+            } else {
+                let hnsw = vecnn::slice_hnsw::SliceHnsw::new(data.as_dyn_dataset(), params, seed);
+                Ok(Hnsw(Inner::SliceImpl(hnsw)))
+            }
         }
 
         // let hnsw = vecnn::hnsw::Hnsw::new(data.as_dyn_dataset(), params);
@@ -172,6 +181,20 @@ impl Hnsw {
                 })
             }
             Inner::SliceImpl(hnsw) => {
+                let (res, stats) = hnsw.knn_search(q, k, ef);
+                let indices = ndarray::Array::from_iter(res.iter().map(|e| e.1))
+                    .into_pyarray_bound(py)
+                    .unbind();
+                let distances = ndarray::Array::from_iter(res.iter().map(|e| e.dist()))
+                    .into_pyarray_bound(py)
+                    .unbind();
+                Ok(KnnResult {
+                    indices,
+                    distances,
+                    num_distance_calculations: stats.num_distance_calculations,
+                })
+            }
+            Inner::SliceImplThreaded(hnsw) => {
                 let (res, stats) = hnsw.knn_search(q, k, ef);
                 let indices = ndarray::Array::from_iter(res.iter().map(|e| e.1))
                     .into_pyarray_bound(py)

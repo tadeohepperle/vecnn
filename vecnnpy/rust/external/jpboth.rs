@@ -32,17 +32,12 @@ pub struct JpBothHnsw {
 #[pymethods]
 impl JpBothHnsw {
     #[new]
-    fn new(
-        data: crate::Dataset,
-        ef_construction: usize,
-        m_max: usize,
-        multi_threaded: bool,
-    ) -> Self {
+    fn new(data: crate::Dataset, ef_construction: usize, m_max: usize, threaded: bool) -> Self {
         let max_layer = 10;
         let hnsw: ParameterizedJpBothHnsw =
             jpboth_hnsw::hnsw::Hnsw::new(m_max, data.len(), max_layer, ef_construction, DistDot);
         let ds = data.as_dyn_dataset();
-        if multi_threaded {
+        if threaded {
             (0..data.len())
                 .into_par_iter()
                 .for_each(|id| hnsw.insert_slice((ds.get(id), id)));

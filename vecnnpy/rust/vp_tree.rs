@@ -3,9 +3,12 @@ use numpy::{
     array, IntoPyArray, PyArray, PyArray1, PyArray2, PyArrayMethods, PyUntypedArrayMethods,
 };
 use pyo3::{exceptions::PyTypeError, prelude::*};
-use vecnn::distance::l2;
+use vecnn::{distance::l2, vp_tree::VpTreeParams};
 
-use crate::utils::{pyarray1_to_slice, KnnResult};
+use crate::{
+    hnsw::dist_from_str,
+    utils::{pyarray1_to_slice, KnnResult},
+};
 
 #[pyclass]
 pub struct VpTree(vecnn::vp_tree::VpTree);
@@ -13,10 +16,14 @@ pub struct VpTree(vecnn::vp_tree::VpTree);
 #[pymethods]
 impl VpTree {
     #[new]
-    fn new(data: crate::Dataset, seed: u64) -> Self {
-        let tree =
-            vecnn::vp_tree::VpTree::new(data.as_dyn_dataset(), vecnn::distance::Distance::L2, seed);
-        Self(tree)
+    fn new(data: crate::Dataset, distance: String, threaded: bool, seed: u64) -> PyResult<Self> {
+        let distance = dist_from_str(&distance)?;
+        let tree = vecnn::vp_tree::VpTree::new(
+            data.as_dyn_dataset(),
+            VpTreeParams { distance, threaded },
+            seed,
+        );
+        Ok(Self(tree))
     }
 
     #[getter]

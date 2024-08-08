@@ -172,6 +172,7 @@ pub struct SlicesMemory<T> {
     n_elements_per_slice: usize,
 }
 unsafe impl<T> Send for SlicesMemory<T> {}
+unsafe impl<T> Sync for SlicesMemory<T> {}
 
 impl<T> SlicesMemory<T> {
     pub fn new_uninit() -> Self {
@@ -291,6 +292,9 @@ mod binary_heap {
             self.len = 0
         }
 
+        pub fn len(&self) -> usize {
+            self.len
+        }
         /// returns true if item was included.
         pub fn push_asserted(&mut self, item: T) {
             assert!(self.len < self.slice.len());
