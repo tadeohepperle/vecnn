@@ -26,7 +26,7 @@ pub fn linear_knn_search(
     for id in 0..data.len() {
         let i_data = data.get(id);
         let dist = distance(q_data, i_data);
-        knn_heap.maybe_add(id, dist)
+        knn_heap.insert_if_better(id, dist)
     }
     knn_heap.as_sorted_vec()
 }
@@ -81,7 +81,7 @@ impl KnnHeap {
         }
     }
 
-    pub fn maybe_add(&mut self, id: usize, dist: Float) {
+    pub fn insert_if_better(&mut self, id: usize, dist: Float) {
         if self.heap.len() < self.k {
             self.heap.push(DistAnd(dist, id));
         } else {

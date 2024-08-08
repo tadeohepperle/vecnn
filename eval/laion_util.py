@@ -23,10 +23,14 @@ class LaionData:
             queries =  self.gold_queries[np.random.choice(self.gold_queries.shape[0], n_queries, replace=False)]
         return (data, queries)
 
-def load_laion_data() -> LaionData:
+
+DATA_300K_FILE_NAME = 'laion2B-en-clip768v2-n=300K.h5'
+DATA_10M_FILE_NAME = 'laion2B-en-clip768v2-n=10M.h5'
+
+def load_laion_data(data_file_name: str = DATA_300K_FILE_NAME) -> LaionData:
     res = LaionData()
     DATA_PATH = '../data'
-    laion_path = f'{DATA_PATH}/laion2B-en-clip768v2-n=300K.h5'
+    laion_path = f'{DATA_PATH}/{data_file_name}'
     laion_gold_queries_path = f'{DATA_PATH}/public-queries-2024-laion2B-en-clip768v2-n=10k.h5'
     laion_gold_path = f'{DATA_PATH}/gold-standard-dbsize=300K--public-queries-2024-laion2B-en-clip768v2-n=10k.h5'
     
@@ -42,8 +46,12 @@ def load_laion_data() -> LaionData:
 
     return res
 
+
+def load_laion_data_10M():
+    load_laion_data(DATA_10M_FILE_NAME)
+    
 if __name__ == "__main__":
-    laion_data = load_laion_data()
+    laion_data = load_laion_data_10M()
     # print(laion_data.data[124752,0:10])
     laion_data.data.tofile(f"laion_data_{laion_data.data.shape}.bin")
     laion_data.gold_queries.tofile(f"laion_queries_{laion_data.gold_queries.shape}.bin")

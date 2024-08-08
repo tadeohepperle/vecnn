@@ -12,7 +12,7 @@ def build_hnsw_by_transition(data: Dataset, max_chunk_size: int, same_chunk_m_ma
 
 
 
-def build_hnsw_by_vp_tree_ensemble(data: Dataset, max_chunk_size: int, same_chunk_m_max: int, m_max: int,  m_max_0: int, n_vp_trees: int, level_norm: float, distance: Distance, seed: int) -> Hnsw:
+def build_hnsw_by_vp_tree_ensemble(data: Dataset, max_chunk_size: int, same_chunk_m_max: int, m_max: int,  m_max_0: int, n_vp_trees: int, level_norm: float, distance: Distance, threaded: bool, seed: int) -> Hnsw:
     pass
 
 

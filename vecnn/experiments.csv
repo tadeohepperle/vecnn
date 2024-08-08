@@ -1035,3 +1035,55 @@ n,search_params,params,build_ndc,build_ms,recall_mean,ndc_mean,time_ms_mean
 100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,102.345227,1.000,97982.000,23.736
 100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=false,1480434,211.16818600000002,1.000,98024.667,24.856
 100000,"{k:30, ef: 60, start_candidates: 1}",VpTree parallel=true,1480434,97.534852,1.000,97841.333,23.372
+100000,"{k:30, ef: 60, start_candidates: 1}","VpTreeParams { distance: Dot, threaded: true }",1480434,91.651494,1.000,98165.333,23.950
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 200}","VpTreeParams { distance: Dot, threaded: true }",1480434,92.074861,0.011,200.000,0.066
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 200}","VpTreeParams { distance: Dot, threaded: true }",1480434,82.40517,0.022,200.000,0.069
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 200}","VpTreeParams { distance: Dot, threaded: true }",1480434,81.97825,0.056,200.000,0.058
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 3000}","VpTreeParams { distance: Dot, threaded: true }",1480434,94.01416,0.033,3000.000,0.870
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 3000}","VpTreeParams { distance: Dot, threaded: true }",1480434,93.778571,0.144,3000.000,0.863
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 30000}","VpTreeParams { distance: Dot, threaded: true }",1480434,94.51552600000001,0.422,30000.000,7.525
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 30000}","VpTreeParams { distance: Dot, threaded: true }",1480434,93.036232,0.389,30000.000,8.182
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 30000}","VpTreeParams { distance: Dot, threaded: true }",1480434,90.44574499999999,0.300,30000.000,7.622
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 30000}","VpTreeParams { distance: Dot, threaded: true }",1480434,94.189412,0.567,30000.000,7.446
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 30000}","VpTreeParams { distance: Dot, threaded: true }",1480434,83.013914,0.467,30000.000,7.233
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 30000}","VpTreeParams { distance: Dot, threaded: true }",1480434,94.211638,0.256,30000.000,8.242
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 30000}","VpTreeParams { distance: Dot, threaded: true }",1480434,91.780514,0.511,30001.000,7.682
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 30000}","VpTreeParams { distance: Dot, threaded: true }",1480434,100.312618,0.544,30001.333,7.558
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 30000}","VpTreeParams { distance: Dot, threaded: true }",1480434,99.897366,0.600,30003.667,7.559
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 30000}","VpTreeParams { distance: Dot, threaded: true }",1480434,98.91215000000001,0.589,30001.000,7.662
+100000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 30000}","VpTreeParams { distance: Dot, threaded: true }",1480434,101.544411,0.600,30001.667,7.544
+300000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 30000}","VpTreeParams { distance: Dot, threaded: false }",4919423,731.8433399999999,0.522,30000.667,7.493
+300000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 30000}","VpTreeParams { distance: Dot, threaded: true }",4919423,328.42407499999996,0.300,30001.000,7.115
+300000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 30000}","VpTreeParams { distance: Dot, threaded: false }",4919423,727.05917,0.361,30001.880,7.684
+300000,"{k:30, ef: 60, start_candidates: 1, vp_max_visits: 30000}","VpTreeParams { distance: Dot, threaded: true }",4919423,306.716488,0.332,29952.000,7.863
+300000,"{k:30, ef: 60}","VpTreeParams { distance: Dot, threaded: false }",4919423,712.835671,0.997,264973.230,63.231
+300000,"{k:30, ef: 60}","VpTreeParams { distance: Dot, threaded: true }",4919423,276.359133,0.996,268463.280,64.532
+300000,"{k:30, ef: 60, vp_max_visits: 10000}","VpTreeParams { distance: Dot, threaded: false }",4919423,733.362343,0.251,10001.180,2.355
+300000,"{k:30, ef: 60, vp_max_visits: 10000}","VpTreeParams { distance: Dot, threaded: true }",4919423,296.448758,0.211,10001.120,2.339
+100000,"{k:30, ef: 60}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",98109745,7277.626743,0.945,1032.720,0.514
+100000,"{k:30, ef: 60}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",98992477,17192.757134,0.938,1032.120,0.449
+100000,"{k:30, ef: 60}","SliceParralelRayonHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",99924341,18218.968113,0.935,1031.530,0.449
+100000,"{k:30, ef: 60}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",99276253,18599.016407,0.937,1016.450,0.445
+100000,"{k:30, ef: 60}","SliceS1HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",98408063,36536.128448,0.936,1024.830,0.438
+100000,"{k:30, ef: 60}","SliceS2HnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",99172972,36685.238401,0.951,1026.570,0.437
+100000,"{k:30, ef: 60}","ConstHnswParams { level_norm_param: 0.8, ef_construction: 50, m_max: 20, m_max_0: 40, distance: Dot }",98971883,37375.819231,0.945,1041.930,0.451
+100000,"{k:30, ef: 40}","ConstHnswParams { level_norm_param: 0.5, ef_construction: 40, m_max: 20, m_max_0: 40, distance: Dot }",73990687,22635.73365,0.904,753.310,0.452
+100000,"{k:30, ef: 40}","SliceS1HnswParams { level_norm_param: 0.5, ef_construction: 40, m_max: 20, m_max_0: 40, distance: Dot }",75531482,25580.515495,0.915,759.240,0.415
+100000,"{k:30, ef: 40}","SliceS2HnswParams { level_norm_param: 0.5, ef_construction: 40, m_max: 20, m_max_0: 40, distance: Dot }",74258320,28101.485828,0.903,774.130,0.402
+100000,"{k:30, ef: 40}","SliceParralelRayonHnswParams { level_norm_param: 0.5, ef_construction: 40, m_max: 20, m_max_0: 40, distance: Dot }",74970057,13851.480237,0.914,758.380,0.390
+100000,"{k:30, ef: 40}","SliceParralelThreadPoolHnswParams { level_norm_param: 0.5, ef_construction: 40, m_max: 20, m_max_0: 40, distance: Dot }",73830754,14489.036736999999,0.917,756.110,0.381
+50000,"{k:30, ef: 50, start_candidates: 1}","RNNGraphParams { outer_loops: 3, inner_loops: 7, max_neighbors_after_reverse_pruning: 20, initial_neighbors: 20, distance: Dot }",49696988,6801.467695,0.937,1639.320,0.507
+50000,"{k:30, ef: 50, start_candidates: 1}","SliceS1HnswParams { level_norm_param: 0.5, ef_construction: 40, m_max: 20, m_max_0: 40, distance: Dot }",35211265,12201.57947,0.928,848.780,0.349
+50000,"{k:30, ef: 50, start_candidates: 1}","EnsembleParams { n_vp_trees: 10, max_chunk_size: 256, same_chunk_m_max: 16, m_max: 20, m_max_0: 40, level_norm: -1.0, distance: Dot }",55480650,7015.051805,0.920,966.470,0.407
+50000,"{k:30, ef: 50, start_candidates: 1}","TransitionParams { max_chunk_size: 256, same_chunk_m_max: 20, neg_fraction: 0.3, keep_fraction: 0.1, m_max: 40, x: 4, stop_after_stitching_n_chunks: None, distance: Dot, stitch_mode: RandomNegToRandomPosAndBack }",11240065,1805.0140780000002,0.316,932.230,0.462
+50000,"{k:30, ef: 50, start_candidates: 1}","TransitionParams { max_chunk_size: 256, same_chunk_m_max: 20, neg_fraction: 0.3, keep_fraction: 0.1, m_max: 40, x: 4, stop_after_stitching_n_chunks: None, distance: Dot, stitch_mode: DontStarveXXSearch }",11035342,1620.4283,0.289,879.770,0.436
+50000,"{k:30, ef: 50, start_candidates: 1}","SliceS1HnswParams { level_norm_param: 0.5, ef_construction: 40, m_max: 20, m_max_0: 40, distance: Dot }",35064908,8682.540565,0.934,855.090,0.313
+50000,"{k:30, ef: 50, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.5, ef_construction: 40, m_max: 20, m_max_0: 40, distance: Dot }",34902825,1796.010597,0.937,818.190,0.292
+50000,"{k:30, ef: 50, start_candidates: 1}","SliceS1HnswParams { level_norm_param: 0.5, ef_construction: 40, m_max: 20, m_max_0: 40, distance: Dot }",34863886,8967.957483,0.940,864.160,0.302
+50000,"{k:30, ef: 50, start_candidates: 1}","SliceParralelRayonHnswParams { level_norm_param: 0.5, ef_construction: 40, m_max: 20, m_max_0: 40, distance: Dot }",34974415,1906.1798250000002,0.920,823.110,0.288
+20000,"{k:30, ef: 50, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.5, ef_construction: 40, m_max: 20, m_max_0: 40, distance: Dot }",12891855,6440.160653999999,0.953,793.720,0.483
+20000,"{k:30, ef: 50, start_candidates: 1}","EnsembleParams { n_vp_trees: 10, max_chunk_size: 256, same_chunk_m_max: 16, m_max: 20, m_max_0: 40, level_norm: -1.0, distance: Dot }",18024910,3654.622953,0.952,888.530,0.550
+20000,"{k:30, ef: 50, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.5, ef_construction: 40, m_max: 20, m_max_0: 40, distance: Dot }",12586661,6204.116937,0.955,778.110,0.439
+20000,"{k:30, ef: 50, start_candidates: 1}","EnsembleParams { n_vp_trees: 5, max_chunk_size: 256, same_chunk_m_max: 16, m_max: 20, m_max_0: 40, level_norm: -1.0, distance: Dot }",9012455,1718.668621,0.935,961.480,0.553
+20000,"{k:30, ef: 50, start_candidates: 1}","SliceS2HnswParams { level_norm_param: 0.5, ef_construction: 40, m_max: 20, m_max_0: 40, distance: Dot }",12716415,2421.293554,0.941,791.030,0.259
+20000,"{k:30, ef: 50, start_candidates: 1}","EnsembleParams { n_vp_trees: 5, max_chunk_size: 256, same_chunk_m_max: 16, m_max: 20, m_max_0: 40, level_norm: 0.5, distance: Dot }",10249366,786.6643909999999,0.928,1017.010,0.311

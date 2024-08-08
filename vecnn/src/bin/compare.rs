@@ -46,7 +46,7 @@ fn main() {
     };
 
     let ensemble_params = EnsembleParams {
-        n_vp_trees: 10,
+        n_vp_trees: 5,
         max_chunk_size: 256,
         same_chunk_m_max: 16,
         m_max: 20,
@@ -56,19 +56,19 @@ fn main() {
     };
 
     let hnsw_params = HnswParams {
-        level_norm_param: 0.8,
-        ef_construction: 50,
+        level_norm_param: 0.5,
+        ef_construction: 40,
         m_max: 20,
         m_max_0: 40,
         distance: Dot,
     };
 
     let k = 30;
-    let k_samples = 3;
+    let k_samples = 100;
 
     use HnswKind::*;
 
-    for n in [100000] {
+    for n in [20000] {
         eval_models_on_laion(
             n,
             k_samples,
@@ -80,39 +80,31 @@ fn main() {
                 //     initial_neighbors: 20,
                 //     distance: Distance::Dot,
                 // }),
-                // ModelParams::VpTreeEnsemble(EnsembleParams {
-                //     level_norm: -1.0,
-                //     ..ensemble_params
-                // }),
-                // ModelParams::Hnsw(hnsw_params, Const),
+                ModelParams::Hnsw(hnsw_params, SliceS2),
+                // ModelParams::Hnsw(hnsw_params, SliceParralelRayon),
                 // ModelParams::Hnsw(hnsw_params, SliceS1),
                 // ModelParams::Hnsw(hnsw_params, SliceParralelRayon),
-                // ModelParams::Hnsw(hnsw_params, SliceParralelThreadPool),
-                // ModelParams::Hnsw(hnsw_params, SliceParralelRayon),
-                // ModelParams::Hnsw(hnsw_params, SliceParralelThreadPool),
-                // ModelParams::Hnsw(hnsw_params, SliceParralelRayon),
-                // ModelParams::Hnsw(hnsw_params, SliceParralelThreadPool),
-                ModelParams::VpTree(VpTreeParams {
-                    distance: Dot,
-                    threaded: false,
-                }),
-                ModelParams::VpTree(VpTreeParams {
-                    distance: Dot,
-                    threaded: true,
-                }),
-                // ModelParams::Hnsw(hnsw_params, SliceS2),
-                // ModelParams::Hnsw(hnsw_params, SliceParralel),
-                // ModelParams::Hnsw(hnsw_params, SliceS2),
-                // ModelParams::Hnsw(hnsw_params, SliceParralel),
-                // ModelParams::Hnsw(hnsw_params, SliceS2),
-                // ModelParams::Hnsw(hnsw_params, SliceParralel),
-                // ModelParams::Hnsw(hnsw_params, SliceS2),
+                ModelParams::VpTreeEnsemble(
+                    EnsembleParams {
+                        level_norm: 0.5,
+                        ..ensemble_params
+                    },
+                    false,
+                ),
+                // ModelParams::Transition(TransitionParams {
+                //     stitch_mode: StitchMode::RandomNegToRandomPosAndBack,
+                //     ..transition_params
+                // }),
+                // ModelParams::Transition(TransitionParams {
+                //     stitch_mode: StitchMode::DontStarveXXSearch,
+                //     ..transition_params
+                // }),
             ],
             SearchParams {
                 k,
                 truth_distance: dot,
                 start_candidates: 1,
-                ef: 60,
+                ef: 50,
                 vp_max_visits: 0,
             },
             true,
@@ -231,7 +223,7 @@ fn main() {
 enum ModelParams {
     Hnsw(HnswParams, HnswKind),
     Transition(TransitionParams),
-    VpTreeEnsemble(EnsembleParams),
+    VpTreeEnsemble(EnsembleParams, bool), // bool = threaded
     RNNGraph(RNNGraphParams),
     VpTree(VpTreeParams),
 }
@@ -241,7 +233,13 @@ impl ModelParams {
         match self {
             ModelParams::Hnsw(e, kind) => format!("{kind:?}{e:?}"),
             ModelParams::Transition(e) => format!("{e:?}"),
-            ModelParams::VpTreeEnsemble(e) => format!("{e:?}"),
+            ModelParams::VpTreeEnsemble(e, threaded) => {
+                if *threaded {
+                    format!("Threaded {e:?}")
+                } else {
+                    format!("{e:?}")
+                }
+            }
             ModelParams::RNNGraph(e) => format!("{e:?}"),
             ModelParams::VpTree(e) => format!("{e:?}"),
         }
@@ -498,13 +496,13 @@ fn eval_models(
                 Model::SliceHnsw(build_hnsw_by_transition(data, params, seed))
             }
             ModelParams::RNNGraph(params) => Model::RNNGraph(RNNGraph::new(data, params, seed)),
-            ModelParams::VpTreeEnsemble(params) => {
+            ModelParams::VpTreeEnsemble(params, threaded) => {
                 // todo! a bit hacky!! move the specialization to the transition module instead.
                 if params.level_norm == -1.0 {
                     Model::SliceHnsw(build_hnsw_by_vp_tree_ensemble(data, params, seed))
                 } else {
                     Model::SliceHnsw(build_hnsw_by_vp_tree_ensemble_multi_layer(
-                        data, params, seed,
+                        data, params, threaded, seed,
                     ))
                 }
             }

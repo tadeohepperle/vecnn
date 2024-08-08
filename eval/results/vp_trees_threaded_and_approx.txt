@@ -1,0 +1,17 @@
+ LAION 768 dims, 300k
+
+Approximate Search:
+
+n         search_params                           params                                             build_ndc    build_ms      recall_mean    ndc_mean     time_ms_mean  
+300000    {k:30, ef: 60, vp_max_visits: 30000}    VpTreeParams { distance: Dot, threaded: false }    4919423      727.05917     0.361          30001.880    7.684  
+300000    {k:30, ef: 60, vp_max_visits: 30000}    VpTreeParams { distance: Dot, threaded: true }     4919423      306.716488    0.332          29952.000    7.863  
+
+n         search_params                           params                                             build_ndc    build_ms      recall_mean    ndc_mean     time_ms_mean  
+300000    {k:30, ef: 60, vp_max_visits: 10000}    VpTreeParams { distance: Dot, threaded: false }    4919423      733.362343    0.251          10001.180    2.355  
+300000    {k:30, ef: 60, vp_max_visits: 10000}    VpTreeParams { distance: Dot, threaded: true }     4919423      296.448758    0.211          10001.120    2.339  
+
+Exact Search:
+
+n         search_params     params                                             build_ndc    build_ms      recall_mean    ndc_mean      time_ms_mean  
+300000    {k:30, ef: 60}    VpTreeParams { distance: Dot, threaded: false }    4919423      712.835671    0.997          264973.230    63.231  
+300000    {k:30, ef: 60}    VpTreeParams { distance: Dot, threaded: true }     4919423      276.359133    0.996          268463.280    64.532  

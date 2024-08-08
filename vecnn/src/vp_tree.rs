@@ -106,9 +106,73 @@ impl VpTree {
         &self,
         q: &[Float],
         k: usize,
-        max_visited_elements: usize,
+        max_visits: usize,
     ) -> (Vec<DistAnd<usize>>, Stats) {
-        todo!()
+        let tracker = DistanceTracker::new(self.distance);
+        let start = Instant::now();
+        let dist_to_q = |idx| {
+            let p = self.data.get(idx);
+            tracker.distance(p, q)
+        };
+
+        struct SearchCtx {
+            heap: KnnHeap,
+            visited: usize,
+            max_visits: usize,
+        }
+
+        let mut ctx = SearchCtx {
+            heap: KnnHeap::new(k),
+            visited: 0,
+            max_visits,
+        };
+        impl SearchCtx {
+            #[inline]
+            fn out_of_budget(&self) -> bool {
+                self.visited >= self.max_visits
+            }
+        }
+
+        fn search_tree(tree: &[Node], dist_to_q: &impl Fn(usize) -> f32, ctx: &mut SearchCtx) {
+            if tree.len() == 0 {
+                return;
+            }
+
+            let root = &tree[0];
+            let d = dist_to_q(root.id);
+            let t = root.dist; // threshold
+            ctx.visited += 1;
+
+            if tree.len() == 1 {
+                ctx.heap.insert_if_better(root.id, d);
+            } else if d <= t {
+                ctx.heap.insert_if_better(root.id, d);
+                // search inner side
+                search_tree(left(tree), dist_to_q, ctx);
+                if (d - t).abs() < ctx.heap.worst_nn_dist() || !ctx.heap.is_full() {
+                    if !ctx.out_of_budget() {
+                        search_tree(right(tree), dist_to_q, ctx);
+                    }
+                }
+            } else {
+                // search other side
+                search_tree(right(tree), dist_to_q, ctx);
+                if (d - t).abs() < ctx.heap.worst_nn_dist() || !ctx.heap.is_full() {
+                    if !ctx.out_of_budget() {
+                        ctx.heap.insert_if_better(root.id, d);
+                        search_tree(left(tree), dist_to_q, ctx);
+                    }
+                }
+            }
+        }
+
+        search_tree(&self.nodes, &dist_to_q, &mut ctx);
+        let stats = Stats {
+            num_distance_calculations: tracker.num_calculations(),
+            duration: start.elapsed(),
+        };
+
+        (ctx.heap.as_sorted_vec(), stats)
     }
 
     pub fn knn_search(&self, q: &[Float], k: usize) -> (Vec<DistAnd<usize>>, Stats) {
@@ -119,6 +183,7 @@ impl VpTree {
             tracker.distance(p, q)
         };
         let mut heap = KnnHeap::new(k);
+
         fn search_tree(tree: &[Node], dist_to_q: &impl Fn(usize) -> f32, heap: &mut KnnHeap) {
             if tree.len() == 0 {
                 return;
@@ -129,9 +194,9 @@ impl VpTree {
             let t = root.dist; // threshold
 
             if tree.len() == 1 {
-                heap.maybe_add(root.id, d);
+                heap.insert_if_better(root.id, d);
             } else if d <= t {
-                heap.maybe_add(root.id, d);
+                heap.insert_if_better(root.id, d);
                 // search inner side
                 search_tree(left(tree), dist_to_q, heap);
                 if (d - t).abs() < heap.worst_nn_dist() || !heap.is_full() {
@@ -141,7 +206,7 @@ impl VpTree {
                 // search other side
                 search_tree(right(tree), dist_to_q, heap);
                 if (d - t).abs() < heap.worst_nn_dist() || !heap.is_full() {
-                    heap.maybe_add(root.id, d);
+                    heap.insert_if_better(root.id, d);
                     search_tree(left(tree), dist_to_q, heap);
                 }
             }

@@ -20,6 +20,7 @@ pub fn build_hnsw_by_vp_tree_ensemble(
     n_vp_trees: usize,
     level_norm: f32,
     distance: String,
+    threaded: bool,
     seed: u64,
 ) -> PyResult<Hnsw> {
     // todo! the python side of this interface needs to be adjusted!!!
@@ -36,6 +37,7 @@ pub fn build_hnsw_by_vp_tree_ensemble(
     let hnsw = vecnn::transition::build_hnsw_by_vp_tree_ensemble_multi_layer(
         data.as_dyn_dataset(),
         params,
+        threaded,
         seed,
     );
     Ok(Hnsw(Inner::SliceImpl(hnsw)))

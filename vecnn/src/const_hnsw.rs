@@ -176,25 +176,6 @@ fn construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams, seed: u64) -> Con
         duration: start_time.elapsed(),
     };
 
-    println!("Const HNSW layers:");
-    println!(
-        "   Layer 0: len: {} neighbors: {}",
-        bottom_layer.len(),
-        bottom_layer
-            .iter()
-            .map(|e| e.neighbors.len())
-            .sum::<usize>() as f32
-            / bottom_layer.len() as f32
-    );
-    for (l, layer) in layers.iter().enumerate() {
-        println!(
-            "   Layer {}: len: {} neighbors: {}",
-            l + 1,
-            layer.len(),
-            layer.iter().map(|e| e.neighbors.len()).sum::<usize>() as f32 / layer.len() as f32
-        );
-    }
-
     ConstHnsw {
         data,
         bottom_layer,

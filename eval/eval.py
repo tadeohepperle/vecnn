@@ -364,19 +364,20 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
 laion_data = laion_util.load_laion_data()
 data, queries = laion_data.subset(100000, 1000)
 
-ef_construction =20
+ef_construction =40
 m_max = 20
 # (truth_indices, search_time) = linear_search_true_knn(data, queries, k, "dot")
 model_params: list[ModelParams] = [
     # ModelParams('vecnn_vptree'),
     # ModelParams('vecnn_rnn_descent',outer_loops=3, inner_loops=5, max_neighbors_after_reverse_pruning=20, initial_neighbors = 10, distance = "dot"),
-    # ModelParams('rustcv_hnsw', ef_construction=ef_construction),
-    # ModelParams('jpboth_hnsw', ef_construction=ef_construction, m_max=m_max, threaded=False),
-    # ModelParams('jpboth_hnsw', ef_construction=ef_construction, m_max=m_max, threaded=True),
-    ModelParams('vecnn_hnsw', level_norm=0.5, ef_construction=ef_construction, m_max=m_max, distance = "dot", threaded=True),
-    ModelParams('vecnn_hnsw', level_norm=0.5, ef_construction=ef_construction, m_max=m_max, distance = "dot", threaded=False),
-    # ModelParams('hnswlib_hnsw', ef_construction=ef_construction, m_max=m_max, distance = "dot"),
-    # ModelParams('faiss_hnsw', ef_construction=ef_construction, m_max=m_max, distance = "dot"),
+    ModelParams('rustcv_hnsw',  ef_construction=ef_construction, threaded=False),
+    ModelParams('jpboth_hnsw',  ef_construction=ef_construction, m_max=m_max, threaded=False),
+    ModelParams('vecnn_hnsw',   ef_construction=ef_construction, m_max=m_max, distance = "dot", level_norm=0.5, threaded=False),
+    ModelParams('hnswlib_hnsw', ef_construction=ef_construction, m_max=m_max, distance = "dot", threaded=False),
+    ModelParams('jpboth_hnsw',  ef_construction=ef_construction, m_max=m_max, threaded=True),
+    ModelParams('vecnn_hnsw',   ef_construction=ef_construction, m_max=m_max, distance = "dot", level_norm=0.5, threaded=True),
+    ModelParams('hnswlib_hnsw', ef_construction=ef_construction, m_max=m_max, distance = "dot", threaded=True),
+    ModelParams('faiss_hnsw', ef_construction=ef_construction, m_max=m_max, distance = "dot", threaded=True),
     # ModelParams('vecnn_rnn_descent',outer_loops=50, inner_loops=1, max_neighbors_after_reverse_pruning=4, initial_neighbors = 10, distance = "dot"),
     # ModelParams('vecnn_vptree'),
 ]
