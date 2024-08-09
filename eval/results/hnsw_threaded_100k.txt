@@ -3,6 +3,9 @@
 1   jpboth_hnsw    42               40     False  30  60  100000        768   37.724638         NaN     0.000567         NaN       0.885900   20.0     None         NaN
 2    vecnn_hnsw    42               40     False  30  60  100000        768   27.241381  73909890.0     0.000449     973.015       0.948100   20.0      dot         0.5
 3  hnswlib_hnsw    42               40     False  30  60  100000        768   13.978268         NaN     0.000196         NaN       0.931967   20.0      dot         NaN
+
+
+
 4   jpboth_hnsw    42               40      True  30  60  100000        768   19.761161         NaN     0.000552         NaN       0.849600   20.0     None         NaN
 5    vecnn_hnsw    42               40      True  30  60  100000        768   13.951626  73869316.0     0.000447     966.281       0.939900   20.0      dot         0.5
 6  hnswlib_hnsw    42               40      True  30  60  100000        768    9.742607         NaN     0.000188         NaN       0.936367   20.0      dot         NaN
@@ -11,7 +14,3 @@
 
 
 
-
-  n        search_params                          params                                                                                                                             build_ndc    build_ms              recall_mean    ndc_mean    time_ms_mean  
-  50000    {k:30, ef: 50, start_candidates: 1}    RNNGraphParams { outer_loops: 3, inner_loops: 7, max_neighbors_after_reverse_pruning: 20, initial_neighbors: 20, distance: Dot }   49696988     6801.467695           0.937          1639.320    0.507  
-  50000    {k:30, ef: 50, start_candidates: 1}    SliceS1HnswParams { level_norm_param: 0.5, ef_construction: 40, m_max: 20, m_max_0: 40, distance: Dot }                            35211265     12201.57947           0.928          848.780     0.349  

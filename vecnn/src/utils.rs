@@ -7,6 +7,7 @@ use crate::{
     Float,
 };
 use std::{
+    cell::UnsafeCell,
     collections::BinaryHeap,
     mem::ManuallyDrop,
     ptr::{self, NonNull},
@@ -175,12 +176,18 @@ unsafe impl<T> Send for SlicesMemory<T> {}
 unsafe impl<T> Sync for SlicesMemory<T> {}
 
 impl<T> SlicesMemory<T> {
-    pub fn new_uninit() -> Self {
+    pub const fn new_uninit() -> Self {
         Self {
             ptr: NonNull::dangling(),
             n_slices: 0,
             n_elements_per_slice: 0,
         }
+    }
+
+    pub fn is_allocated_for(&self, n_slices: usize, n_elements_per_slice: usize) -> bool {
+        self.n_slices == n_slices
+            && self.n_elements_per_slice == n_elements_per_slice
+            && self.ptr != NonNull::dangling()
     }
 
     pub fn new(n_slices: usize, n_elements_per_slice: usize) -> Self {
@@ -224,10 +231,68 @@ impl<T> Drop for SlicesMemory<T> {
     }
 }
 
-mod binary_heap {
-    use std::{fmt::Debug, mem::ManuallyDrop, ptr};
+/// A wrapper that is incredibly unsafe but acts if it was not. Use only if you know what you are doing.
+#[derive(Debug)]
+pub struct YoloCell<T>(UnsafeCell<T>);
+unsafe impl<T> Send for YoloCell<T> {}
+unsafe impl<T> Sync for YoloCell<T> {}
 
-    use super::SlicesMemory;
+impl<T> YoloCell<T> {
+    #[inline(always)]
+    pub unsafe fn get_mut(&self) -> &mut T {
+        unsafe { &mut *self.0.get() }
+    }
+    #[inline(always)]
+    pub fn ptr(&self) -> *mut T {
+        self.0.get()
+    }
+    #[inline(always)]
+    pub const fn new(value: T) -> Self {
+        Self(UnsafeCell::new(value))
+    }
+    #[inline(always)]
+    pub fn into_inner(self) -> T {
+        self.0.into_inner()
+    }
+}
+
+impl<T> std::ops::Deref for YoloCell<T> {
+    type Target = T;
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0.get() }
+    }
+}
+
+impl<T> std::ops::DerefMut for YoloCell<T> {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.0.get() }
+    }
+}
+
+pub fn sanititze_num_threads(num_threads: usize) -> usize {
+    if num_threads == 1 {
+        return 1;
+    }
+    let available_threads: usize = std::thread::available_parallelism()
+        .expect("Failed to get available_parallelism")
+        .into();
+    if num_threads > available_threads {
+        eprintln!("Warning: Specified num_threads={num_threads} but is cut to max={available_threads} on this machine.");
+        return available_threads;
+    }
+    if num_threads == 0 {
+        eprintln!("Note: Using all {available_threads} threads.");
+        return available_threads;
+    }
+    return num_threads;
+}
+
+mod binary_heap {
+    use std::{fmt::Debug, mem::ManuallyDrop, ops::DerefMut, ptr};
+
+    use super::{SlicesMemory, YoloCell};
 
     /// allocate a slice of slices as a backing memory for a sequence of `SliceBinaryHeap`s.
     pub fn slice_binary_heap_arena<T: Ord>(

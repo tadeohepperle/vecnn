@@ -47,7 +47,7 @@ fn main() {
 
     let ensemble_params = EnsembleParams {
         n_vp_trees: 5,
-        max_chunk_size: 256,
+        max_chunk_size: 512,
         same_chunk_m_max: 16,
         m_max: 20,
         m_max_0: 40,
@@ -68,7 +68,7 @@ fn main() {
 
     use HnswKind::*;
 
-    for n in [20000] {
+    for n in [40000] {
         eval_models_on_laion(
             n,
             k_samples,
@@ -80,7 +80,7 @@ fn main() {
                 //     initial_neighbors: 20,
                 //     distance: Distance::Dot,
                 // }),
-                ModelParams::Hnsw(hnsw_params, SliceS2),
+                // ModelParams::Hnsw(hnsw_params, SliceS2),
                 // ModelParams::Hnsw(hnsw_params, SliceParralelRayon),
                 // ModelParams::Hnsw(hnsw_params, SliceS1),
                 // ModelParams::Hnsw(hnsw_params, SliceParralelRayon),
@@ -90,6 +90,13 @@ fn main() {
                         ..ensemble_params
                     },
                     false,
+                ),
+                ModelParams::VpTreeEnsemble(
+                    EnsembleParams {
+                        level_norm: 0.5,
+                        ..ensemble_params
+                    },
+                    true,
                 ),
                 // ModelParams::Transition(TransitionParams {
                 //     stitch_mode: StitchMode::RandomNegToRandomPosAndBack,

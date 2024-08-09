@@ -1,8 +1,9 @@
 use std::{
+    cell::UnsafeCell,
     collections::{BinaryHeap, HashMap, HashSet},
     hash::Hash,
     ops::Range,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
     usize,
 };
@@ -10,6 +11,10 @@ use std::{
 use nanoserde::{DeJson, SerJson};
 use rand::{seq::SliceRandom, thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+use rayon::{
+    iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator},
+    slice::ParallelSlice,
+};
 
 use crate::{
     dataset::DatasetT,
@@ -20,8 +25,14 @@ use crate::{
     },
     if_tracking,
     slice_hnsw::{self, SliceHnsw, MAX_LAYERS},
-    utils::{slice_binary_heap_arena, BinaryHeapExt, SliceBinaryHeap, Stats},
-    vp_tree::{self, arrange_into_vp_tree, left, left_with_root, right, Node, StoresDistT, VpTree},
+    utils::{
+        sanititze_num_threads, slice_binary_heap_arena, BinaryHeapExt, SliceBinaryHeap,
+        SlicesMemory, Stats, YoloCell,
+    },
+    vp_tree::{
+        self, arrange_into_vp_tree, arrange_into_vp_tree_parallel, left, left_with_root, right,
+        Node, StoresDistT, VpTree,
+    },
 };
 
 #[derive(Debug, Clone, Copy, DeJson, SerJson, PartialEq)]
@@ -164,13 +175,12 @@ pub fn build_hnsw_by_vp_tree_ensemble_multi_layer(
             // brute force connect neighbors!
             fill_hnsw_layer_range_by_brute_force(&*data, &distance, layer);
         } else {
-            if threaded {
-                fill_hnsw_layer_by_vp_tree_ensemble_threaded(
-                    &*data, &distance, layer, &params, &mut rng,
-                );
-            }
-            {
+            if !threaded {
                 fill_hnsw_layer_by_vp_tree_ensemble(&*data, &distance, layer, &params, &mut rng);
+            } else {
+                fill_hnsw_layer_by_vp_tree_ensemble_threaded(
+                    &*data, &distance, layer, &mut rng, params,
+                );
             }
         }
     }
@@ -250,7 +260,8 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
     params: &EnsembleParams,
     rng: &mut ChaCha20Rng,
 ) {
-    let mut vp_tree: Vec<VpTreeNode> = Vec::with_capacity(data.len());
+    let n_entries = layer.entries.len();
+    let mut vp_tree: Vec<VpTreeNode> = Vec::with_capacity(n_entries);
     for (i, entry) in layer.entries.iter().enumerate() {
         vp_tree.push(VpTreeNode {
             id: entry.id as u32,
@@ -258,7 +269,6 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
             dist: 0.0,
         });
     }
-    let n_entries = layer.entries.len();
     let max_chunk_size = params.max_chunk_size;
     let same_chunk_m_max = params.same_chunk_m_max;
     let chunks = make_chunks(n_entries, max_chunk_size);
@@ -272,6 +282,7 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
     for _ in 0..params.n_vp_trees {
         arrange_into_vp_tree(&mut vp_tree, &data_get, distance, rng);
 
+        let before = Instant::now();
         for (chunk_i, chunk) in chunks.iter().enumerate() {
             let chunk_size = chunk.range.len();
             let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
@@ -306,6 +317,10 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
                 }
             }
         }
+        println!(
+            "Chunks loop took: {}ms",
+            before.elapsed().as_secs_f32() * 1000.0
+        );
 
         for (node, neighbors) in vp_tree.iter().zip(vp_tree_neighbors.iter_mut()) {
             let hnsw_entry = &mut layer.entries[node.idx_in_hnsw_layer as usize];
@@ -322,13 +337,65 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
     }
 }
 
+/// Thread-Local storage to help build VP-trees and connect neighbors in chunks.
+struct EnsembleTLS {
+    chunk_dst_mat: Vec<f32>,
+    chunk_neighbors_memory: SlicesMemory<DistAnd<usize>>,
+    chunk_neighbors: Vec<SliceBinaryHeap<'static, DistAnd<usize>>>,
+}
+
+impl EnsembleTLS {
+    // fn new(max_chunk_size: usize, same_chunk_m_max: usize) -> Self {
+    //     let (memory, neighbors) =
+    //         slice_binary_heap_arena::<DistAnd<usize>>(max_chunk_size, same_chunk_m_max);
+    //     Self {
+    //         chunk_dst_mat: vec![0.0; max_chunk_size * max_chunk_size],
+    //         chunk_neighbors_memory: memory,
+    //         chunk_neighbors: neighbors,
+    //     }
+    // }
+
+    fn init(&mut self, max_chunk_size: usize, same_chunk_m_max: usize) {
+        self.chunk_dst_mat.clear();
+        self.chunk_dst_mat.reserve(max_chunk_size * max_chunk_size);
+        for _ in 0..(max_chunk_size * max_chunk_size) {
+            self.chunk_dst_mat.push(0.0);
+        }
+
+        // Reuse memory if exactly same size and number of neighbors is already available, otherwise allocate new memory:
+        if self.chunk_neighbors.len() == max_chunk_size
+            && self
+                .chunk_neighbors_memory
+                .is_allocated_for(max_chunk_size, same_chunk_m_max)
+        {
+            for neighbors in self.chunk_neighbors.iter_mut() {
+                neighbors.clear();
+            }
+        } else {
+            let (memory, neighbors) =
+                slice_binary_heap_arena::<DistAnd<usize>>(max_chunk_size, same_chunk_m_max);
+            self.chunk_neighbors_memory = memory;
+            self.chunk_neighbors = neighbors;
+        }
+    }
+}
+
+thread_local! {
+    static ENSEMPLE_TLS:UnsafeCell<EnsembleTLS> = const {UnsafeCell::new(EnsembleTLS{chunk_dst_mat:vec![],chunk_neighbors_memory:SlicesMemory::new_uninit(), chunk_neighbors: vec![] })};
+}
+
+fn ensemble_tls() -> &'static mut EnsembleTLS {
+    ENSEMPLE_TLS.with(|e| unsafe { &mut *e.get() })
+}
+
 fn fill_hnsw_layer_by_vp_tree_ensemble_threaded(
     data: &dyn DatasetT,
     distance: &DistanceTracker,
     layer: &mut super::slice_hnsw::Layer,
-    params: &EnsembleParams,
     rng: &mut ChaCha20Rng,
+    params: EnsembleParams,
 ) {
+    let n_entries = layer.entries.len();
     let mut vp_tree: Vec<VpTreeNode> = Vec::with_capacity(data.len());
     for (i, entry) in layer.entries.iter().enumerate() {
         vp_tree.push(VpTreeNode {
@@ -337,68 +404,87 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded(
             dist: 0.0,
         });
     }
-    let n_entries = layer.entries.len();
     let max_chunk_size = params.max_chunk_size;
     let same_chunk_m_max = params.same_chunk_m_max;
     let chunks = make_chunks(n_entries, max_chunk_size);
-    let mut chunk_dst_mat: Vec<f32> = vec![0.0; max_chunk_size * max_chunk_size];
     let data_get = |e: &VpTreeNode| data.get(e.id as usize);
 
-    let (_memory, mut vp_tree_neighbors) =
-        slice_binary_heap_arena::<DistAnd<usize>>(n_entries, same_chunk_m_max);
-    // Note: The vp_tree_neighbors are aligned with the nodes in the vp_tree (vp_tree[i] has neighbors stored in vp_tree_neighbors[i]),
-    // but the indices stored in the neighbors lists, refer to indices of the hnsw layer!
-    for _ in 0..params.n_vp_trees {
+    let mut chunk_chunk_size = chunks.len() / (sanititze_num_threads(0) - 1);
+    let chunk_chunks: Vec<&[Chunk]> = chunks.chunks(chunk_chunk_size).collect();
+
+    // Now we officially get the permission to mutate the layer from multiple threads (MUST wrap in UnsafeCell if mutable accesses to this shared reference can happen):
+    let layer_cell = YoloCell::new(std::mem::replace(layer, super::slice_hnsw::Layer::new(1)));
+
+    for _tree_idx in 0..params.n_vp_trees {
+        let before = Instant::now();
         arrange_into_vp_tree(&mut vp_tree, &data_get, distance, rng);
 
-        for (chunk_i, chunk) in chunks.iter().enumerate() {
-            let chunk_size = chunk.range.len();
-            let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
-            let chunk_nodes = &vp_tree[chunk.range.clone()];
-            assert!(chunk_size >= max_chunk_size / 2);
-            assert!(chunk_size <= max_chunk_size);
+        let between = before.elapsed();
 
-            // calculate distances between all the nodes in this chunk. (clearing chunk_dst_mat not necessary, because everything relevant should be overwritten).
-            for i in 0..chunk_size {
-                for j in i + 1..chunk_size {
-                    let i_data = data.get(chunk_nodes[i].id as usize);
-                    let j_data = data.get(chunk_nodes[j].id as usize);
-                    let dist = distance.distance(i_data, j_data);
-                    chunk_dst_mat[chunk_dst_mat_idx(i, j)] = dist;
-                    chunk_dst_mat[chunk_dst_mat_idx(j, i)] = dist;
-                }
-            }
-            // connect each node in the chunk to each other node (except itself)
-            for i in 0..chunk_size {
-                let i_neighbors = &mut vp_tree_neighbors[chunk.range.start + i];
-                for j in 0..chunk_size {
-                    if j == i {
-                        continue;
+        chunks.par_chunks(2).for_each(|chunk_chunk| {
+            for chunk in chunk_chunk {
+                let tls = ensemble_tls();
+                tls.init(max_chunk_size, same_chunk_m_max);
+                let chunk_size = chunk.range.len();
+                let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
+                let chunk_nodes = &vp_tree[chunk.range.clone()];
+                assert!(chunk_size >= max_chunk_size / 2);
+                assert!(chunk_size <= max_chunk_size);
+
+                // calculate distances between all the nodes in this chunk. (clearing chunk_dst_mat not necessary, because everything relevant should be overwritten).
+                for i in 0..chunk_size {
+                    for j in i + 1..chunk_size {
+                        let i_data = data.get(chunk_nodes[i].id as usize);
+                        let j_data = data.get(chunk_nodes[j].id as usize);
+                        let dist = distance.distance(i_data, j_data);
+                        tls.chunk_dst_mat[chunk_dst_mat_idx(i, j)] = dist;
+                        tls.chunk_dst_mat[chunk_dst_mat_idx(j, i)] = dist;
                     }
-                    let dist = chunk_dst_mat[chunk_dst_mat_idx(i, j)];
-                    let j_idx_in_hnsw = chunk_nodes[j].idx_in_hnsw_layer as usize;
-                    i_neighbors.insert_if_better(DistAnd(dist, j_idx_in_hnsw));
+                }
+                // try to connect each node in the chunk to each other node (except itself) (limiting number of neighbors to same_chunk_m_max with the insert_if_better)
+                for i in 0..chunk_size {
+                    // since all chunks are disjunct and each element is only in one chunk, this access should be fine and cannot lead to race conditions.
+                    let i_neighbors = &mut tls.chunk_neighbors[i];
+                    for j in 0..chunk_size {
+                        if j == i {
+                            continue;
+                        }
+                        let dist = tls.chunk_dst_mat[chunk_dst_mat_idx(i, j)];
+                        let j_idx_in_hnsw = chunk_nodes[j].idx_in_hnsw_layer as usize;
+                        i_neighbors.insert_if_better(DistAnd(dist, j_idx_in_hnsw));
+                    }
                 }
 
-                if_tracking! {
-                    Tracking.pt_meta(chunk_nodes[i].id as usize).chunk_on_level.push(chunk_i);
+                // merge the neighbors of the vp-tree in with the hnsw layer:
+                // let chunk_neighbors_in_hnsw =
+                //     unsafe { &mut layer_cell.get_mut().entries[chunk.range.clone()] };
+                for i in 0..chunk_size {
+                    let i_idx_in_hnsw = chunk_nodes[i].idx_in_hnsw_layer as usize;
+                    let i_neighbors = &mut tls.chunk_neighbors[i];
+                    let hnsw_neighbors =
+                        unsafe { &mut layer_cell.get_mut().entries[i_idx_in_hnsw].neighbors };
+                    for &DistAnd(dist, idx_in_hnsw) in i_neighbors.iter() {
+                        if !hnsw_neighbors.iter().any(|e| e.1 == idx_in_hnsw) {
+                            hnsw_neighbors.insert_if_better(DistAnd(dist, idx_in_hnsw));
+                        }
+                    }
                 }
             }
-        }
-
-        for (node, neighbors) in vp_tree.iter().zip(vp_tree_neighbors.iter_mut()) {
-            let hnsw_entry = &mut layer.entries[node.idx_in_hnsw_layer as usize];
-            for &DistAnd(dist, idx_in_hnsw) in neighbors.iter() {
-                // awkward, but idk how to filter out duplicates mor efficiently
-                if !hnsw_entry.neighbors.iter().any(|e| e.1 == idx_in_hnsw) {
-                    hnsw_entry
-                        .neighbors
-                        .insert_if_better(DistAnd(dist, idx_in_hnsw));
-                }
-            }
-            neighbors.clear();
-        }
+        });
+        println!(
+            "Chunks ({}) loop took: {}ms + {}ms",
+            chunks.len(),
+            between.as_secs_f32() * 1000.0,
+            (before.elapsed() - between).as_secs_f32() * 1000.0
+        );
     }
+
+    // put the layer back where it was before (move out of the UnsafeCell we used above)
+    *layer = identity(layer_cell.into_inner());
+}
+
+fn identity<T>(t: T) -> T {
+    t
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson)]
