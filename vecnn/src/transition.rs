@@ -4,6 +4,7 @@ use std::{
     hash::Hash,
     ops::Range,
     sync::{Arc, Mutex},
+    thread::{JoinHandle, ScopedJoinHandle},
     time::{Duration, Instant},
     usize,
 };
@@ -178,7 +179,7 @@ pub fn build_hnsw_by_vp_tree_ensemble_multi_layer(
             if !threaded {
                 fill_hnsw_layer_by_vp_tree_ensemble(&*data, &distance, layer, &params, &mut rng);
             } else {
-                fill_hnsw_layer_by_vp_tree_ensemble_threaded(
+                fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk(
                     &*data, &distance, layer, &mut rng, params,
                 );
             }
@@ -345,15 +346,15 @@ struct EnsembleTLS {
 }
 
 impl EnsembleTLS {
-    // fn new(max_chunk_size: usize, same_chunk_m_max: usize) -> Self {
-    //     let (memory, neighbors) =
-    //         slice_binary_heap_arena::<DistAnd<usize>>(max_chunk_size, same_chunk_m_max);
-    //     Self {
-    //         chunk_dst_mat: vec![0.0; max_chunk_size * max_chunk_size],
-    //         chunk_neighbors_memory: memory,
-    //         chunk_neighbors: neighbors,
-    //     }
-    // }
+    fn new(max_chunk_size: usize, same_chunk_m_max: usize) -> Self {
+        let (memory, neighbors) =
+            slice_binary_heap_arena::<DistAnd<usize>>(max_chunk_size, same_chunk_m_max);
+        Self {
+            chunk_dst_mat: vec![0.0; max_chunk_size * max_chunk_size],
+            chunk_neighbors_memory: memory,
+            chunk_neighbors: neighbors,
+        }
+    }
 
     fn init(&mut self, max_chunk_size: usize, same_chunk_m_max: usize) {
         self.chunk_dst_mat.clear();
@@ -388,7 +389,97 @@ fn ensemble_tls() -> &'static mut EnsembleTLS {
     ENSEMPLE_TLS.with(|e| unsafe { &mut *e.get() })
 }
 
-fn fill_hnsw_layer_by_vp_tree_ensemble_threaded(
+fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_vp_tree(
+    data: &dyn DatasetT,
+    distance: &DistanceTracker,
+    layer: &mut super::slice_hnsw::Layer,
+    rng: &mut ChaCha20Rng,
+    params: EnsembleParams,
+) {
+    let n_entries = layer.entries.len();
+    let max_chunk_size = params.max_chunk_size;
+    let same_chunk_m_max = params.same_chunk_m_max;
+    let chunks = make_chunks(n_entries, max_chunk_size);
+    let data_get = |e: &VpTreeNode| data.get(e.id as usize);
+
+    // Now we officially get the permission to mutate the layer from multiple threads (MUST wrap in UnsafeCell if mutable accesses to this shared reference can happen):
+    let layer_cell = YoloCell::new(std::mem::replace(layer, super::slice_hnsw::Layer::new(1)));
+    let mut layer_mutexes: Vec<Mutex<()>> = Vec::with_capacity(n_entries);
+    for _ in 0..n_entries {
+        layer_mutexes.push(Mutex::new(()))
+    }
+
+    let seed: u64 = rng.gen();
+    // (0..params.n_vp_trees)
+    //     .into_par_iter()
+    //     .for_each(|vp_tree_idx| {
+
+    for vp_tree_idx in 0..params.n_vp_trees {
+        let mut rng = ChaCha20Rng::seed_from_u64(seed + vp_tree_idx as u64);
+        let mut vp_tree: Vec<VpTreeNode> = Vec::with_capacity(data.len());
+        for (i, entry) in layer_cell.entries.iter().enumerate() {
+            vp_tree.push(VpTreeNode {
+                id: entry.id as u32,
+                idx_in_hnsw_layer: i as u32,
+                dist: 0.0,
+            });
+        }
+        arrange_into_vp_tree(&mut vp_tree, &data_get, distance, &mut rng);
+        let mut tls = EnsembleTLS::new(max_chunk_size, same_chunk_m_max);
+        for chunk in chunks.iter() {
+            let chunk_size = chunk.range.len();
+            let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
+            let chunk_nodes = &vp_tree[chunk.range.clone()];
+            assert!(chunk_size >= max_chunk_size / 2);
+            assert!(chunk_size <= max_chunk_size);
+
+            // calculate distances between all the nodes in this chunk. (clearing chunk_dst_mat not necessary, because everything relevant should be overwritten).
+            for i in 0..chunk_size {
+                for j in i + 1..chunk_size {
+                    let i_data = data.get(chunk_nodes[i].id as usize);
+                    let j_data = data.get(chunk_nodes[j].id as usize);
+                    let dist = distance.distance(i_data, j_data);
+                    tls.chunk_dst_mat[chunk_dst_mat_idx(i, j)] = dist;
+                    tls.chunk_dst_mat[chunk_dst_mat_idx(j, i)] = dist;
+                }
+            }
+            // try to connect each node in the chunk to each other node (except itself) (limiting number of neighbors to same_chunk_m_max with the insert_if_better)
+            for i in 0..chunk_size {
+                // since all chunks are disjunct and each element is only in one chunk, this access should be fine and cannot lead to race conditions.
+                let i_neighbors = &mut tls.chunk_neighbors[i];
+                for j in 0..chunk_size {
+                    if j == i {
+                        continue;
+                    }
+                    let dist = tls.chunk_dst_mat[chunk_dst_mat_idx(i, j)];
+                    let j_idx_in_hnsw = chunk_nodes[j].idx_in_hnsw_layer as usize;
+                    i_neighbors.insert_if_better(DistAnd(dist, j_idx_in_hnsw));
+                }
+            }
+
+            // merge the neighbors of the vp-tree in with the hnsw layer, locking neighbors lists that get currently edited:
+            for i in 0..chunk_size {
+                let i_idx_in_hnsw = chunk_nodes[i].idx_in_hnsw_layer as usize;
+                let i_neighbors = &mut tls.chunk_neighbors[i];
+                let hnsw_neighbors_lock = layer_mutexes[i_idx_in_hnsw].lock().unwrap();
+                let hnsw_neighbors =
+                    unsafe { &mut layer_cell.get_mut().entries[i_idx_in_hnsw].neighbors };
+                for &DistAnd(dist, idx_in_hnsw) in i_neighbors.iter() {
+                    if !hnsw_neighbors.iter().any(|e| e.1 == idx_in_hnsw) {
+                        hnsw_neighbors.insert_if_better(DistAnd(dist, idx_in_hnsw));
+                    }
+                }
+                i_neighbors.clear();
+                drop(hnsw_neighbors_lock);
+            }
+        }
+    }
+
+    // put the layer back where it was before (move out of the UnsafeCell we used above)
+    *layer = identity(layer_cell.into_inner());
+}
+
+fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk(
     data: &dyn DatasetT,
     distance: &DistanceTracker,
     layer: &mut super::slice_hnsw::Layer,
@@ -409,8 +500,12 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded(
     let chunks = make_chunks(n_entries, max_chunk_size);
     let data_get = |e: &VpTreeNode| data.get(e.id as usize);
 
-    let mut chunk_chunk_size = chunks.len() / (sanititze_num_threads(0) - 1);
+    let chunk_chunk_size = (chunks.len() / 16); // sanititze_num_threads(0) - 1
     let chunk_chunks: Vec<&[Chunk]> = chunks.chunks(chunk_chunk_size).collect();
+    println!("CHUNK SIZES ({}):", chunks.len());
+    for cc in chunk_chunks.iter() {
+        println!("{}", cc.len());
+    }
 
     // Now we officially get the permission to mutate the layer from multiple threads (MUST wrap in UnsafeCell if mutable accesses to this shared reference can happen):
     let layer_cell = YoloCell::new(std::mem::replace(layer, super::slice_hnsw::Layer::new(1)));
@@ -421,9 +516,11 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded(
 
         let between = before.elapsed();
 
-        chunks.par_chunks(2).for_each(|chunk_chunk| {
-            for chunk in chunk_chunk {
+        chunk_chunks.par_iter().for_each(|chunk_chunk| {
+            let start = Instant::now();
+            for chunk in chunk_chunk.iter() {
                 let tls = ensemble_tls();
+                // let mut tls = EnsembleTLS::new(max_chunk_size, same_chunk_m_max);
                 tls.init(max_chunk_size, same_chunk_m_max);
                 let chunk_size = chunk.range.len();
                 let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
@@ -456,8 +553,7 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded(
                 }
 
                 // merge the neighbors of the vp-tree in with the hnsw layer:
-                // let chunk_neighbors_in_hnsw =
-                //     unsafe { &mut layer_cell.get_mut().entries[chunk.range.clone()] };
+
                 for i in 0..chunk_size {
                     let i_idx_in_hnsw = chunk_nodes[i].idx_in_hnsw_layer as usize;
                     let i_neighbors = &mut tls.chunk_neighbors[i];
@@ -470,7 +566,81 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded(
                     }
                 }
             }
+            println!(
+                "    Thread finished work for {} chunks in {}ms",
+                chunk_chunk.len(),
+                start.elapsed().as_secs_f32() * 1000.0
+            );
         });
+
+        // std::thread::scope(|scope| {
+        //     let mut threads: Vec<ScopedJoinHandle<'_, ()>> = vec![];
+        //     for &chunk_chunk in chunk_chunks.iter() {
+        //         let handle = scope.spawn(|| {
+        //             let start = Instant::now();
+        //             for chunk in chunk_chunk.iter() {
+        //                 let tls = ensemble_tls();
+        //                 // let mut tls = EnsembleTLS::new(max_chunk_size, same_chunk_m_max);
+        //                 tls.init(max_chunk_size, same_chunk_m_max);
+        //                 let chunk_size = chunk.range.len();
+        //                 let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
+        //                 let chunk_nodes = &vp_tree[chunk.range.clone()];
+        //                 assert!(chunk_size >= max_chunk_size / 2);
+        //                 assert!(chunk_size <= max_chunk_size);
+
+        //                 // calculate distances between all the nodes in this chunk. (clearing chunk_dst_mat not necessary, because everything relevant should be overwritten).
+        //                 for i in 0..chunk_size {
+        //                     for j in i + 1..chunk_size {
+        //                         let i_data = data.get(chunk_nodes[i].id as usize);
+        //                         let j_data = data.get(chunk_nodes[j].id as usize);
+        //                         let dist = distance.distance(i_data, j_data);
+        //                         tls.chunk_dst_mat[chunk_dst_mat_idx(i, j)] = dist;
+        //                         tls.chunk_dst_mat[chunk_dst_mat_idx(j, i)] = dist;
+        //                     }
+        //                 }
+        //                 // try to connect each node in the chunk to each other node (except itself) (limiting number of neighbors to same_chunk_m_max with the insert_if_better)
+        //                 for i in 0..chunk_size {
+        //                     // since all chunks are disjunct and each element is only in one chunk, this access should be fine and cannot lead to race conditions.
+        //                     let i_neighbors = &mut tls.chunk_neighbors[i];
+        //                     for j in 0..chunk_size {
+        //                         if j == i {
+        //                             continue;
+        //                         }
+        //                         let dist = tls.chunk_dst_mat[chunk_dst_mat_idx(i, j)];
+        //                         let j_idx_in_hnsw = chunk_nodes[j].idx_in_hnsw_layer as usize;
+        //                         i_neighbors.insert_if_better(DistAnd(dist, j_idx_in_hnsw));
+        //                     }
+        //                 }
+
+        //                 // merge the neighbors of the vp-tree in with the hnsw layer:
+
+        //                 for i in 0..chunk_size {
+        //                     let i_idx_in_hnsw = chunk_nodes[i].idx_in_hnsw_layer as usize;
+        //                     let i_neighbors = &mut tls.chunk_neighbors[i];
+        //                     let hnsw_neighbors = unsafe {
+        //                         &mut layer_cell.get_mut().entries[i_idx_in_hnsw].neighbors
+        //                     };
+        //                     for &DistAnd(dist, idx_in_hnsw) in i_neighbors.iter() {
+        //                         if !hnsw_neighbors.iter().any(|e| e.1 == idx_in_hnsw) {
+        //                             hnsw_neighbors.insert_if_better(DistAnd(dist, idx_in_hnsw));
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //             println!(
+        //                 "    Thread finished work for {} chunks in {}ms",
+        //                 chunk_chunk.len(),
+        //                 start.elapsed().as_secs_f32() * 1000.0
+        //             );
+        //         });
+
+        //         threads.push(handle);
+        //     }
+
+        //     for t in threads {
+        //         t.join().unwrap();
+        //     }
+        // });
         println!(
             "Chunks ({}) loop took: {}ms + {}ms",
             chunks.len(),

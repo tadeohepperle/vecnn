@@ -1,30 +1,48 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, sync::Arc, time::Instant};
 
 use vecnn::{
     const_hnsw::ConstHnsw,
     distance::{self, cos, dot, l2, Distance},
     hnsw::{Hnsw, HnswParams},
     slice_hnsw::SliceHnsw,
+    transition::{build_hnsw_by_vp_tree_ensemble_multi_layer, EnsembleParams},
     utils::{linear_knn_search, random_data_set},
 };
 
 fn main() {
     let dims = 768;
-    let data = random_data_set(20000, dims);
+    let data = random_data_set(120000, dims);
 
     let distance = Distance::L2;
 
-    let hnsw = vecnn::slice_hnsw_par::SliceHnsw::new(
-        data.clone(),
-        HnswParams {
-            level_norm_param: 0.8,
-            ef_construction: 40,
-            m_max: 20,
+    // let hnsw = vecnn::slice_hnsw_par::SliceHnsw::new(
+    //     data.clone(),
+    //     HnswParams {
+    //         level_norm_param: 0.8,
+    //         ef_construction: 40,
+    //         m_max: 20,
+    //         m_max_0: 40,
+    //         distance,
+    //     },
+    //     2342,
+    // );
+
+    let start = Instant::now();
+    let hnsw = build_hnsw_by_vp_tree_ensemble_multi_layer(
+        data,
+        EnsembleParams {
+            n_vp_trees: 3,
+            max_chunk_size: 512,
+            same_chunk_m_max: 20,
+            m_max: 30,
             m_max_0: 40,
+            level_norm: 0.0,
             distance,
         },
-        2342,
+        true,
+        210,
     );
+    println!("Total time: {}ms", start.elapsed().as_secs_f32() * 1000.0);
 
     // println!(
     //     "Build HNSW.       time:{}       n-distance-calculations: {}",
