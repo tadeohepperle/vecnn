@@ -1,392 +1,358 @@
-use std::{
-    cell::UnsafeCell,
-    cmp::Reverse,
-    collections::BinaryHeap,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+// use std::{
+//     cmp::Reverse, collections::BinaryHeap, collections::HashSet, sync::Arc, time::Instant, usize,
+// };
 
-use ahash::{HashMap, HashSet};
-use nanoserde::{DeJson, SerJson};
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha20Rng;
+// use rand::{seq::SliceRandom, thread_rng, Rng, SeedableRng};
+// use rand_chacha::ChaCha20Rng;
 
-use crate::{
-    dataset::DatasetT,
-    distance::{l2, Distance, DistanceFn, DistanceTracker},
-    hnsw::DistAnd,
-    if_tracking,
-    utils::Stats,
-};
+// use crate::{
+//     dataset::DatasetT,
+//     distance::{Distance, DistanceTracker},
+//     hnsw::{DistAnd, HnswParams},
+//     slice_hnsw::{Layer, LayerEntry, SliceHnsw, MAX_LAYERS},
+//     utils::{
+//         extend_lifetime, extend_lifetime_mut, slice_binary_heap_arena, SliceBinaryHeap,
+//         SlicesMemory, Stats,
+//     },
+// };
 
-#[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson)]
-pub struct RNNGraphParams {
-    pub outer_loops: usize,
-    pub inner_loops: usize,
-    pub max_neighbors_after_reverse_pruning: usize,
-    pub initial_neighbors: usize,
-    pub distance: Distance,
-}
+// #[derive(Debug)]
+// pub struct NNDescentElement {
+//     id: usize,
+//     neighbors: SliceBinaryHeap<'static, Neighbor>,
+// }
 
-impl Default for RNNGraphParams {
-    fn default() -> Self {
-        Self {
-            initial_neighbors: 30,
-            outer_loops: 4,
-            inner_loops: 15,
-            max_neighbors_after_reverse_pruning: Default::default(),
-            distance: Distance::L2,
-        }
-    }
-}
+// #[derive(Debug, Clone)]
+// pub struct Neighbor {
+//     pub is_new: bool,
+//     pub dist: f32,
+//     pub idx: usize,
+// }
 
-#[derive(Debug, Clone)]
-pub struct RNNGraph {
-    pub data: Arc<dyn DatasetT>,
-    pub nodes: Vec<Vec<Neighbor>>,
-    pub build_stats: Stats,
-    pub params: RNNGraphParams,
-}
+// impl PartialEq for Neighbor {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.idx == other.idx
+//     }
+// }
+// impl Eq for Neighbor {}
+// impl PartialOrd for Neighbor {
+//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+//         self.dist.partial_cmp(&other.dist)
+//     }
+// }
 
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-pub struct Neighbor {
-    pub idx: usize,
-    pub dist: f32,
-    pub is_new: bool,
-}
+// impl Ord for Neighbor {
+//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+//         self.dist.total_cmp(&other.dist)
+//     }
+// }
 
-impl std::fmt::Debug for Neighbor {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}: {:.3} ({})", self.idx, self.dist, self.is_new)
-    }
-}
-impl PartialEq for Neighbor {
-    fn eq(&self, other: &Self) -> bool {
-        self.idx == other.idx && self.dist == other.dist
-    }
-}
-impl Eq for Neighbor {}
-impl PartialOrd for Neighbor {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.dist.partial_cmp(&other.dist)
-    }
-}
-impl Ord for Neighbor {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.dist.total_cmp(&other.dist)
-    }
-}
+// #[derive(Debug, Clone, Copy, PartialEq)]
+// pub struct NNDescentParams {
+//     pub m_max: usize,
+//     pub iterations: usize,
+//     pub distance: Distance,
+//     pub p: f32, // fraction of K items sampled.
+// }
 
-impl RNNGraph {
-    pub fn knn_search(
-        &self,
-        q_data: &[f32],
-        k: usize,
-        start_candidates: usize,
-    ) -> (Vec<DistAnd<usize>>, Stats) {
-        assert!(start_candidates > 0);
-        let distance = DistanceTracker::new(self.params.distance);
-        let dist_to_q = |idx: usize| -> f32 {
-            let idx_data = self.data.get(idx);
-            distance.distance(q_data, idx_data)
-        };
+// #[derive(Debug)]
+// pub struct Entry {
+//     id: usize,
+//     neighbors: SliceBinaryHeap<'static, Neighbor>,
+// }
 
-        let start = Instant::now();
+// pub fn nn_descent_entries_arena(
+//     ids: impl ExactSizeIterator<Item = usize>,
+//     max_neighbors: usize,
+// ) -> (SlicesMemory<Neighbor>, Vec<Entry>) {
+//     let n_entries = ids.len();
+//     let mut memory: SlicesMemory<Neighbor> = SlicesMemory::new(n_entries, max_neighbors);
+//     let mut entries: Vec<Entry> = Vec::with_capacity(n_entries);
+//     unsafe {
+//         entries.set_len(n_entries);
+//         for i in 0..n_entries {
+//             let entry = entries.get_unchecked_mut(i);
+//             entry.id = 0;
+//             entry.neighbors.len = 0;
+//             entry.neighbors.slice = memory.static_slice_at(i);
+//         }
+//     }
+//     (memory, entries)
+// }
 
-        let mut visited: ahash::HashSet<usize> = Default::default();
-        let mut candidates: BinaryHeap<Reverse<DistAnd<usize>>> = Default::default(); // has min dist item in root, can be peaked
-        let mut search_res: BinaryHeap<DistAnd<usize>> = Default::default(); // has top dist in root, to pop it easily
+// #[derive(Debug)]
+// pub struct NNDescentGraph {
+//     pub data: Arc<dyn DatasetT>,
+//     pub neighbors_memory: SlicesMemory<Neighbor>,
+//     pub entries: Vec<Entry>,
+//     pub params: NNDescentParams,
+//     pub build_stats: Stats,
+// }
 
-        let i: usize = 0;
-        visited.insert(i);
-        let dist = dist_to_q(i);
-        candidates.push(Reverse(DistAnd(dist, i)));
-        search_res.push(DistAnd(dist, i));
+// impl NNDescentGraph {
+//     pub fn new(data: Arc<dyn DatasetT>, params: NNDescentParams, seed: u64) -> Self {
+//         let distance = DistanceTracker::new(params.distance);
+//         let start_time = Instant::now();
 
-        loop {
-            let Some(closest_to_q) = candidates.pop() else {
-                break;
-            };
+//         let (neighbors_memory, mut entries) = nn_descent_entries_arena(0..data.len(), params.m_max);
+//         nn_descent_init_random_neighbors(&*data, &mut entries, &distance, seed);
+//         let mut buffers = NNDescentBuffers::new(seed);
+//         for _ in 0..params.iterations {
+//             nn_descent_iteration(&*data, &mut entries, &distance, params, &mut buffers);
+//         }
 
-            let neighbors = &self.nodes[closest_to_q.0 .1];
-            let mut any_neighbor_added: bool = false;
-            for n in neighbors.iter() {
-                let i = n.idx;
-                let already_seen = !visited.insert(i);
-                if already_seen {
-                    continue;
-                }
-                let added: bool;
-                let dist = dist_to_q(n.idx);
+//         let build_stats = Stats {
+//             num_distance_calculations: distance.num_calculations(),
+//             duration: start_time.elapsed(),
+//         };
 
-                let space_available = search_res.len() < k;
+//         NNDescentGraph {
+//             data,
+//             neighbors_memory,
+//             entries,
+//             params,
+//             build_stats,
+//         }
+//     }
 
-                if space_available {
-                    search_res.push(DistAnd(dist, i));
-                    added = true;
-                } else {
-                    let mut worst = search_res.peek_mut().unwrap();
-                    if dist < worst.dist() {
-                        *worst = DistAnd(dist, i);
-                        added = true;
-                    } else {
-                        added = false;
-                    }
-                }
-                if added {
-                    any_neighbor_added = true;
-                    candidates.push(Reverse(DistAnd(dist, i)));
-                }
-                if_tracking!(Tracking.add_event(Event::EdgeHorizontal {
-                    from: closest_to_q.0 .1,
-                    to: i,
-                    level: 0,
-                    comment: if space_available {
-                        "space"
-                    } else if added {
-                        "added"
-                    } else {
-                        "not_good_enough"
-                    }
-                }))
-            }
-        }
-        let mut results: Vec<DistAnd<usize>> = search_res.into_vec();
-        results.sort();
-        let stats = Stats {
-            num_distance_calculations: distance.num_calculations(),
-            duration: start.elapsed(),
-        };
-        (results, stats)
-    }
-}
+//     pub fn into_single_layer_hnsw(self) -> SliceHnsw {
+//         let layers: heapless::Vec<crate::slice_hnsw::Layer, MAX_LAYERS> = Default::default();
 
-impl RNNGraph {
-    pub fn new_empty(data: Arc<dyn DatasetT>, params: RNNGraphParams) -> Self {
-        RNNGraph {
-            data,
-            nodes: Default::default(),
-            build_stats: Default::default(),
-            params,
-        }
-    }
+//         // copy over all the entries into an HNSW layer.
+//         // Omits the `is_new` field for all neighbors, otherwise the neighbors and entry order stays the same.
+//         let mut layer = crate::slice_hnsw::Layer::new(self.params.m_max);
+//         layer.entries_cap = self.entries.len();
+//         layer.allocate_neighbors_memory();
+//         for e in self.entries.into_iter() {
+//             let idx = layer.add_entry_assuming_allocated_memory(e.id, usize::MAX);
+//             let hnsw_neighbors = &mut layer.entries[idx].neighbors;
+//             unsafe {
+//                 e.neighbors
+//                     .map_into(hnsw_neighbors, |e| DistAnd(e.dist, e.idx));
+//             }
+//         }
 
-    pub fn new(data: Arc<dyn DatasetT>, params: RNNGraphParams, seed: u64) -> Self {
-        construct_relative_nn_graph(data, params, seed)
-    }
-}
+//         let params = HnswParams {
+//             level_norm_param: 0.0,
+//             ef_construction: 0,
+//             m_max: self.params.m_max,
+//             m_max_0: self.params.m_max,
+//             distance: self.params.distance,
+//         };
+//         SliceHnsw {
+//             data: self.data,
+//             layers,
+//             params,
+//             build_stats: self.build_stats,
+//         }
+//     }
 
-fn construct_relative_nn_graph(
-    data: Arc<dyn DatasetT>,
-    params: RNNGraphParams,
-    seed: u64,
-) -> RNNGraph {
-    let distance_tracker = DistanceTracker::new(params.distance);
-    let distance =
-        |i: usize, j: usize| -> f32 { distance_tracker.distance(data.get(i), data.get(j)) };
+//     /// n_eps = number of entry points (randomly chosen)
+//     pub fn knn_search(&self, q_data: &[f32], k: usize, ef: usize, n_eps: usize) {
+//         let mut visited: HashSet<usize> = HashSet::with_capacity(ef);
+//         let mut frontier: BinaryHeap<Reverse<DistAnd<usize>>> = BinaryHeap::with_capacity(ef);
+//         let mut found: BinaryHeap<DistAnd<usize>> = BinaryHeap::with_capacity(ef);
+//         let distance = DistanceTracker::new(self.params.distance);
 
-    let start = Instant::now();
+//         let mut rng =
+//             ChaCha20Rng::seed_from_u64(unsafe { std::mem::transmute((q_data[0], n_eps as f32)) });
+//         // start with num_eps
+//         for _ in 0..n_eps {
+//             let ep_idx = rng.gen_range(0..self.entries.len());
+//             let ep_id = self.entries[ep_idx].id;
+//             let ep_data = self.data.get(ep_id);
+//             let ep_dist = distance.distance(ep_data, q_data);
+//             visited.insert(ep_idx);
+//             found.push(DistAnd(ep_dist, ep_idx));
+//             frontier.push(Reverse(DistAnd(ep_dist, ep_idx)));
+//         }
 
-    let mut nodes: Vec<Vec<Neighbor>> =
-        random_nn_graph_nodes(data.len(), &distance, params.initial_neighbors, seed);
-    let mut two_sided_neighbors: Vec<Vec<Neighbor>> =
-        (0..nodes.len()).map(|_| Vec::new()).collect();
+//         while frontier.len() > 0 {
+//             let DistAnd(c_dist, c_idx) = frontier.pop().unwrap().0;
+//             let worst_dist_found = found.peek().unwrap().0;
+//             if c_dist > worst_dist_found {
+//                 break;
+//             };
+//             for nei in self.entries[c_idx].neighbors.iter() {
+//                 let nei_idx = nei.idx;
+//                 if visited.insert(nei_idx) {
+//                     // only jumps here if was not visited before (newly inserted -> true)
+//                     let nei_id = self.entries[nei_idx].id;
+//                     let nei_data = self.data.get(nei_id);
+//                     let nei_dist_to_q = distance.distance(nei_data, q_data);
 
-    for t1 in 0..params.outer_loops {
-        for _ in 0..params.inner_loops {
-            update_neighbors(&mut nodes, &distance)
-        }
-        if t1 != params.outer_loops - 1 {
-            add_reverse_edges(
-                &mut nodes,
-                &mut two_sided_neighbors,
-                params.max_neighbors_after_reverse_pruning,
-            );
-        }
-    }
+//                     if found.len() < ef {
+//                         // always insert if found still has space:
+//                         frontier.push(Reverse(DistAnd(nei_dist_to_q, nei_idx)));
+//                         found.push(DistAnd(nei_dist_to_q, nei_idx));
+//                     } else {
+//                         // otherwise only insert, if it is better than the worst found element:
+//                         let mut worst_found = found.peek_mut().unwrap();
+//                         if nei_dist_to_q < worst_found.dist() {
+//                             frontier.push(Reverse(DistAnd(nei_dist_to_q, nei_idx)));
+//                             *worst_found = DistAnd(nei_dist_to_q, nei_idx)
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }
 
-    let build_stats = Stats {
-        num_distance_calculations: distance_tracker.num_calculations(),
-        duration: start.elapsed(), // todo
-    };
-    RNNGraph {
-        data,
-        nodes,
-        build_stats,
-        params,
-    }
-}
+// pub fn nn_descent_init_random_neighbors(
+//     data: &dyn DatasetT,
+//     entries: &mut [Entry],
+//     distance: &DistanceTracker,
+//     seed: u64,
+// ) {
+//     let mut rng = ChaCha20Rng::seed_from_u64(seed);
+//     let n_entries = entries.len();
+//     for idx in 0..entries.len() {
+//         let entry = extend_lifetime_mut(&mut entries[idx]);
+//         let entry_data = data.get(entry.id);
+//         while entry.neighbors.len() < entry.neighbors.capacity() {
+//             let mut nei_idx = rng.gen_range(0..n_entries - 1); // -1 bc. the range should be one shorter to skip idx, see below.
+//             if nei_idx >= idx {
+//                 nei_idx += 1; // ensures that random_idx != except_idx
+//             }
+//             // reroll random idx if duplicate: (maybe irrelevant though.)
+//             if entry.neighbors.iter().any(|e| e.idx == nei_idx) {
+//                 continue;
+//             }
+//             // lower idx will have come first and always have full neighbors already
+//             let nei_entry = extend_lifetime_mut(&mut entries[nei_idx]);
+//             let nei_entry_data = data.get(nei_entry.id);
+//             let dist = distance.distance(entry_data, nei_entry_data);
+//             entry.neighbors.insert_asserted(Neighbor {
+//                 is_new: true,
+//                 dist,
+//                 idx: nei_idx,
+//             });
+//             if nei_idx > idx {
+//                 nei_entry.neighbors.insert_asserted(Neighbor {
+//                     is_new: true,
+//                     dist,
+//                     idx,
+//                 });
+//             }
+//         }
+//     }
+// }
 
-fn update_neighbors(nodes: &mut [Vec<Neighbor>], distance: &impl Fn(usize, usize) -> f32) {
-    let mut new_neighbors: Vec<Neighbor> = vec![];
+// // buffers used per vertex.
+// pub struct NNDescentBuffers {
+//     old: Vec<usize>,
+//     new: Vec<usize>,
+//     old_reverse: Vec<usize>,
+//     new_reverse: Vec<usize>,
+//     rng: ChaCha20Rng,
+// }
 
-    for u_idx in 0..nodes.len() {
-        assert!(new_neighbors.is_empty());
-        let mut old_neighbors = std::mem::take(&mut nodes[u_idx]);
+// impl NNDescentBuffers {
+//     pub fn new(seed: u64) -> Self {
+//         let rng = ChaCha20Rng::seed_from_u64(seed);
+//         NNDescentBuffers {
+//             old: vec![],
+//             new: vec![],
+//             old_reverse: vec![],
+//             new_reverse: vec![],
+//             rng,
+//         }
+//     }
+//     pub fn clear(&mut self) {
+//         self.old.clear();
+//         self.new.clear();
+//         self.old_reverse.clear();
+//         self.new_reverse.clear();
+//     }
+// }
 
-        // sort and remove duplicates:
-        old_neighbors.sort();
-        remove_duplicates_for_sorted(&mut old_neighbors);
+// pub fn nn_descent_iteration(
+//     data: &dyn DatasetT,
+//     entries: &mut [Entry],
+//     distance: &DistanceTracker,
+//     params: NNDescentParams,
+//     buffers: &mut NNDescentBuffers,
+// ) {
+//     let mut pK = (params.p * params.m_max as f32).round() as usize;
+//     let mut update_counter: usize = 0;
 
-        for v in old_neighbors.drain(..) {
-            let mut ok = true;
+//     for idx in 0..entries.len() {
+//         buffers.clear();
+//         let entry = &mut entries[idx];
+//         let neighbors = &mut entry.neighbors;
 
-            for w in new_neighbors.iter() {
-                if !v.is_new && !w.is_new {
-                    continue;
-                }
-                if v.idx == w.idx {
-                    ok = false;
-                    break;
-                }
-                let dist_v_u = v.dist;
-                let dist_v_w = distance(w.idx, v.idx);
-                if dist_v_w < dist_v_u {
-                    // prune by RNG rule
-                    ok = false;
-                    // insert connection w -> v instead:
-                    nodes[w.idx].push(Neighbor {
-                        idx: v.idx,
-                        dist: dist_v_w,
-                        is_new: true,
-                    });
-                    break;
-                }
-            }
-            if ok {
-                new_neighbors.push(v);
-            }
-        }
+//         // sort neighbors into two lists: old and new:
+//         for nei in neighbors.iter() {
+//             if nei.is_new {
+//                 buffers.new.push(nei.idx);
+//             } else {
+//                 buffers.old.push(nei.idx);
+//             }
+//         }
+//         // ut new_neighbors to max pK neighbors (random sampling):
+//         buffers.new.shuffle(&mut buffers.rng);
+//         buffers.new.truncate(pK);
+//         // mark all sampled new_neighbors in neighbors as false: (could be faster if buffers.new would remember index into this neighbors list or something...)
+//         for e in unsafe { neighbors.as_mut_slice().iter_mut() } {
+//             if buffers.new.contains(&e.idx) {
+//                 e.is_new = false;
+//             }
+//         }
+//         // collect all the neig
+//         for &nei in buffers.old.iter() {
+//             let nei_neighbors = &entries[nei].neighbors;
+//             for nei_nei in nei_neighbors.iter() {
+//                 buffers.old_reverse.push(nei_nei.idx);
+//             }
+//         }
+//         for &nei in buffers.new.iter() {
+//             let nei_neighbors = &entries[nei].neighbors;
+//             for nei_nei in nei_neighbors.iter() {
+//                 buffers.new_reverse.push(nei_nei.idx);
+//             }
+//         }
+//         buffers.old_reverse.sort();
+//         buffers.new_reverse.sort();
+//         remove_duplicates_for_sorted(&mut buffers.old_reverse);
+//         remove_duplicates_for_sorted(&mut buffers.new_reverse);
 
-        for v in new_neighbors.iter_mut() {
-            v.is_new = false;
-        }
-        std::mem::swap(&mut nodes[u_idx], &mut new_neighbors);
-    }
-}
+//         // let old_reverse = reverse(old_neighbors)
+//         // let new_reverse = reverse(new_neighbors)
 
-/// Warning! expects a sorted vector
-pub fn remove_duplicates(neighbors: &mut Vec<Neighbor>) {
-    let mut last_idx = usize::MAX;
-    neighbors.retain(|e| {
-        let retain = e.idx != last_idx;
-        last_idx = e.idx;
-        retain
-    });
-}
+//         // old_neighbors: add sample(old_reverse, pK)
+//         // new_neighbors: add sample(new_reverse, pK)
 
-/// Credit: Erik Thordsen (https://www-ai.cs.tu-dortmund.de/PERSONAL/thordsen.html)
-pub fn remove_duplicates_for_sorted(neighbors: &mut Vec<Neighbor>) {
-    if neighbors.len() == 0 {
-        return;
-    }
-    // Last index of items to keep
-    let mut target: usize = 0;
-    // Identifier of the last item to keep for comparisons
-    let mut target_idx: usize = neighbors[0].idx;
-    for i in 1..neighbors.len() {
-        unsafe {
-            let i_element = &*neighbors.get_unchecked(i);
-            if i_element.idx != target_idx {
-                target += 1;
-                target_idx = i_element.idx;
-                // Move element at i to target (overwriting duplicated between i and target):
-                *neighbors.get_unchecked_mut(target) = *i_element;
-            }
-        }
-    }
-    neighbors.truncate(target + 1);
-}
+//         // for u1
 
-fn add_reverse_edges(
-    nodes: &mut [Vec<Neighbor>],
-    two_sided_neighbors: &mut [Vec<Neighbor>],
-    max_neighbors_after_reverse_pruning: usize,
-) {
-    // create list for each node, with all **INCOMING** connections to this node and all **OUTGOING** connections from this node
-    assert_eq!(nodes.len(), two_sided_neighbors.len());
-    for r in two_sided_neighbors.iter_mut() {
-        r.clear();
-    }
-    for (idx, neighbors) in nodes.iter_mut().enumerate() {
-        for n in neighbors.iter_mut() {
-            two_sided_neighbors[n.idx].push(Neighbor {
-                idx,
-                dist: n.dist,
-                is_new: n.is_new,
-            });
-            n.is_new = true;
-        }
-        two_sided_neighbors[idx].extend(neighbors.drain(..));
-    }
-    // all neighbors are now cleared.
-    // sort all in_and_out neighbors per node and remove duplicates, then shrink to r:
-    for in_and_out in two_sided_neighbors.iter_mut() {
-        in_and_out.sort();
-        remove_duplicates(in_and_out);
-        in_and_out.truncate(max_neighbors_after_reverse_pruning);
-    }
-    for (idx, in_and_out) in two_sided_neighbors.into_iter().enumerate() {
-        for nn in in_and_out.drain(..) {
-            nodes[nn.idx].push(Neighbor {
-                idx,
-                dist: nn.dist,
-                is_new: nn.is_new,
-            })
-        }
-    }
-    for neighbors in nodes.iter_mut() {
-        neighbors.sort();
-        neighbors.truncate(max_neighbors_after_reverse_pruning);
-    }
-}
+//         /*
+//         idx_old_neighbors = idx_old_neighbors and reverse(idx_old_neighbors)
 
-fn random_nn_graph_nodes(
-    n: usize,
-    distance: &impl Fn(usize, usize) -> f32,
-    initial_neighbors_num: usize,
-    seed: u64,
-) -> Vec<Vec<Neighbor>> {
-    let mut nodes: Vec<Vec<Neighbor>> = Vec::with_capacity(n);
+//         for each pair u1, u2 in idx_new_neighbors
 
-    let mut rng = ChaCha20Rng::seed_from_u64(seed);
+//          */
+//     }
+// }
 
-    for idx in 0..n {
-        let mut neighbors: Vec<Neighbor> = Vec::with_capacity(initial_neighbors_num);
-        loop {
-            while neighbors.len() < initial_neighbors_num {
-                let mut random_idx = rng.gen_range(0..n - 1);
-                if random_idx >= idx {
-                    random_idx += 1 // ensures that random_idx != idx
-                }
-                neighbors.push(Neighbor {
-                    idx: random_idx,
-                    dist: 0.0,
-                    is_new: true,
-                });
-            }
-            remove_duplicates(&mut neighbors);
-            if neighbors.len() == initial_neighbors_num {
-                break;
-            }
-        }
-        for n in neighbors.iter_mut() {
-            n.dist = distance(idx, n.idx);
-        }
-        nodes.push(neighbors)
-    }
-    nodes
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{RNNGraph, RNNGraphParams};
-
-    #[test]
-    fn relative_nn_construction() {
-        let data = crate::utils::random_data_set(1000, 20);
-        let graph = RNNGraph::new(data, RNNGraphParams::default(), 42);
-        std::fs::write("graph.txt", format!("{graph:?}"));
-    }
-}
+// /// Credit: Erik Thordsen (https://www-ai.cs.tu-dortmund.de/PERSONAL/thordsen.html)
+// pub fn remove_duplicates_for_sorted(neighbors: &mut Vec<usize>) {
+//     if neighbors.len() == 0 {
+//         return;
+//     }
+//     // Last index of items to keep
+//     let mut target: usize = 0;
+//     // Identifier of the last item to keep for comparisons
+//     let mut target_idx: usize = neighbors[0];
+//     for i in 1..neighbors.len() {
+//         unsafe {
+//             let i_element = *neighbors.get_unchecked(i);
+//             if i_element != target_idx {
+//                 target += 1;
+//                 target_idx = i_element;
+//                 // Move element at i to target (overwriting duplicated between i and target):
+//                 *neighbors.get_unchecked_mut(target) = i_element;
+//             }
+//         }
+//     }
+//     neighbors.truncate(target + 1);
+// }

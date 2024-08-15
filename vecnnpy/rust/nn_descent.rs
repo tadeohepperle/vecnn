@@ -6,11 +6,11 @@ use numpy::{IntoPyArray, PyArray1};
 use pyo3::{exceptions::PyTypeError, pyclass, pyfunction, pymethods, Bound, Py, PyResult, Python};
 use vecnn::{
     distance::{cos, dot, l1, l2, DistanceFn},
-    nn_descent::RNNGraphParams,
+    relative_nn_descent::RNNGraphParams,
 };
 
 #[pyclass]
-pub struct RNNGraph(vecnn::nn_descent::RNNGraph);
+pub struct RNNGraph(vecnn::relative_nn_descent::RNNGraph);
 
 #[pymethods]
 impl RNNGraph {
@@ -32,7 +32,7 @@ impl RNNGraph {
             initial_neighbors,
             distance: dist_from_str(&distance)?,
         };
-        let hnsw = vecnn::nn_descent::RNNGraph::new(data.as_dyn_dataset(), params, seed);
+        let hnsw = vecnn::relative_nn_descent::RNNGraph::new(data.as_dyn_dataset(), params, seed);
         Ok(RNNGraph(hnsw))
     }
 

@@ -4,7 +4,7 @@ use nanoserde::{DeJson, SerJson};
 
 use crate::{schubert_distance::KMath, Float};
 
-#[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson)]
+#[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson, Eq)]
 pub enum Distance {
     L2,
     Dot,
@@ -44,7 +44,10 @@ impl DistanceTracker {
 
     #[inline(always)]
     pub fn distance(&self, a: &[Float], b: &[Float]) -> Float {
-        self.num_calculations.fetch_add(1, Ordering::Relaxed);
+        #[cfg(not(feature = "no_ndc_tracking"))]
+        {
+            self.num_calculations.fetch_add(1, Ordering::Relaxed);
+        }
         (self.f)(a, b)
     }
 }

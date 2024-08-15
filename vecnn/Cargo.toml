@@ -4,9 +4,9 @@ version = { workspace = true }
 edition = "2021"
 
 [features]
-default = []  #"tracking"
+default = []         # "tracking", "no_ndc_tracking"
 tracking = []
-parallel = []
+no_ndc_tracking = [] # "ndc" = number of distance calculations. Saves the atomic fetch_add instructions on the DistanceTracker.
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

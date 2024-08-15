@@ -21,7 +21,7 @@ use vecnn::{
         DistanceFn,
     },
     hnsw::{self, Hnsw, HnswParams},
-    nn_descent::{RNNGraph, RNNGraphParams},
+    relative_nn_descent::{RNNGraph, RNNGraphParams},
     slice_hnsw::SliceHnsw,
     transition::{
         build_hnsw_by_transition, build_hnsw_by_vp_tree_ensemble,

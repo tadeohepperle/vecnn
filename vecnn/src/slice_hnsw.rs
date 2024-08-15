@@ -152,7 +152,7 @@ impl Layer {
         }
     }
 
-    /// should be called *AFTER* the layer already contains all of the elements.
+    /// Set self.entries_cap first!
     /// After calling this, the number of elements in this layer should not change anymore, so you can start modifying the neighbors of the elements.
     pub fn allocate_neighbors_memory(&mut self) {
         self.memory = SlicesMemory::new(self.entries_cap, self.m_max);
@@ -365,7 +365,7 @@ fn s1_insert_element(ctx: &mut InsertCtx<'_>, id: usize, insert_level: usize) {
                 .insert_if_better(DistAnd(nei_dist_to_q, q_idx));
             layer.entries[q_idx]
                 .neighbors
-                .push_asserted(DistAnd(nei_dist_to_q, nei_idx)); // should always have space.
+                .insert_asserted(DistAnd(nei_dist_to_q, nei_idx)); // should always have space.
         }
     }
 
@@ -542,7 +542,7 @@ fn s2_insert_element(
                 .insert_if_better(DistAnd(nei_dist_to_q, idx_in_layer));
             layer.entries[idx_in_layer]
                 .neighbors
-                .push_asserted(DistAnd(nei_dist_to_q, nei_idx)); // should always have space.
+                .insert_asserted(DistAnd(nei_dist_to_q, nei_idx)); // should always have space.
         }
         idx_in_layer = layer.entries[idx_in_layer].lower_level_idx;
     }

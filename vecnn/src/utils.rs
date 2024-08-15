@@ -132,6 +132,11 @@ pub fn extend_lifetime<T: ?Sized>(e: &T) -> &'static T {
     unsafe { &*(e as *const T) }
 }
 
+#[inline(always)]
+pub fn extend_lifetime_mut<T: ?Sized>(e: &mut T) -> &'static mut T {
+    unsafe { &mut *(e as *mut T) }
+}
+
 pub trait BinaryHeapExt {
     type Item: Ord;
     // returns true if inserted
@@ -345,12 +350,40 @@ mod binary_heap {
             SliceBinaryHeap { slice, len: 0 }
         }
 
+        /// Warning: Do this only if T and S have basically the same Ord implementation.
+        /// This is why marked as unsafe!! Otherwise binary-heap structure could be corrupted.
+        pub unsafe fn map_into<S: Ord>(
+            &self,
+            other: &mut SliceBinaryHeap<'a, S>,
+            f: impl Fn(&T) -> S,
+        ) {
+            assert!(other.capacity() >= self.capacity());
+            other.len = self.len;
+            unsafe {
+                for i in 0..self.len {
+                    *other.slice.get_unchecked_mut(i) = f(self.slice.get_unchecked(i));
+                }
+            }
+        }
+
         pub fn iter(&self) -> std::slice::Iter<T> {
             self.slice[..self.len].iter()
         }
 
         pub fn as_slice(&self) -> &[T] {
             &self.slice[..self.len]
+        }
+
+        /// Warning: do NOT modify anything in this slice that Ord trait depends on!
+        /// This is why marked as unsafe!! Otherwise binary-heap structure could be corrupted.
+        /// Only change e.g. some metadata flags of the elements.
+        pub unsafe fn as_mut_slice(&mut self) -> &mut [T] {
+            &mut self.slice[..self.len]
+        }
+
+        #[inline(always)]
+        pub fn capacity(&self) -> usize {
+            self.slice.len()
         }
 
         pub fn clear(&mut self) {
@@ -360,8 +393,9 @@ mod binary_heap {
         pub fn len(&self) -> usize {
             self.len
         }
-        /// returns true if item was included.
-        pub fn push_asserted(&mut self, item: T) {
+
+        /// panics if no space anymore!
+        pub fn insert_asserted(&mut self, item: T) {
             assert!(self.len < self.slice.len());
             let old_len = self.len;
             self.slice[self.len] = item;

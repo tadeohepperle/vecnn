@@ -1,0 +1,10 @@
+[package]
+name = "vecnneval"
+edition = "2021"
+authors.workspace = true
+version.workspace = true
+
+[dependencies]
+rand = "0.8.5"
+rayon = "1.10.0"
+vecnn = { path = "../../vecnn" }

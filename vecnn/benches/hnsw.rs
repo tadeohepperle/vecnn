@@ -5,7 +5,7 @@ use rand::{Rng, SeedableRng};
 use vecnn::{
     distance::{dot, l2, Distance::*},
     hnsw::{Hnsw, HnswParams},
-    nn_descent::{remove_duplicates, remove_duplicates_for_sorted},
+    relative_nn_descent::{remove_duplicates, remove_duplicates_for_sorted},
     utils::random_data_set,
 };
 

@@ -2,7 +2,7 @@
 name = "vecnn"
 package.authors = ["Tadeo Hepperle"]
 package.version = "0.0.1"
-members = ["vecnnpy", "vecnn"]
+members = ["vecnnpy", "vecnn", "eval/vecnneval"]
 resolver = "2"
 
 [workspace.dependencies]

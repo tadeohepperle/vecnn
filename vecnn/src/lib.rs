@@ -6,7 +6,8 @@
 pub mod const_hnsw;
 pub mod dataset;
 pub mod distance;
-pub mod nn_descent;
+mod nn_descent;
+pub mod relative_nn_descent;
 pub mod schubert_distance;
 pub mod slice_hnsw;
 pub mod slice_hnsw_par;
