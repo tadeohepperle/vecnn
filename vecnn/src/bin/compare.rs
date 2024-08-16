@@ -24,8 +24,9 @@ use vecnn::{
     relative_nn_descent::{RNNGraph, RNNGraphParams},
     slice_hnsw::SliceHnsw,
     transition::{
-        build_hnsw_by_transition, build_hnsw_by_vp_tree_ensemble,
-        build_hnsw_by_vp_tree_ensemble_multi_layer, EnsembleParams, StitchMode, TransitionParams,
+        build_hnsw_by_vp_tree_ensemble, build_hnsw_by_vp_tree_ensemble_multi_layer,
+        build_hnsw_by_vp_tree_stitching, EnsembleParams, EnsembleStrategy, StitchMode,
+        StitchingParams,
     },
     utils::{linear_knn_search, random_data_set, Stats},
     vp_tree::{VpTree, VpTreeParams},
@@ -33,7 +34,7 @@ use vecnn::{
 
 const RNG_SEED: u64 = 21321424198;
 fn main() {
-    let transition_params = TransitionParams {
+    let transition_params = StitchingParams {
         max_chunk_size: 256,
         same_chunk_m_max: 20,
         neg_fraction: 0.3,
@@ -53,6 +54,7 @@ fn main() {
         m_max_0: 40,
         distance: Distance::Dot,
         level_norm: 0.0,
+        strategy: EnsembleStrategy::BruteForce,
     };
 
     let hnsw_params = HnswParams {
@@ -63,30 +65,41 @@ fn main() {
         distance: Dot,
     };
 
+    let rnn_params = RNNGraphParams {
+        distance: Dot,
+        outer_loops: 3,
+        inner_loops: 4,
+        max_neighbors_after_reverse_pruning: 20,
+        initial_neighbors: 40,
+    };
+
     let k = 30;
     let k_samples = 100;
 
     use HnswKind::*;
 
-    for n in [300000] {
+    for n in [100000] {
         eval_models_on_laion(
             n,
             k_samples,
             &[
-                // ModelParams::RNNGraph(RNNGraphParams {
-                //     outer_loops: 3,
-                //     inner_loops: 7,
-                //     max_neighbors_after_reverse_pruning: 20,
-                //     initial_neighbors: 20,
-                //     distance: Distance::Dot,t
-                // }),
-                // ModelParams::Hnsw(hnsw_params, SliceS2),
+                // ModelParams::RNNGraph(rnn_params),
                 // ModelParams::Hnsw(hnsw_params, SliceParralelRayon),
-                // ModelParams::Hnsw(hnsw_params, SliceS1),
+                ModelParams::RNNGraph(RNNGraphParams {
+                    outer_loops: 2,
+                    inner_loops: 3,
+                    max_neighbors_after_reverse_pruning: 20,
+                    initial_neighbors: 20,
+                    distance: Distance::Dot,
+                }),
+                //
+                // ModelParams::Hnsw(hnsw_params, SliceParralelRayon),
+                ModelParams::Hnsw(hnsw_params, SliceS2),
                 // ModelParams::Hnsw(hnsw_params, SliceParralelRayon),
                 ModelParams::VpTreeEnsemble(
                     EnsembleParams {
                         level_norm: 0.0,
+                        strategy: EnsembleStrategy::BruteForce,
                         ..ensemble_params
                     },
                     false,
@@ -94,10 +107,54 @@ fn main() {
                 ModelParams::VpTreeEnsemble(
                     EnsembleParams {
                         level_norm: 0.0,
+                        strategy: EnsembleStrategy::RNNDescent {
+                            o_loops: 2,
+                            i_loops: 3,
+                        },
                         ..ensemble_params
                     },
-                    true,
+                    false,
                 ),
+                ModelParams::VpTreeEnsemble(
+                    EnsembleParams {
+                        level_norm: 0.0,
+                        strategy: EnsembleStrategy::BruteForce,
+                        ..ensemble_params
+                    },
+                    false,
+                ),
+                // ModelParams::VpTreeEnsemble(
+                //     EnsembleParams {
+                //         level_norm: 0.0,
+                //         strategy: EnsembleStrategy::BruteForce,
+                //         ..ensemble_params
+                //     },
+                //     false,
+                // ),
+                // ModelParams::VpTreeEnsemble(
+                //     EnsembleParams {
+                //         level_norm: 0.0,
+                //         strategy: EnsembleStrategy::BruteForce,
+                //         ..ensemble_params
+                //     },
+                //     true,
+                // ),
+                // ModelParams::VpTreeEnsemble(
+                //     EnsembleParams {
+                //         level_norm: 0.0,
+                //         strategy: EnsembleStrategy::BruteForce,
+                //         ..ensemble_params
+                //     },
+                //     false,
+                // ),
+                // ModelParams::VpTreeEnsemble(
+                //     EnsembleParams {
+                //         level_norm: 0.0,
+                //         strategy: EnsembleStrategy::BruteForce,
+                //         ..ensemble_params
+                //     },
+                //     true,
+                // ),
                 // ModelParams::VpTreeEnsemble(
                 //     EnsembleParams {
                 //         level_norm: 0.0,
@@ -243,7 +300,7 @@ fn main() {
 #[derive(Debug, Clone, Copy)]
 enum ModelParams {
     Hnsw(HnswParams, HnswKind),
-    Transition(TransitionParams),
+    Transition(StitchingParams),
     VpTreeEnsemble(EnsembleParams, bool), // bool = threaded
     RNNGraph(RNNGraphParams),
     VpTree(VpTreeParams),
@@ -514,7 +571,7 @@ fn eval_models(
                 ),
             },
             ModelParams::Transition(params) => {
-                Model::SliceHnsw(build_hnsw_by_transition(data, params, seed))
+                Model::SliceHnsw(build_hnsw_by_vp_tree_stitching(data, params, seed))
             }
             ModelParams::RNNGraph(params) => Model::RNNGraph(RNNGraph::new(data, params, seed)),
             ModelParams::VpTreeEnsemble(params, threaded) => {

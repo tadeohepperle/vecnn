@@ -4,6 +4,7 @@ use std::{
     collections::BinaryHeap,
     sync::Arc,
     time::{Duration, Instant},
+    usize,
 };
 
 use ahash::{HashMap, HashSet};
@@ -110,7 +111,6 @@ impl RNNGraph {
             };
 
             let neighbors = &self.nodes[closest_to_q.0 .1];
-            let mut any_neighbor_added: bool = false;
             for n in neighbors.iter() {
                 let i = n.idx;
                 let already_seen = !visited.insert(i);
@@ -135,7 +135,6 @@ impl RNNGraph {
                     }
                 }
                 if added {
-                    any_neighbor_added = true;
                     candidates.push(Reverse(DistAnd(dist, i)));
                 }
                 if_tracking!(Tracking.add_event(Event::EdgeHorizontal {
@@ -173,58 +172,118 @@ impl RNNGraph {
     }
 
     pub fn new(data: Arc<dyn DatasetT>, params: RNNGraphParams, seed: u64) -> Self {
-        construct_relative_nn_graph(data, params, seed)
+        let distance_tracker = DistanceTracker::new(params.distance);
+
+        let start = Instant::now();
+        let distance_idx_to_idx =
+            |i: usize, j: usize| -> f32 { distance_tracker.distance(data.get(i), data.get(j)) };
+        let mut buffers = RNNConstructionBuffers::new();
+        construct_relative_nn_graph(params, seed, &distance_idx_to_idx, &mut buffers, data.len());
+
+        let build_stats = Stats {
+            num_distance_calculations: distance_tracker.num_calculations(),
+            duration: start.elapsed(), // todo
+        };
+        RNNGraph {
+            data,
+            nodes: buffers.neighbors,
+            build_stats,
+            params,
+        }
     }
 }
 
-fn construct_relative_nn_graph(
-    data: Arc<dyn DatasetT>,
+pub struct RNNConstructionBuffers {
+    pub neighbors: Vec<Vec<Neighbor>>,
+    pub two_sided_neighbors: Vec<Vec<Neighbor>>, // swap buffer for a) new neighbors or b) two-sided-neighbors
+}
+
+impl RNNConstructionBuffers {
+    pub const fn new() -> Self {
+        RNNConstructionBuffers {
+            neighbors: vec![],
+            two_sided_neighbors: vec![],
+        }
+    }
+    pub fn clear_and_prepare(&mut self, n_entries: usize, n_neighbors: usize) {
+        for buf in [&mut self.neighbors, &mut self.two_sided_neighbors] {
+            for e in buf.iter_mut() {
+                e.clear();
+            }
+            if buf.len() < n_entries {
+                let additional = n_entries - buf.len();
+                buf.reserve(additional);
+                for _ in 0..additional {
+                    buf.push(Vec::with_capacity(n_neighbors))
+                }
+            }
+        }
+    }
+}
+
+pub fn construct_relative_nn_graph(
     params: RNNGraphParams,
     seed: u64,
-) -> RNNGraph {
-    let distance_tracker = DistanceTracker::new(params.distance);
-    let distance =
-        |i: usize, j: usize| -> f32 { distance_tracker.distance(data.get(i), data.get(j)) };
+    distance_idx_to_idx: &impl Fn(usize, usize) -> f32,
+    buffers: &mut RNNConstructionBuffers,
+    n_entries: usize,
+) {
+    buffers.clear_and_prepare(n_entries, params.initial_neighbors);
+    let neighbors = &mut buffers.neighbors[0..n_entries];
+    let two_sided_neighbors = &mut buffers.two_sided_neighbors[0..n_entries];
 
-    let start = Instant::now();
-
-    let mut nodes: Vec<Vec<Neighbor>> =
-        random_nn_graph_nodes(data.len(), &distance, params.initial_neighbors, seed);
-    let mut two_sided_neighbors: Vec<Vec<Neighbor>> =
-        (0..nodes.len()).map(|_| Vec::new()).collect();
-
+    fill_with_random_neighbors(
+        distance_idx_to_idx,
+        params.initial_neighbors,
+        neighbors,
+        seed,
+    );
     for t1 in 0..params.outer_loops {
+        // dbg_stats(&nodes, "before update_neighbors");
         for _ in 0..params.inner_loops {
-            update_neighbors(&mut nodes, &distance)
+            update_neighbors(neighbors, distance_idx_to_idx)
         }
+        // dbg_stats(&nodes, "after update_neighbors");
         if t1 != params.outer_loops - 1 {
             add_reverse_edges(
-                &mut nodes,
-                &mut two_sided_neighbors,
+                neighbors,
+                two_sided_neighbors,
                 params.max_neighbors_after_reverse_pruning,
             );
         }
     }
-
-    let build_stats = Stats {
-        num_distance_calculations: distance_tracker.num_calculations(),
-        duration: start.elapsed(), // todo
-    };
-    RNNGraph {
-        data,
-        nodes,
-        build_stats,
-        params,
-    }
 }
 
-fn update_neighbors(nodes: &mut [Vec<Neighbor>], distance: &impl Fn(usize, usize) -> f32) {
+fn dbg_stats(nodes: &[Vec<Neighbor>], tag: &str) {
+    let mut mean: f32 = 0.0;
+    let mut max: usize = 0;
+    let mut min: usize = usize::MAX;
+    for n in nodes.iter() {
+        let m = n.len();
+        if m > max {
+            max = m;
+        }
+        if m < min {
+            min = m;
+        }
+        mean += m as f32;
+    }
+    mean /= nodes.len() as f32;
+    println!(
+        "RNN neighbors: {tag} len={} mean={mean} min={min} max={max}",
+        nodes.len()
+    )
+}
+
+fn update_neighbors(
+    neighbors: &mut [Vec<Neighbor>],
+    distance_idx_to_idx: &impl Fn(usize, usize) -> f32,
+) {
     let mut new_neighbors: Vec<Neighbor> = vec![];
+    let n_entries = neighbors.len();
 
-    for u_idx in 0..nodes.len() {
-        assert!(new_neighbors.is_empty());
-        let mut old_neighbors = std::mem::take(&mut nodes[u_idx]);
-
+    for u_idx in 0..n_entries {
+        let mut old_neighbors = std::mem::take(&mut neighbors[u_idx]);
         // sort and remove duplicates:
         old_neighbors.sort();
         remove_duplicates_for_sorted(&mut old_neighbors);
@@ -241,12 +300,12 @@ fn update_neighbors(nodes: &mut [Vec<Neighbor>], distance: &impl Fn(usize, usize
                     break;
                 }
                 let dist_v_u = v.dist;
-                let dist_v_w = distance(w.idx, v.idx);
+                let dist_v_w = distance_idx_to_idx(w.idx, v.idx);
                 if dist_v_w < dist_v_u {
                     // prune by RNG rule
                     ok = false;
                     // insert connection w -> v instead:
-                    nodes[w.idx].push(Neighbor {
+                    neighbors[w.idx].push(Neighbor {
                         idx: v.idx,
                         dist: dist_v_w,
                         is_new: true,
@@ -262,12 +321,12 @@ fn update_neighbors(nodes: &mut [Vec<Neighbor>], distance: &impl Fn(usize, usize
         for v in new_neighbors.iter_mut() {
             v.is_new = false;
         }
-        std::mem::swap(&mut nodes[u_idx], &mut new_neighbors);
+        std::mem::swap(&mut neighbors[u_idx], &mut new_neighbors);
     }
 }
 
 /// Warning! expects a sorted vector
-pub fn remove_duplicates(neighbors: &mut Vec<Neighbor>) {
+fn remove_duplicates(neighbors: &mut Vec<Neighbor>) {
     let mut last_idx = usize::MAX;
     neighbors.retain(|e| {
         let retain = e.idx != last_idx;
@@ -277,7 +336,7 @@ pub fn remove_duplicates(neighbors: &mut Vec<Neighbor>) {
 }
 
 /// Credit: Erik Thordsen (https://www-ai.cs.tu-dortmund.de/PERSONAL/thordsen.html)
-pub fn remove_duplicates_for_sorted(neighbors: &mut Vec<Neighbor>) {
+fn remove_duplicates_for_sorted(neighbors: &mut Vec<Neighbor>) {
     if neighbors.len() == 0 {
         return;
     }
@@ -300,16 +359,16 @@ pub fn remove_duplicates_for_sorted(neighbors: &mut Vec<Neighbor>) {
 }
 
 fn add_reverse_edges(
-    nodes: &mut [Vec<Neighbor>],
+    neighbors: &mut [Vec<Neighbor>],
     two_sided_neighbors: &mut [Vec<Neighbor>],
     max_neighbors_after_reverse_pruning: usize,
 ) {
     // create list for each node, with all **INCOMING** connections to this node and all **OUTGOING** connections from this node
-    assert_eq!(nodes.len(), two_sided_neighbors.len());
+    assert_eq!(neighbors.len(), two_sided_neighbors.len());
     for r in two_sided_neighbors.iter_mut() {
         r.clear();
     }
-    for (idx, neighbors) in nodes.iter_mut().enumerate() {
+    for (idx, neighbors) in neighbors.iter_mut().enumerate() {
         for n in neighbors.iter_mut() {
             two_sided_neighbors[n.idx].push(Neighbor {
                 idx,
@@ -329,31 +388,28 @@ fn add_reverse_edges(
     }
     for (idx, in_and_out) in two_sided_neighbors.into_iter().enumerate() {
         for nn in in_and_out.drain(..) {
-            nodes[nn.idx].push(Neighbor {
+            neighbors[nn.idx].push(Neighbor {
                 idx,
                 dist: nn.dist,
                 is_new: nn.is_new,
             })
         }
     }
-    for neighbors in nodes.iter_mut() {
+    for neighbors in neighbors.iter_mut() {
         neighbors.sort();
         neighbors.truncate(max_neighbors_after_reverse_pruning);
     }
 }
 
-fn random_nn_graph_nodes(
-    n: usize,
-    distance: &impl Fn(usize, usize) -> f32,
+fn fill_with_random_neighbors(
+    distance_idx_to_idx: &impl Fn(usize, usize) -> f32, // idx to idx distance (NOT! id to id)
     initial_neighbors_num: usize,
+    neighbors: &mut [Vec<Neighbor>],
     seed: u64,
-) -> Vec<Vec<Neighbor>> {
-    let mut nodes: Vec<Vec<Neighbor>> = Vec::with_capacity(n);
-
+) {
     let mut rng = ChaCha20Rng::seed_from_u64(seed);
-
-    for idx in 0..n {
-        let mut neighbors: Vec<Neighbor> = Vec::with_capacity(initial_neighbors_num);
+    let n = neighbors.len();
+    for (idx, neighbors) in neighbors.iter_mut().enumerate() {
         loop {
             while neighbors.len() < initial_neighbors_num {
                 let mut random_idx = rng.gen_range(0..n - 1);
@@ -366,17 +422,15 @@ fn random_nn_graph_nodes(
                     is_new: true,
                 });
             }
-            remove_duplicates(&mut neighbors);
+            remove_duplicates(neighbors);
             if neighbors.len() == initial_neighbors_num {
                 break;
             }
         }
         for n in neighbors.iter_mut() {
-            n.dist = distance(idx, n.idx);
+            n.dist = distance_idx_to_idx(idx, n.idx);
         }
-        nodes.push(neighbors)
     }
-    nodes
 }
 
 #[cfg(test)]

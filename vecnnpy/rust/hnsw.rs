@@ -4,7 +4,7 @@ use vecnn::{
     dataset::DatasetT,
     distance::{cos, dot, l1, l2, Distance},
     hnsw::HnswParams,
-    transition::{EnsembleParams, StitchMode, TransitionParams},
+    transition::{EnsembleParams, StitchMode, StitchingParams},
     utils::Stats,
 };
 
@@ -32,6 +32,7 @@ pub fn build_hnsw_by_vp_tree_ensemble(
         m_max_0,
         level_norm,
         distance: dist_from_str(&distance)?,
+        strategy: vecnn::transition::EnsembleStrategy::BruteForce, // todo! needs to be configurable
     };
 
     let hnsw = vecnn::transition::build_hnsw_by_vp_tree_ensemble_multi_layer(
@@ -55,7 +56,7 @@ pub fn build_hnsw_by_transition(
     seed: u64,
 ) -> PyResult<Hnsw> {
     // todo! the python side of this interface needs to be adjusted!!!
-    let params = TransitionParams {
+    let params = StitchingParams {
         max_chunk_size,
         same_chunk_m_max,
         m_max,
@@ -66,7 +67,8 @@ pub fn build_hnsw_by_transition(
         stop_after_stitching_n_chunks: None,
         x: 3,
     };
-    let hnsw = vecnn::transition::build_hnsw_by_transition(data.as_dyn_dataset(), params, seed);
+    let hnsw =
+        vecnn::transition::build_hnsw_by_vp_tree_stitching(data.as_dyn_dataset(), params, seed);
     Ok(Hnsw(Inner::SliceImpl(hnsw)))
 }
 

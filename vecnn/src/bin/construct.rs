@@ -5,7 +5,7 @@ use vecnn::{
     distance::{self, cos, dot, l2, Distance},
     hnsw::{Hnsw, HnswParams},
     slice_hnsw::SliceHnsw,
-    transition::{build_hnsw_by_vp_tree_ensemble_multi_layer, EnsembleParams},
+    transition::{build_hnsw_by_vp_tree_ensemble_multi_layer, EnsembleParams, EnsembleStrategy},
     utils::{linear_knn_search, random_data_set},
 };
 
@@ -38,6 +38,7 @@ fn main() {
             m_max_0: 40,
             level_norm: 0.0,
             distance,
+            strategy: EnsembleStrategy::BruteForce,
         },
         true,
         210,
