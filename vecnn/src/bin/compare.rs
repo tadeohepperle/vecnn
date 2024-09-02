@@ -36,7 +36,15 @@ use vecnn::{
 };
 use HnswStructure::*;
 
+const DATA_PATH: &str = "../eval/laion_data_(300000, 768).bin";
+const DATA_LEN: usize = 300000;
+
+const QUERIES_PATH: &str = "../eval/laion_queries_(10000, 768).bin";
+const QUERIES_LEN: usize = 10000;
+
+const DIMS: usize = 768;
 const RNG_SEED: u64 = 21321424198;
+
 fn main() {
     let transition_params = StitchingParams {
         max_chunk_size: 64,
@@ -123,7 +131,7 @@ fn main() {
     }
 }
 
-const SMALL_N: usize = 100_000;
+const SMALL_N: usize = 1_000;
 const MEDIUM_N: usize = 1_000_000;
 const LARGE_N: usize = 10_000_000;
 
@@ -449,13 +457,6 @@ fn eval_models_on_laion(setup: &ExperimentSetup) {
         return;
     }
 
-    let data_path = "../eval/laion_data_(300000, 768).bin";
-    let queries_path = "../eval/laion_queries_(10000, 768).bin";
-
-    let data_len = 300000;
-    let dims = 768;
-    let queries_len = 10000;
-
     fn data_set_from_path(
         path: &str,
         len: usize,
@@ -490,8 +491,8 @@ fn eval_models_on_laion(setup: &ExperimentSetup) {
         })
     }
 
-    let data = data_set_from_path(data_path, data_len, dims, setup.n);
-    let queries = data_set_from_path(queries_path, queries_len, dims, setup.n_queries);
+    let data = data_set_from_path(DATA_PATH, DATA_LEN, DIMS, setup.n);
+    let queries = data_set_from_path(QUERIES_PATH, QUERIES_LEN, DIMS, setup.n_queries);
     eval_models(data, queries, setup)
 }
 
