@@ -381,6 +381,7 @@ fn s1_insert_element(ctx: &mut InsertCtx<'_>, id: usize, insert_level: usize) {
 // /////////////////////////////////////////////////////////////////////////////
 
 fn s2_construct_hnsw(data: Arc<dyn DatasetT>, params: HnswParams, seed: u64) -> SliceHnsw {
+    assert!(params.m_max_0 >= params.m_max);
     let start_time = Instant::now();
     let mut rng = ChaCha20Rng::seed_from_u64(seed);
     let (mut layers, insert_positions) =

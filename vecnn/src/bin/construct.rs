@@ -38,7 +38,7 @@ fn main() {
             m_max_0: 40,
             level_norm: 0.0,
             distance,
-            strategy: EnsembleStrategy::BruteForce,
+            strategy: EnsembleStrategy::BruteForceKNN,
         },
         true,
         210,

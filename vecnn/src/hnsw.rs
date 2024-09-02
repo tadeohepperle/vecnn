@@ -3,6 +3,7 @@ use std::{
     cmp::Reverse,
     collections::BinaryHeap,
     fmt::Debug,
+    hash::Hash,
     io::Write,
     process::id,
     sync::{Arc, Barrier},

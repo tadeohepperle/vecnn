@@ -32,7 +32,7 @@ pub fn build_hnsw_by_vp_tree_ensemble(
         m_max_0,
         level_norm,
         distance: dist_from_str(&distance)?,
-        strategy: vecnn::transition::EnsembleStrategy::BruteForce, // todo! needs to be configurable
+        strategy: vecnn::transition::EnsembleStrategy::BruteForceKNN, // todo! needs to be configurable
     };
 
     let hnsw = vecnn::transition::build_hnsw_by_vp_tree_ensemble_multi_layer(

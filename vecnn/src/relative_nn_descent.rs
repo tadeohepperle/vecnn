@@ -9,7 +9,7 @@ use std::{
 
 use ahash::{HashMap, HashSet};
 use nanoserde::{DeJson, SerJson};
-use rand::{Rng, SeedableRng};
+use rand::{thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
 use crate::{
@@ -84,74 +84,55 @@ impl RNNGraph {
         &self,
         q_data: &[f32],
         k: usize,
+        ef: usize,
         start_candidates: usize,
     ) -> (Vec<DistAnd<usize>>, Stats) {
-        assert!(start_candidates > 0);
-        let distance = DistanceTracker::new(self.params.distance);
-        let dist_to_q = |idx: usize| -> f32 {
-            let idx_data = self.data.get(idx);
-            distance.distance(q_data, idx_data)
-        };
-
         let start = Instant::now();
+        let start_candidates = start_candidates.max(1);
+        let distance = DistanceTracker::new(self.params.distance);
+        let mut visited: HashSet<usize> = HashSet::default();
+        let mut frontier: BinaryHeap<Reverse<DistAnd<usize>>> = BinaryHeap::new();
+        let mut found: BinaryHeap<DistAnd<usize>> = BinaryHeap::new();
 
-        let mut visited: ahash::HashSet<usize> = Default::default();
-        let mut candidates: BinaryHeap<Reverse<DistAnd<usize>>> = Default::default(); // has min dist item in root, can be peaked
-        let mut search_res: BinaryHeap<DistAnd<usize>> = Default::default(); // has top dist in root, to pop it easily
+        let mut rng = ChaCha20Rng::seed_from_u64(self.nodes.len() as u64);
+        for i in 0..start_candidates {
+            let ep_id = rng.gen_range(0..self.nodes.len());
+            let ep_data = self.data.get(ep_id);
+            let ep_dist = distance.distance(ep_data, q_data);
+            visited.insert(ep_id);
+            found.push(DistAnd(ep_dist, ep_id));
+            frontier.push(Reverse(DistAnd(ep_dist, ep_id)));
+        }
 
-        let i: usize = 0;
-        visited.insert(i);
-        let dist = dist_to_q(i);
-        candidates.push(Reverse(DistAnd(dist, i)));
-        search_res.push(DistAnd(dist, i));
-
-        loop {
-            let Some(closest_to_q) = candidates.pop() else {
+        while frontier.len() > 0 {
+            let DistAnd(c_dist, c_idx) = frontier.pop().unwrap().0;
+            let worst_dist_found = found.peek().unwrap().0;
+            if c_dist > worst_dist_found {
                 break;
             };
+            for nei in self.nodes[c_idx].iter() {
+                let nei_idx = nei.idx; // is id into data at the same time.
+                if visited.insert(nei_idx) {
+                    // only jumps here if was not visited before (newly inserted -> true)
+                    let nei_data = self.data.get(nei_idx);
+                    let nei_dist_to_q = distance.distance(nei_data, q_data);
 
-            let neighbors = &self.nodes[closest_to_q.0 .1];
-            for n in neighbors.iter() {
-                let i = n.idx;
-                let already_seen = !visited.insert(i);
-                if already_seen {
-                    continue;
-                }
-                let added: bool;
-                let dist = dist_to_q(n.idx);
-
-                let space_available = search_res.len() < k;
-
-                if space_available {
-                    search_res.push(DistAnd(dist, i));
-                    added = true;
-                } else {
-                    let mut worst = search_res.peek_mut().unwrap();
-                    if dist < worst.dist() {
-                        *worst = DistAnd(dist, i);
-                        added = true;
+                    if found.len() < ef {
+                        // always insert if found still has space:
+                        frontier.push(Reverse(DistAnd(nei_dist_to_q, nei_idx)));
+                        found.push(DistAnd(nei_dist_to_q, nei_idx));
                     } else {
-                        added = false;
+                        // otherwise only insert, if it is better than the worst found element:
+                        let mut worst_found = found.peek_mut().unwrap();
+                        if nei_dist_to_q < worst_found.dist() {
+                            frontier.push(Reverse(DistAnd(nei_dist_to_q, nei_idx)));
+                            *worst_found = DistAnd(nei_dist_to_q, nei_idx)
+                        }
                     }
                 }
-                if added {
-                    candidates.push(Reverse(DistAnd(dist, i)));
-                }
-                if_tracking!(Tracking.add_event(Event::EdgeHorizontal {
-                    from: closest_to_q.0 .1,
-                    to: i,
-                    level: 0,
-                    comment: if space_available {
-                        "space"
-                    } else if added {
-                        "added"
-                    } else {
-                        "not_good_enough"
-                    }
-                }))
             }
         }
-        let mut results: Vec<DistAnd<usize>> = search_res.into_vec();
+        let mut results: Vec<DistAnd<usize>> = found.into_vec();
         results.sort();
         let stats = Stats {
             num_distance_calculations: distance.num_calculations(),
@@ -285,25 +266,30 @@ fn update_neighbors(
     for u_idx in 0..n_entries {
         let mut old_neighbors = std::mem::take(&mut neighbors[u_idx]);
         // sort and remove duplicates:
-        old_neighbors.sort();
+        old_neighbors.sort(); // (sort by distance to this point)
         remove_duplicates_for_sorted(&mut old_neighbors);
 
+        assert!(new_neighbors.is_empty());
         for v in old_neighbors.drain(..) {
-            let mut ok = true;
+            let mut keep_neighbor = true;
 
             for w in new_neighbors.iter() {
                 if !v.is_new && !w.is_new {
                     continue;
                 }
                 if v.idx == w.idx {
-                    ok = false;
+                    dbg!((u_idx, w, v));
+                    panic!("")
+                }
+                if v.idx == w.idx {
+                    keep_neighbor = false;
                     break;
                 }
                 let dist_v_u = v.dist;
                 let dist_v_w = distance_idx_to_idx(w.idx, v.idx);
-                if dist_v_w < dist_v_u {
+                if dist_v_w <= dist_v_u {
                     // prune by RNG rule
-                    ok = false;
+                    keep_neighbor = false;
                     // insert connection w -> v instead:
                     neighbors[w.idx].push(Neighbor {
                         idx: v.idx,
@@ -313,7 +299,7 @@ fn update_neighbors(
                     break;
                 }
             }
-            if ok {
+            if keep_neighbor {
                 new_neighbors.push(v);
             }
         }
@@ -409,6 +395,10 @@ fn fill_with_random_neighbors(
 ) {
     let mut rng = ChaCha20Rng::seed_from_u64(seed);
     let n = neighbors.len();
+    if n == 1 {
+        return;
+    }
+    let initial_neighbors_num = initial_neighbors_num.min(n - 1);
     for (idx, neighbors) in neighbors.iter_mut().enumerate() {
         loop {
             while neighbors.len() < initial_neighbors_num {

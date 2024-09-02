@@ -293,7 +293,7 @@ pub fn construct_vp_tree(
     // arrange items in self.tmp into a vp tree
     let data_get = |e: &Node| data.get(e.id);
     if parallel {
-        arrange_into_vp_tree_parallel(&mut nodes, &data_get, &distance_tracker, &mut rng);
+        arrange_into_vp_tree_parallel(&mut nodes, &data_get, &distance_tracker, &mut rng, 0);
     } else {
         arrange_into_vp_tree(&mut nodes, &data_get, &distance_tracker, &mut rng);
     }
@@ -331,6 +331,7 @@ pub fn arrange_into_vp_tree_parallel<'a, T, F>(
     data_get: &'a F,
     distance: &DistanceTracker,
     rng: &mut rand_chacha::ChaCha20Rng,
+    min_chunk_size: usize,
 ) where
     T: StoresDistT + Send + Sync,
     F: Fn(&T) -> &'a [f32] + Send + Sync,
@@ -342,8 +343,11 @@ pub fn arrange_into_vp_tree_parallel<'a, T, F>(
 
     // early return if there are only 0,1 or 2 elements left
     let tmp_len = tmp.len();
+
+    if tmp_len <= min_chunk_size {
+        return;
+    }
     match tmp_len {
-        0 => return,
         1 => {
             tmp[0].set_dist(0.0);
             return;
@@ -392,12 +396,32 @@ pub fn arrange_into_vp_tree_parallel<'a, T, F>(
         let (part_a, part_b) = tmp.split_at_mut(median_i);
         let mut rng_a = rng.clone();
         rayon::join(
-            || arrange_into_vp_tree_parallel(&mut part_a[1..], data_get, distance, &mut rng_a),
-            || arrange_into_vp_tree_parallel(part_b, data_get, distance, rng),
+            || {
+                arrange_into_vp_tree_parallel(
+                    &mut part_a[1..],
+                    data_get,
+                    distance,
+                    &mut rng_a,
+                    min_chunk_size,
+                )
+            },
+            || arrange_into_vp_tree_parallel(part_b, data_get, distance, rng, min_chunk_size),
         );
     } else {
-        arrange_into_vp_tree_parallel(&mut tmp[1..median_i], data_get, distance, rng);
-        arrange_into_vp_tree_parallel(&mut tmp[median_i..], data_get, distance, rng);
+        arrange_into_vp_tree_parallel(
+            &mut tmp[1..median_i],
+            data_get,
+            distance,
+            rng,
+            min_chunk_size,
+        );
+        arrange_into_vp_tree_parallel(
+            &mut tmp[median_i..],
+            data_get,
+            distance,
+            rng,
+            min_chunk_size,
+        );
     }
 }
 

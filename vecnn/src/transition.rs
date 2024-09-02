@@ -1,3 +1,4 @@
+use core::f32;
 use std::{
     cell::UnsafeCell,
     collections::{BinaryHeap, HashMap, HashSet},
@@ -55,12 +56,17 @@ pub struct EnsembleParams {
 pub enum EnsembleStrategy {
     /// Calculates all connections between all elements in chunk and keeps the best `same_chunk_m_max` ones.
     /// These are then inserted into the HNSW (if better than existing connections).
-    BruteForce,
+    /// Note: k is same_chunk_m_max
+    BruteForceKNN,
     /// builds a small Relative NN descent graph on each chunk.
-    RNNDescent { o_loops: usize, i_loops: usize },
+    RNNDescent {
+        o_loops: usize,
+        i_loops: usize,
+    },
+    BruteForceExactRNG,
 }
 
-pub fn build_hnsw_by_vp_tree_ensemble(
+pub fn build_single_layer_hnsw_by_vp_tree_ensemble(
     data: Arc<dyn DatasetT>,
     params: EnsembleParams,
     seed: u64,
@@ -185,7 +191,7 @@ pub fn build_hnsw_by_vp_tree_ensemble_multi_layer(
     let distance = DistanceTracker::new(params.distance);
     // do the ensemble approach for each layer:
     for (level, layer) in layers.iter_mut().enumerate() {
-        if layer.entries.len() <= params.max_chunk_size * 2 {
+        if layer.entries.len() <= params.max_chunk_size * 2 && false {
             // brute force connect neighbors!
             fill_hnsw_layer_range_by_brute_force(&*data, &distance, layer);
         } else {
@@ -202,11 +208,6 @@ pub fn build_hnsw_by_vp_tree_ensemble_multi_layer(
         duration: start_time.elapsed(),
         num_distance_calculations: distance.num_calculations(),
     };
-
-    println!(
-        "{:?}",
-        layers.iter().map(|e| e.entries.len()).collect::<Vec<_>>()
-    );
     SliceHnsw {
         data,
         layers,
@@ -297,10 +298,10 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
             .neighbors
     };
 
-    let mut brute_force_buffers = if params.strategy == EnsembleStrategy::BruteForce {
-        EnsembleBruteBuffers::new(max_chunk_size, same_chunk_m_max)
+    let mut brute_force_buffers = if params.strategy == EnsembleStrategy::BruteForceKNN {
+        EnsembleBruteForceBuffers::new(max_chunk_size, same_chunk_m_max)
     } else {
-        EnsembleBruteBuffers::new_uninit() // ignored anyway
+        EnsembleBruteForceBuffers::new_uninit() // ignored anyway
     };
     let mut rnn_buffers = RNNConstructionBuffers::new();
 
@@ -313,7 +314,7 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
         for chunk in chunks.iter() {
             let chunk_nodes = &vp_tree[chunk.range.clone()];
             match params.strategy {
-                EnsembleStrategy::BruteForce => {
+                EnsembleStrategy::BruteForceKNN => {
                     connect_vp_tree_chunk_and_update_neighbors_in_hnsw_brute_force(
                         chunk_nodes,
                         data,
@@ -337,6 +338,14 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
                         inner_loops,
                         outer_loops,
                     );
+                }
+                EnsembleStrategy::BruteForceExactRNG => {
+                    connect_vp_tree_chunk_and_update_neighbors_in_hnsw_exact_rng(
+                        chunk_nodes,
+                        data,
+                        distance,
+                        &unsafe_get_mut_neighbors_in_hnsw_at_idx,
+                    )
                 }
             }
         }
@@ -384,7 +393,7 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_vp_tree(
             });
         }
         arrange_into_vp_tree(&mut vp_tree, &data_get, distance, &mut rng);
-        let mut tls = EnsembleBruteBuffers::new(max_chunk_size, same_chunk_m_max);
+        let mut tls = EnsembleBruteForceBuffers::new(max_chunk_size, same_chunk_m_max);
         for chunk in chunks.iter() {
             let chunk_size = chunk.range.len();
             let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
@@ -471,7 +480,7 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk(
 
     for _tree_idx in 0..params.n_vp_trees {
         let before = Instant::now();
-        arrange_into_vp_tree(&mut vp_tree, &data_get, distance, rng);
+        arrange_into_vp_tree_parallel(&mut vp_tree, &data_get, distance, rng, max_chunk_size / 2);
 
         let between = before.elapsed();
 
@@ -488,7 +497,7 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk(
                 assert!(chunk_size <= max_chunk_size);
 
                 match params.strategy {
-                    EnsembleStrategy::BruteForce => {
+                    EnsembleStrategy::BruteForceKNN => {
                         connect_vp_tree_chunk_and_update_neighbors_in_hnsw_brute_force(
                             chunk_nodes,
                             data,
@@ -511,6 +520,14 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk(
                             same_chunk_m_max,
                             inner_loops,
                             outer_loops,
+                        );
+                    }
+                    EnsembleStrategy::BruteForceExactRNG => {
+                        connect_vp_tree_chunk_and_update_neighbors_in_hnsw_exact_rng(
+                            chunk_nodes,
+                            data,
+                            distance,
+                            &unsafe_get_mut_neighbors_in_hnsw_at_idx,
                         );
                     }
                 }
@@ -595,14 +612,78 @@ fn connect_vp_tree_chunk_and_update_neighbors_in_hnsw_rnn_descent<'task, 'total>
     }
 }
 
+/// Experimental, just for illustration!!! inefficient, not optimized for threading, buffer reuse, etc!!!
+fn connect_vp_tree_chunk_and_update_neighbors_in_hnsw_exact_rng<'task, 'total>(
+    chunk_nodes: &'task [VpTreeNode],
+    data: &'total dyn DatasetT,
+    distance: &'total DistanceTracker,
+    unsafe_get_mut_neighbors_in_hnsw_at_idx: &impl Fn(
+        usize,
+    ) -> &'total mut SliceBinaryHeap<
+        'static,
+        DistAnd<usize>,
+    >,
+) {
+    let chunk_size = chunk_nodes.len();
+    let mut chunk_dst_mat: Vec<f32> = vec![0.0; chunk_size * chunk_size];
+    let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
+
+    // calculate distances between all the nodes in this chunk. (clearing chunk_dst_mat not necessary, because everything relevant should be overwritten).
+    for i in 0..chunk_size {
+        for j in i + 1..chunk_size {
+            let i_data = data.get(chunk_nodes[i].id as usize);
+            let j_data = data.get(chunk_nodes[j].id as usize);
+            let dist = distance.distance(i_data, j_data);
+            chunk_dst_mat[chunk_dst_mat_idx(i, j)] = dist;
+            chunk_dst_mat[chunk_dst_mat_idx(j, i)] = dist;
+        }
+    }
+
+    // idx-idx in chunk nodes and their distance:
+    // let mut rng_graph_edges: HashMap<(usize, usize), f32> = HashMap::new();
+    for i in 0..chunk_size {
+        for j in i + 1..chunk_size {
+            // RNG strategy: insert edge if d(i,j) <= max(d(v,i), d(v,j)) for all v in chunk
+            let d_ij = chunk_dst_mat[chunk_dst_mat_idx(i, j)];
+            let mut min_of_max_d_vi_d_vj = f32::MAX;
+            for v in 0..chunk_size {
+                if v == i || v == j {
+                    continue;
+                }
+                let d_vi = chunk_dst_mat[chunk_dst_mat_idx(v, i)];
+                let d_vj = chunk_dst_mat[chunk_dst_mat_idx(v, j)];
+                let max_d_vi_d_vj = d_vi.max(d_vj);
+                if max_d_vi_d_vj < min_of_max_d_vi_d_vj {
+                    min_of_max_d_vi_d_vj = max_d_vi_d_vj;
+                }
+            }
+            if d_ij < min_of_max_d_vi_d_vj {
+                // RNG condition fulfilled.
+                let i_idx_in_hnsw = chunk_nodes[i].idx_in_hnsw_layer as usize;
+                let j_idx_in_hnsw = chunk_nodes[j].idx_in_hnsw_layer as usize;
+
+                let i_hnsw_neighbors = unsafe_get_mut_neighbors_in_hnsw_at_idx(i_idx_in_hnsw);
+                if !i_hnsw_neighbors.iter().any(|e| e.1 == j_idx_in_hnsw) {
+                    i_hnsw_neighbors.insert_if_better(DistAnd(d_ij, j_idx_in_hnsw));
+                }
+
+                let j_hnsw_neighbors = unsafe_get_mut_neighbors_in_hnsw_at_idx(i_idx_in_hnsw);
+                if !j_hnsw_neighbors.iter().any(|e| e.1 == i_idx_in_hnsw) {
+                    j_hnsw_neighbors.insert_if_better(DistAnd(d_ij, i_idx_in_hnsw));
+                }
+            }
+        }
+    }
+}
+
 /// Thread-Local storage to help build VP-trees and connect neighbors in chunks.
-struct EnsembleBruteBuffers {
+struct EnsembleBruteForceBuffers {
     chunk_dst_mat: Vec<f32>,
     chunk_neighbors_memory: SlicesMemory<DistAnd<usize>>,
     chunk_neighbors: Vec<SliceBinaryHeap<'static, DistAnd<usize>>>,
 }
 
-impl EnsembleBruteBuffers {
+impl EnsembleBruteForceBuffers {
     fn new_uninit() -> Self {
         Self {
             chunk_dst_mat: vec![],
@@ -650,18 +731,28 @@ impl EnsembleBruteBuffers {
 }
 
 thread_local! {
-    static ENSEMPLE_BRUTE_FORCE_TLS:UnsafeCell<EnsembleBruteBuffers> = const {UnsafeCell::new(EnsembleBruteBuffers{chunk_dst_mat:vec![],chunk_neighbors_memory:SlicesMemory::new_uninit(), chunk_neighbors: vec![] })};
+    static ENSEMPLE_BRUTE_FORCE_TLS:UnsafeCell<EnsembleBruteForceBuffers> = const {UnsafeCell::new(EnsembleBruteForceBuffers{chunk_dst_mat:vec![],chunk_neighbors_memory:SlicesMemory::new_uninit(), chunk_neighbors: vec![] })};
 }
 
-fn ensemble_brute_force_buffers_tls() -> &'static mut EnsembleBruteBuffers {
+fn ensemble_brute_force_buffers_tls() -> &'static mut EnsembleBruteForceBuffers {
     ENSEMPLE_BRUTE_FORCE_TLS.with(|e| unsafe { &mut *e.get() })
+}
+
+fn heavy_work_dummy_task() {
+    let mut x: i64 = 0;
+    for i in 0..1000000i64 {
+        for j in 0..100i64 {
+            x += j + i % 113;
+        }
+    }
+    std::hint::black_box(x);
 }
 
 fn connect_vp_tree_chunk_and_update_neighbors_in_hnsw_brute_force<'task, 'total>(
     chunk_nodes: &'task [VpTreeNode],
     data: &'total dyn DatasetT,
     distance: &'total DistanceTracker,
-    buffers: &'task mut EnsembleBruteBuffers,
+    buffers: &'task mut EnsembleBruteForceBuffers,
     unsafe_get_mut_neighbors_in_hnsw_at_idx: &impl Fn(
         usize,
     ) -> &'total mut SliceBinaryHeap<
@@ -1422,6 +1513,78 @@ fn chunk_collection_matches_vp_tree_subtrees() {
         assert_eq!(chunk.range.len(), s.len());
 
         println!("{chunk:?}      {} ", chunk.range.len());
+    }
+}
+
+pub fn build_hnsw_by_rnn_descent(
+    data: Arc<dyn DatasetT>,
+    params: RNNGraphParams,
+    level_norm_param: f32,
+    seed: u64,
+) -> SliceHnsw {
+    let start_time = Instant::now();
+    let mut rng = ChaCha20Rng::seed_from_u64(seed);
+
+    let m_max = params.max_neighbors_after_reverse_pruning / 2;
+    let m_max_0 = params.max_neighbors_after_reverse_pruning;
+
+    let mut layers = super::slice_hnsw::create_hnsw_layers_with_empty_neighbors(
+        data.len(),
+        m_max,
+        m_max_0,
+        level_norm_param,
+        &mut rng,
+    );
+    let distance = DistanceTracker::new(params.distance);
+    // do the ensemble approach for each layer:
+    for (l, layer) in layers.iter_mut().enumerate() {
+        let distance_idx_to_idx = |idx_a: usize, idx_b: usize| -> f32 {
+            let id_a = layer.entries[idx_a].id as usize;
+            let id_b = layer.entries[idx_b].id as usize;
+            let data_a = data.get(id_a);
+            let data_b = data.get(id_b);
+            distance.distance(data_a, data_b)
+        };
+
+        let mut buffers = RNNConstructionBuffers::new();
+        let initial_neighbors = if l == 0 {
+            params.initial_neighbors
+        } else {
+            params.initial_neighbors / 2
+        };
+        crate::relative_nn_descent::construct_relative_nn_graph(
+            RNNGraphParams {
+                max_neighbors_after_reverse_pruning: layer.m_max,
+                initial_neighbors,
+                ..params
+            },
+            seed,
+            &distance_idx_to_idx,
+            &mut buffers,
+            layer.entries.len(),
+        );
+        for (i, entry) in layer.entries.iter_mut().enumerate() {
+            let rnn_neighbors = &buffers.neighbors[i];
+            for nei in rnn_neighbors.iter() {
+                entry.neighbors.insert_if_better(DistAnd(nei.dist, nei.idx));
+            }
+        }
+    }
+    let build_stats = Stats {
+        duration: start_time.elapsed(),
+        num_distance_calculations: distance.num_calculations(),
+    };
+    SliceHnsw {
+        data,
+        layers,
+        params: HnswParams {
+            level_norm_param,
+            ef_construction: 0,
+            m_max,
+            m_max_0,
+            distance: params.distance,
+        },
+        build_stats,
     }
 }
 
