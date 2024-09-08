@@ -22,6 +22,7 @@ rand_chacha = "0.3.1"
 rayon = "1.10.0"
 strum = { version = "0.26.3", features = ["derive"] }
 threadpool = "1.8.1"
+core_affinity = "0.8.1"
 
 [dev-dependencies]
 criterion = "0.5"

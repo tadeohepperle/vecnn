@@ -64,7 +64,7 @@ pub fn build_hnsw_by_transition(
         keep_fraction, // todo!!
         distance: dist_from_str(&distance)?,
         stitch_mode: StitchMode::RandomNegToPosCenterAndBack,
-        stop_after_stitching_n_chunks: None,
+        only_n_chunks: None,
         x: 3,
     };
     let hnsw =

@@ -277,10 +277,10 @@ fn update_neighbors(
                 if !v.is_new && !w.is_new {
                     continue;
                 }
-                if v.idx == w.idx {
-                    dbg!((u_idx, w, v));
-                    panic!("")
-                }
+                // if v.idx == w.idx {
+                //     dbg!((u_idx, w, v));
+                //     panic!("TODO unsolved problem")
+                // }
                 if v.idx == w.idx {
                     keep_neighbor = false;
                     break;

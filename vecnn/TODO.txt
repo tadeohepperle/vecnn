@@ -1,0 +1,7 @@
+
+
+
+try core_affinity to maybe speed up the ensemble threading
+
+
+figure out if something is wrong in rnn descent implementation

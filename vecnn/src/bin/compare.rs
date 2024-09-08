@@ -46,20 +46,8 @@ const DIMS: usize = 768;
 const RNG_SEED: u64 = 21321424198;
 
 fn main() {
-    let transition_params = StitchingParams {
-        max_chunk_size: 64,
-        same_chunk_m_max: 20,
-        neg_fraction: 0.3,
-        keep_fraction: 0.1,
-        x: 4,
-        stop_after_stitching_n_chunks: None,
-        distance: Distance::Dot,
-        stitch_mode: StitchMode::BestXofRandomXTimesX,
-        m_max: 40,
-    };
-
     let ensemble_params = EnsembleParams {
-        n_vp_trees: 8,
+        n_vp_trees: 6,
         max_chunk_size: 256,
         same_chunk_m_max: 16,
         m_max: 20,
@@ -85,45 +73,141 @@ fn main() {
         initial_neighbors: 40,
     };
 
+    let stitch_params = StitchingParams {
+        max_chunk_size: 128,
+        same_chunk_m_max: 20,
+        neg_fraction: 0.4,
+        keep_fraction: 0.0,
+        x: 2,
+        only_n_chunks: None,
+        distance: Distance::Dot,
+        stitch_mode: StitchMode::BestXofRandomXTimesX,
+        m_max: 20,
+    };
+
     let test_setup = ExperimentSetup {
-        n: 10000,
+        n: 100000,
         n_queries: 100,
         params: vec![
-            ModelParams::VpTreeEnsemble(
-                EnsembleParams {
-                    level_norm: 0.0,
-                    strategy: EnsembleStrategy::BruteForceKNN,
-                    ..ensemble_params
+            ModelParams::Hnsw(
+                HnswParams {
+                    level_norm_param: 0.3,
+                    ef_construction: 20,
+                    m_max: 8,
+                    m_max_0: 16,
+                    distance: Dot,
                 },
-                false,
+                SliceS2,
             ),
+            ModelParams::Hnsw(
+                HnswParams {
+                    level_norm_param: 0.3,
+                    ef_construction: 20,
+                    m_max: 8,
+                    m_max_0: 16,
+                    distance: Dot,
+                },
+                SliceParralelRayon,
+            ),
+            // ModelParams::RNNGraph(RNNGraphParams {
+            //     distance: Dot,
+            //     outer_loops: 2,
+            //     inner_loops: 3,
+            //     max_neighbors_after_reverse_pruning: 10,
+            //     initial_neighbors: 12,
+            // }),
+            // ModelParams::Stitching(StitchingParams {
+            //     stitch_mode: StitchMode::RandomNegToRandomPosAndBack,
+            //     ..stitch_params
+            // }),
+            // ModelParams::Stitching(StitchingParams {
+            //     stitch_mode: StitchMode::DontStarveXXSearch,
+            //     ..stitch_params
+            // }),
             ModelParams::VpTreeEnsemble(
                 EnsembleParams {
+                    n_vp_trees: 3,
+                    max_chunk_size: 256,
+                    same_chunk_m_max: 16,
+                    m_max: 16,
+                    m_max_0: 16,
+                    distance: Distance::Dot,
                     level_norm: 0.0,
                     strategy: EnsembleStrategy::BruteForceKNN,
-                    ..ensemble_params
                 },
                 true,
             ),
+            ModelParams::VpTreeEnsemble(
+                EnsembleParams {
+                    n_vp_trees: 3,
+                    max_chunk_size: 256,
+                    same_chunk_m_max: 16,
+                    m_max: 16,
+                    m_max_0: 16,
+                    distance: Distance::Dot,
+                    level_norm: 0.0,
+                    strategy: EnsembleStrategy::BruteForceKNN,
+                },
+                false,
+            ),
+            // ModelParams::Stitching(StitchingParams {
+            //     stitch_mode: StitchMode::RandomNegToPosCenterAndBack,
+            //     ..stitch_params
+            // }),
+            // ModelParams::Stitching(StitchingParams {
+            //     stitch_mode: StitchMode::RandomSubsetOfSubset,
+            //     ..stitch_params
+            // }),
+            // ModelParams::Stitching(StitchingParams {
+            //     stitch_mode: StitchMode::BestXofRandomXTimesX,
+            //     ..stitch_params
+            // }),
+
+            // ModelParams::Hnsw(
+            //     HnswParams {
+            //         level_norm_param: 0.3,
+            //         ef_construction: 50,
+            //         m_max: 20,
+            //         m_max_0: 40,
+            //         distance: Dot,
+            //     },
+            //     SliceS2,
+            // ),
+            // ModelParams::VpTreeEnsemble(
+            //     EnsembleParams {
+            //         level_norm: 0.5,
+            //         strategy: EnsembleStrategy::BruteForceKNN,
+            //         ..ensemble_params
+            //     },
+            //     false,
+            // ),
+            // ModelParams::VpTreeEnsemble(
+            //     EnsembleParams {
+            //         level_norm: 0.0,
+            //         strategy: EnsembleStrategy::BruteForceKNN,
+            //         ..ensemble_params
+            //     },
+            //     true,
+            // ),
         ],
         search_params: vec![SearchParams {
             truth_distance: Dot,
             k: 30,
-            ef: 50,
+            ef: 100,
             start_candidates: 1,
             vp_max_visits: 0,
         }],
         random_seeds: true,
-        repeats: 2,
+        repeats: 3,
         title: "try it out",
     };
 
     let experiments: Vec<ExperimentSetup> = vec![
-        // test_setup,
-        try_hnsw_effect_of_ef_construction(),
-        try_hnsw_effect_of_level_norm(),
-        try_hnsw_effect_of_ef_search(),
-        try_hnsw_effect_of_m_max(),
+        test_setup,
+        // try_hnsw_effect_of_ef_construction(),
+        // try_hnsw_effect_of_level_norm(),
+        // try_hnsw_effect_of_ef_search(),
+        // try_hnsw_effect_of_m_max(),
     ];
     for e in experiments.iter() {
         println!("Start experiment {}", e.to_string());
@@ -284,7 +368,7 @@ impl ExperimentSetup {
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ModelParams {
     Hnsw(HnswParams, HnswStructure),
-    Transition(StitchingParams),
+    Stitching(StitchingParams),
     VpTreeEnsemble(EnsembleParams, bool), // bool = threaded
     RNNGraph(RNNGraphParams),
     VpTree(VpTreeParams),
@@ -296,7 +380,7 @@ impl ModelParams {
     pub fn to_string(&self) -> String {
         match self {
             ModelParams::Hnsw(e, kind) => format!("{kind:?}{e:?}"),
-            ModelParams::Transition(e) => format!("{e:?}"),
+            ModelParams::Stitching(e) => format!("{e:?}"),
             ModelParams::VpTreeEnsemble(e, threaded) => {
                 if *threaded {
                     format!("Threaded {e:?}")
@@ -568,7 +652,7 @@ fn eval_models(data: Arc<dyn DatasetT>, queries: Arc<dyn DatasetT>, setup: &Expe
                 42
             };
             let data = data.clone();
-            let model = match model_params {
+            let mut model = match model_params {
                 ModelParams::Hnsw(params, kind) => match kind {
                     HnswStructure::Old => Model::OldHnsw(Hnsw::new(data, params, seed)),
                     HnswStructure::Const => Model::ConstHnsw(ConstHnsw::new(data, params, seed)),
@@ -585,7 +669,7 @@ fn eval_models(data: Arc<dyn DatasetT>, queries: Arc<dyn DatasetT>, setup: &Expe
                         vecnn::slice_hnsw_par::SliceHnsw::new_with_thread_pool(data, params, seed),
                     ),
                 },
-                ModelParams::Transition(params) => {
+                ModelParams::Stitching(params) => {
                     Model::SliceHnsw(build_hnsw_by_vp_tree_stitching(data, params, seed))
                 }
                 ModelParams::RNNGraph(params) => Model::RNNGraph(RNNGraph::new(data, params, seed)),
@@ -606,6 +690,14 @@ fn eval_models(data: Arc<dyn DatasetT>, queries: Arc<dyn DatasetT>, setup: &Expe
                     build_hnsw_by_rnn_descent(data, params, level_norm_param, seed),
                 ),
             };
+
+            const CONVERT_INTO_NON_LOCK_VERSION: bool = true;
+            if CONVERT_INTO_NON_LOCK_VERSION {
+                if let Model::SliceHnswParallel(par_hnsw) = &model {
+                    let non_lock_hnsw = par_hnsw.convert_to_slice_hnsw_without_locks();
+                    model = Model::SliceHnsw(non_lock_hnsw);
+                }
+            }
 
             for (search_params_idx, search_params) in setup.search_params.iter().enumerate() {
                 let true_knns = &true_knns_by_search_params[search_params_idx];

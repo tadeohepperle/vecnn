@@ -109,6 +109,39 @@ impl SliceHnsw {
 
         (results, stats)
     }
+
+    /// This exists, because it sucks to to knn search when you have to call read() on the RwLocks all the time.
+    ///
+    /// And because Rust does not have a defined memory layout for RwLock (no repr(C) on it) AND no compile time type information telling us e.g. byte offsets of fields,
+    /// we have no chance of accessing the data inside the RwLocks with unsafe after building. Just sad.
+    ///
+    /// An alternative would be to ditch the RwLocks wrapping the neighbors lists and instead maintain a symbolic Vec<RwLock<()>>
+    /// for each layer during the build process with an entry for each neighbors list. Can be thrown away once the HNSW is built.
+    pub fn convert_to_slice_hnsw_without_locks(&self) -> super::slice_hnsw::SliceHnsw {
+        let mut layers: heapless::Vec<super::slice_hnsw::Layer, MAX_LAYERS> = Default::default();
+
+        for layer in self.layers.iter() {
+            let mut new_layer = super::slice_hnsw::Layer::new(layer.m_max);
+            new_layer.entries_cap = layer.entries.len();
+            new_layer.allocate_neighbors_memory();
+            for e in layer.entries.iter() {
+                let idx = new_layer.add_entry_assuming_allocated_memory(e.id, e.lower_level_idx);
+                let new_entry = &mut new_layer.entries[idx];
+                let e_neighbors = e.neighbors.read().unwrap();
+                unsafe {
+                    e_neighbors.clone_into(&mut new_entry.neighbors);
+                }
+            }
+            layers.push(new_layer).unwrap();
+        }
+
+        return super::slice_hnsw::SliceHnsw {
+            data: self.data.clone(),
+            layers,
+            params: self.params,
+            build_stats: self.build_stats,
+        };
+    }
 }
 
 /// This layer can be used in two different ways:

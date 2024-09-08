@@ -366,6 +366,19 @@ mod binary_heap {
             }
         }
 
+        pub unsafe fn clone_into(&self, other: &mut SliceBinaryHeap<'a, T>)
+        where
+            T: Clone,
+        {
+            assert!(other.capacity() >= self.capacity());
+            other.len = self.len;
+            unsafe {
+                for i in 0..self.len {
+                    *other.slice.get_unchecked_mut(i) = self.slice.get_unchecked(i).clone();
+                }
+            }
+        }
+
         pub fn iter(&self) -> std::slice::Iter<T> {
             self.slice[..self.len].iter()
         }

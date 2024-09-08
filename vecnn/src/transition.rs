@@ -191,7 +191,7 @@ pub fn build_hnsw_by_vp_tree_ensemble_multi_layer(
     let distance = DistanceTracker::new(params.distance);
     // do the ensemble approach for each layer:
     for (level, layer) in layers.iter_mut().enumerate() {
-        if layer.entries.len() <= params.max_chunk_size * 2 && false {
+        if layer.entries.len() <= params.max_chunk_size * 2 {
             // brute force connect neighbors!
             fill_hnsw_layer_range_by_brute_force(&*data, &distance, layer);
         } else {
@@ -811,7 +811,7 @@ pub struct StitchingParams {
     pub keep_fraction: f32,
     pub m_max: usize, // max number of neighbors in hnsw
     pub x: usize,
-    pub stop_after_stitching_n_chunks: Option<usize>,
+    pub only_n_chunks: Option<usize>, // this is only for debugging
     pub distance: Distance,
     pub stitch_mode: StitchMode,
 }
@@ -908,7 +908,7 @@ pub fn build_hnsw_by_vp_tree_stitching(
             &mut rng,
         );
         i += 1;
-        if let Some(n) = params.stop_after_stitching_n_chunks {
+        if let Some(n) = params.only_n_chunks {
             if i >= n {
                 break;
             }
