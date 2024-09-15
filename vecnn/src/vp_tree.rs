@@ -4,16 +4,17 @@ use std::{
     marker::PhantomData,
     sync::{atomic::AtomicUsize, Arc},
     time::{Duration, Instant},
+    usize,
 };
 
-use rand::{Rng, SeedableRng};
+use rand::{seq::SliceRandom, Rng, SeedableRng};
 use rand_chacha::{rand_core::impls, ChaCha12Rng, ChaCha20Rng};
 
 use crate::{
     dataset::DatasetT,
     distance::{Distance, DistanceFn, DistanceTracker},
     hnsw::DistAnd,
-    utils::{KnnHeap, Stats},
+    utils::{extend_lifetime, extend_lifetime_mut, KnnHeap, Stats},
     Float,
 };
 use rayon::{
@@ -84,8 +85,13 @@ impl Default for VpTreeParams {
 }
 
 impl VpTree {
-    pub fn new(data: Arc<dyn DatasetT>, params: VpTreeParams, seed: u64) -> Self {
-        construct_vp_tree(data, params.distance, seed, params.threaded)
+    pub fn new(
+        data: Arc<dyn DatasetT>,
+        params: VpTreeParams,
+        seed: u64,
+        n_candidates: usize,
+    ) -> Self {
+        construct_vp_tree(data, params.distance, seed, params.threaded, n_candidates)
     }
 
     pub fn iter_levels(&self, f: &mut impl FnMut(usize, &Node)) {
@@ -282,6 +288,7 @@ pub fn construct_vp_tree(
     distance: Distance,
     seed: u64,
     parallel: bool,
+    n_candidates: usize,
 ) -> VpTree {
     let mut nodes: Vec<Node> = Vec::with_capacity(data.len());
     for idx in 0..data.len() {
@@ -292,10 +299,40 @@ pub fn construct_vp_tree(
     let mut rng = ChaCha20Rng::seed_from_u64(seed);
     // arrange items in self.tmp into a vp tree
     let data_get = |e: &Node| data.get(e.id);
-    if parallel {
-        arrange_into_vp_tree_parallel(&mut nodes, &data_get, &distance_tracker, &mut rng, 0);
+
+    if n_candidates >= 2 {
+        let strategy = SelectVantagePointWithNCandidates { n: n_candidates };
+        if parallel {
+            arrange_into_vp_tree_parallel(
+                &mut nodes,
+                &data_get,
+                &distance_tracker,
+                &mut rng,
+                0,
+                &strategy,
+            );
+        } else {
+            arrange_into_vp_tree(
+                &mut nodes,
+                &data_get,
+                &distance_tracker,
+                &mut rng,
+                &strategy,
+            );
+        }
     } else {
-        arrange_into_vp_tree(&mut nodes, &data_get, &distance_tracker, &mut rng);
+        if parallel {
+            arrange_into_vp_tree_parallel(
+                &mut nodes,
+                &data_get,
+                &distance_tracker,
+                &mut rng,
+                0,
+                &(),
+            );
+        } else {
+            arrange_into_vp_tree(&mut nodes, &data_get, &distance_tracker, &mut rng, &());
+        }
     }
 
     let build_stats = Stats {
@@ -310,12 +347,13 @@ pub fn construct_vp_tree(
     }
 }
 
-pub trait StoresDistT {
+pub trait DistAndIdT: Send + Sync {
     fn dist(&self) -> f32;
     fn set_dist(&mut self, dist: f32);
+    fn id(&self) -> usize;
 }
 
-impl StoresDistT for Node {
+impl DistAndIdT for Node {
     #[inline(always)]
     fn dist(&self) -> f32 {
         self.dist
@@ -324,17 +362,23 @@ impl StoresDistT for Node {
     fn set_dist(&mut self, dist: f32) {
         self.dist = dist;
     }
+    #[inline(always)]
+    fn id(&self) -> usize {
+        self.id
+    }
 }
 
-pub fn arrange_into_vp_tree_parallel<'a, T, F>(
+pub fn arrange_into_vp_tree_parallel<'a, T, F, S>(
     tmp: &mut [T],
     data_get: &'a F,
     distance: &DistanceTracker,
     rng: &mut rand_chacha::ChaCha20Rng,
     min_chunk_size: usize,
+    strategy: &S,
 ) where
-    T: StoresDistT + Send + Sync,
+    T: DistAndIdT,
     F: Fn(&T) -> &'a [f32] + Send + Sync,
+    S: SelectVantagePointStrategyT,
 {
     // how big a chunk needs to be to be split in two parallel operations or to calculate distances in parallel.
     const PAR_DISTANCE_CALCS_MIN_SIZE: usize = 256;
@@ -362,7 +406,12 @@ pub fn arrange_into_vp_tree_parallel<'a, T, F>(
         _ => {}
     }
     // select a random index and swap it with the first element:
-    tmp.swap(select_random_point(tmp, rng), 0);
+    let vp_idx = strategy.select_vantage_point_idx(tmp, rng, &|a, b| {
+        let a_data = data_get(a);
+        let b_data = data_get(b);
+        distance.distance(a_data, b_data)
+    });
+    tmp.swap(vp_idx, 0);
     let vp_pt = data_get(&tmp[0]);
 
     // calculate distances to each other element:
@@ -403,9 +452,19 @@ pub fn arrange_into_vp_tree_parallel<'a, T, F>(
                     distance,
                     &mut rng_a,
                     min_chunk_size,
+                    strategy,
                 )
             },
-            || arrange_into_vp_tree_parallel(part_b, data_get, distance, rng, min_chunk_size),
+            || {
+                arrange_into_vp_tree_parallel(
+                    part_b,
+                    data_get,
+                    distance,
+                    rng,
+                    min_chunk_size,
+                    strategy,
+                )
+            },
         );
     } else {
         arrange_into_vp_tree_parallel(
@@ -414,6 +473,7 @@ pub fn arrange_into_vp_tree_parallel<'a, T, F>(
             distance,
             rng,
             min_chunk_size,
+            strategy,
         );
         arrange_into_vp_tree_parallel(
             &mut tmp[median_i..],
@@ -421,16 +481,95 @@ pub fn arrange_into_vp_tree_parallel<'a, T, F>(
             distance,
             rng,
             min_chunk_size,
+            strategy,
         );
     }
 }
 
-pub fn arrange_into_vp_tree<'a, T: StoresDistT>(
+pub trait SelectVantagePointStrategyT: Send + Sync {
+    fn select_vantage_point_idx<T: DistAndIdT>(
+        &self,
+        tmp: &[T],
+        rng: &mut ChaCha20Rng,
+        distance: &impl Fn(&T, &T) -> f32,
+    ) -> usize;
+}
+
+impl SelectVantagePointStrategyT for () {
+    #[inline]
+    fn select_vantage_point_idx<T: DistAndIdT>(
+        &self,
+        tmp: &[T],
+        rng: &mut ChaCha20Rng,
+        distance: &impl Fn(&T, &T) -> f32,
+    ) -> usize {
+        rng.gen_range(0..tmp.len())
+    }
+}
+
+struct SelectVantagePointWithNCandidates {
+    n: usize,
+}
+const VANTAGE_POINT_MAX_CANDIDATES: usize = 40;
+impl SelectVantagePointStrategyT for SelectVantagePointWithNCandidates {
+    // note: This strategy selections the point with the highest mean distance to other candidates.
+    // Selecting for highest median as sometimes intended for VP-trees could have different results.
+    // But: mean is cheaper than median, so I go with it here.
+    fn select_vantage_point_idx<'a, T: DistAndIdT>(
+        &self,
+        tmp: &[T],
+        rng: &mut ChaCha20Rng,
+        distance: &impl Fn(&T, &T) -> f32,
+    ) -> usize {
+        // just return random idx if the slice is small, not worth the effort otherwise:
+        if tmp.len() < self.n * 2 {
+            return rng.gen_range(0..tmp.len());
+        }
+
+        struct Candidate {
+            idx: usize,
+            dist_sum: f32,
+        }
+        // add random candidates (n distinct points) to a list:
+        let mut candidates: heapless::Vec<Candidate, VANTAGE_POINT_MAX_CANDIDATES> =
+            Default::default();
+        assert!(self.n <= VANTAGE_POINT_MAX_CANDIDATES);
+        for idx in rand::seq::index::sample(rng, tmp.len(), self.n).into_iter() {
+            _ = candidates.push(Candidate { idx, dist_sum: 0.0 });
+        }
+        // for every candidate calculate the distance to every other candidate
+        for i in 0..self.n - 1 {
+            for j in i + 1..self.n {
+                let i_cand_idx = candidates[i].idx;
+                let j_cand_idx = candidates[j].idx;
+                let dist = distance(&tmp[i_cand_idx], &tmp[j_cand_idx]);
+                candidates[i].dist_sum += dist;
+                candidates[j].dist_sum += dist;
+            }
+        }
+        // select the one with the highest mean distance to all other candidates:
+        let mut max_dist = f32::MIN;
+        let mut max_dist_idx = 0;
+        for c in candidates {
+            if c.dist_sum > max_dist {
+                max_dist = c.dist_sum;
+                max_dist_idx = c.idx;
+            }
+        }
+        return max_dist_idx;
+    }
+}
+
+pub fn arrange_into_vp_tree<'a, T, S>(
     tmp: &mut [T],
     data_get: &'a impl Fn(&T) -> &'a [f32],
     distance: &DistanceTracker,
     rng: &mut rand_chacha::ChaCha20Rng,
-) {
+    strategy: &S,
+) where
+    T: DistAndIdT,
+    S: SelectVantagePointStrategyT,
+{
     // early return if there are only 0,1 or 2 elements left
     match tmp.len() {
         0 => return,
@@ -447,8 +586,13 @@ pub fn arrange_into_vp_tree<'a, T: StoresDistT>(
         }
         _ => {}
     }
-    // select a random index and swap it with the first element:
-    tmp.swap(select_random_point(tmp, rng), 0);
+    // select the vantage points index and swap it with the first element:
+    let vp_idx = strategy.select_vantage_point_idx(tmp, rng, &|a, b| {
+        let a_data = data_get(a);
+        let b_data = data_get(b);
+        distance.distance(a_data, b_data)
+    });
+    tmp.swap(vp_idx, 0);
     let vp_pt = data_get(&tmp[0]);
     // calculate distances to each other element:
     for i in 1..tmp.len() {
@@ -462,12 +606,17 @@ pub fn arrange_into_vp_tree<'a, T: StoresDistT>(
     // set the median distance on the root node, then build left and right sub-trees
     let median_dist = tmp[median_i].dist();
     tmp[0].set_dist(median_dist);
-    arrange_into_vp_tree(&mut tmp[1..median_i], data_get, distance, rng);
-    arrange_into_vp_tree(&mut tmp[median_i..], data_get, distance, rng);
+    arrange_into_vp_tree(&mut tmp[1..median_i], data_get, distance, rng, strategy);
+    arrange_into_vp_tree(&mut tmp[median_i..], data_get, distance, rng, strategy);
 }
 
 #[inline]
-fn select_random_point<T>(tmp: &[T], rng: &mut rand_chacha::ChaCha20Rng) -> usize {
+fn select_heuristic_vantage_point_idx<'a, T: DistAndIdT>(
+    tmp: &[T],
+    rng: &mut rand_chacha::ChaCha20Rng,
+    data_get: &'a impl Fn(&T) -> &'a [f32],
+    n_candidates: usize,
+) -> usize {
     // right now this is very simple, todo! make configurable later, use data to find good points
     rng.gen_range(0..tmp.len())
 }
@@ -476,13 +625,13 @@ fn select_random_point<T>(tmp: &[T], rng: &mut rand_chacha::ChaCha20Rng) -> usiz
 /// Returns an index into the second partition.
 ///
 /// Second partition's size is always >= first partition.
-fn quick_select_median_dist<T: StoresDistT>(tmp: &mut [T]) -> usize {
+fn quick_select_median_dist<T: DistAndIdT>(tmp: &mut [T]) -> usize {
     let rank = first_element_idx_of_second_part(tmp.len());
     _quick_select(tmp, rank);
     return rank;
 
     /// Note: idx rank will be part of second partition.
-    fn _quick_select<T: StoresDistT>(tmp: &mut [T], rank: usize) {
+    fn _quick_select<T: DistAndIdT>(tmp: &mut [T], rank: usize) {
         if tmp.len() <= 1 {
             return;
         }
@@ -498,7 +647,7 @@ fn quick_select_median_dist<T: StoresDistT>(tmp: &mut [T]) -> usize {
     }
 
     /// the i returned here is the last index of the first partition
-    fn _partition<T: StoresDistT>(tmp: &mut [T]) -> usize {
+    fn _partition<T: DistAndIdT>(tmp: &mut [T]) -> usize {
         let pivot_i = 0;
         let pivot_dist = tmp[pivot_i].dist();
         let mut i: i32 = -1;
@@ -625,7 +774,7 @@ pub mod tests {
             for _ in 0..20 {
                 let query_idx = thread_rng().gen_range(0..data.len());
                 let query = data.get(query_idx);
-                let vp_tree = VpTree::new(data.clone(), VpTreeParams::default(), 42);
+                let vp_tree = VpTree::new(data.clone(), VpTreeParams::default(), 42, 0);
                 let nn = vp_tree.knn_search(query, 1).0[0];
                 assert_eq!(nn.1, query_idx);
                 assert_eq!(nn.dist(), 0.0);
@@ -662,7 +811,7 @@ pub mod tests {
 
         for i in 0..10 {
             let q = data.get(i);
-            let tree = VpTree::new(data.clone(), VpTreeParams::default(), 42);
+            let tree = VpTree::new(data.clone(), VpTreeParams::default(), 42, 0);
             dbg!(i);
             println!("{:?}", &tree.nodes);
             let tree_l = left(&tree.nodes);

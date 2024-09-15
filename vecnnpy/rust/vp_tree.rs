@@ -22,6 +22,7 @@ impl VpTree {
             data.as_dyn_dataset(),
             VpTreeParams { distance, threaded },
             seed,
+            0,
         );
         Ok(Self(tree))
     }

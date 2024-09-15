@@ -64,7 +64,7 @@ impl SliceHnsw {
                 &*self.data,
                 &distance,
                 &mut buffers,
-                layer,
+                &layer.entries,
                 q_data,
                 1,
                 &[ep_idx],
@@ -85,7 +85,7 @@ impl SliceHnsw {
             &*self.data,
             &distance,
             &mut buffers,
-            layer_0,
+            &layer_0.entries,
             q_data,
             ef,
             &[ep_idx],
@@ -300,7 +300,7 @@ fn s1_insert_element(ctx: &mut InsertCtx<'_>, id: usize, insert_level: usize) {
             ctx.data,
             &ctx.distance,
             search_buffers,
-            layer,
+            &layer.entries,
             q_data,
             1,
             &[ep_idx],
@@ -334,7 +334,7 @@ fn s1_insert_element(ctx: &mut InsertCtx<'_>, id: usize, insert_level: usize) {
             ctx.data,
             &ctx.distance,
             search_buffers,
-            layer,
+            &layer.entries,
             q_data,
             ctx.params.ef_construction,
             &entry_points,
@@ -487,7 +487,7 @@ fn s2_insert_element(
             ctx.data,
             &ctx.distance,
             search_buffers,
-            layer,
+            &layer.entries,
             q_data,
             1,
             &[ep_idx],
@@ -509,7 +509,7 @@ fn s2_insert_element(
             ctx.data,
             &ctx.distance,
             search_buffers,
-            layer,
+            &layer.entries,
             q_data,
             ctx.params.ef_construction,
             &entry_points,
@@ -624,18 +624,18 @@ fn select_neighbors_heuristic(
 }
 
 /// puts the ef closest elements to q_data into `buffers.found`. (or less than ef if less found).
-fn search_layer(
+pub fn search_layer(
     data: &dyn DatasetT,
     distance: &DistanceTracker,
     buffers: &mut SearchBuffers,
-    layer: &Layer,
+    layer_entries: &[LayerEntry],
     q_data: &[f32],
     ef: usize,
     ep: &[usize],
 ) {
     buffers.clear();
     for &ep_idx in ep {
-        let ep_id = layer.entries[ep_idx].id;
+        let ep_id = layer_entries[ep_idx].id;
         let ep_data = data.get(ep_id);
         let ep_dist = distance.distance(ep_data, q_data);
         buffers.visited.insert(ep_idx);
@@ -649,11 +649,11 @@ fn search_layer(
         if c_dist > worst_dist_found {
             break;
         };
-        for nei in layer.entries[c_idx].neighbors.iter() {
+        for nei in layer_entries[c_idx].neighbors.iter() {
             let nei_idx = nei.1;
             if buffers.visited.insert(nei_idx) {
                 // only jumps here if was not visited before (newly inserted -> true)
-                let nei_id = layer.entries[nei_idx].id;
+                let nei_id = layer_entries[nei_idx].id;
                 let nei_data = data.get(nei_id);
                 let nei_dist_to_q = distance.distance(nei_data, q_data);
 
@@ -679,17 +679,17 @@ fn search_layer(
 }
 
 /// pefrorms a greedy search from a single entry point and returns the idx in layer that is closest to q
-fn search_layer_ef_1(
+pub fn search_layer_ef_1(
     data: &dyn DatasetT,
     distance: &DistanceTracker,
     visited: &mut HashSet<usize>,
-    layer: &Layer,
+    layer_entries: &[LayerEntry],
     q_data: &[f32],
     ep_idx: usize,
-) -> usize {
+) -> DistAnd<usize> {
     visited.clear();
 
-    let mut best_entry = &layer.entries[ep_idx];
+    let mut best_entry = &layer_entries[ep_idx];
     let ep_id = best_entry.id;
     let ep_data = data.get(ep_id);
     let ep_dist = distance.distance(ep_data, q_data);
@@ -700,7 +700,7 @@ fn search_layer_ef_1(
         let mut updated_best = false;
         for &DistAnd(_, nei_idx) in best_entry.neighbors.iter() {
             if visited.insert(nei_idx) {
-                let nei_entry = &layer.entries[nei_idx];
+                let nei_entry = &layer_entries[nei_idx];
                 let nei_data = data.get(nei_entry.id);
                 let nei_dist_to_q = distance.distance(nei_data, q_data);
                 if nei_dist_to_q < best.dist() {
@@ -711,7 +711,7 @@ fn search_layer_ef_1(
             }
         }
         if !updated_best {
-            return best.1;
+            return best;
         }
     }
 }
@@ -731,10 +731,10 @@ struct InsertCtx<'a> {
 
 /// Note: all fields refer to indices in layer, not data ids!
 #[derive(Debug, Clone)]
-struct SearchBuffers {
-    visited: HashSet<usize>,
-    frontier: BinaryHeap<Reverse<DistAnd<usize>>>, // root is min dist element.
-    found: BinaryHeap<DistAnd<usize>>,             // root is max dist element.
+pub struct SearchBuffers {
+    pub visited: HashSet<usize>,
+    pub frontier: BinaryHeap<Reverse<DistAnd<usize>>>, // root is min dist element.
+    pub found: BinaryHeap<DistAnd<usize>>,             // root is max dist element.
 }
 
 impl SearchBuffers {

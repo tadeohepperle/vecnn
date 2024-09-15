@@ -54,6 +54,7 @@ pub mod tracking {
 
     #[derive(Debug, Clone, Default)]
     pub struct TrackingData {
+        pub current_chunk: usize,
         pub events: Vec<Event>,
         pub pt_metadata: HashMap<usize, PtMeta>,
         pub edge_metadata: HashMap<(usize, usize), EdgeMeta>,

@@ -28,14 +28,14 @@ use crate::{
     },
     if_tracking,
     relative_nn_descent::{RNNConstructionBuffers, RNNGraphParams},
-    slice_hnsw::{self, SliceHnsw, MAX_LAYERS},
+    slice_hnsw::{self, search_layer, search_layer_ef_1, SearchBuffers, SliceHnsw, MAX_LAYERS},
     utils::{
         extend_lifetime, extend_lifetime_mut, sanititze_num_threads, slice_binary_heap_arena,
         BinaryHeapExt, SliceBinaryHeap, SlicesMemory, Stats, YoloCell,
     },
     vp_tree::{
         self, arrange_into_vp_tree, arrange_into_vp_tree_parallel, left, left_with_root, right,
-        Node, StoresDistT, VpTree,
+        DistAndIdT, Node, VpTree,
     },
 };
 
@@ -100,7 +100,7 @@ pub fn build_single_layer_hnsw_by_vp_tree_ensemble(
     let data_get = |e: &vp_tree::Node| data.get(e.id);
     for vp_tree_iteration in 0..params.n_vp_trees {
         // build the vp_tree, chunk it and brute force search the best neighbors per chunk, put them in vp_tree_neighbors list
-        arrange_into_vp_tree(&mut vp_tree, &data_get, &mut distance, &mut rng);
+        arrange_into_vp_tree(&mut vp_tree, &data_get, &mut distance, &mut rng, &());
         for (chunk_i, chunk) in chunks.iter().enumerate() {
             let chunk_size = chunk.range.len();
             let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
@@ -191,14 +191,17 @@ pub fn build_hnsw_by_vp_tree_ensemble_multi_layer(
     let distance = DistanceTracker::new(params.distance);
     // do the ensemble approach for each layer:
     for (level, layer) in layers.iter_mut().enumerate() {
-        if layer.entries.len() <= params.max_chunk_size * 2 {
+        if layer.entries.len() <= params.max_chunk_size * 2 && false {
             // brute force connect neighbors!
             fill_hnsw_layer_range_by_brute_force(&*data, &distance, layer);
         } else {
             if !threaded {
-                fill_hnsw_layer_by_vp_tree_ensemble(&*data, &distance, layer, &params, &mut rng);
+                fill_hnsw_layer_by_vp_tree_ensemble(&*data, &distance, layer, &params, seed);
             } else {
-                fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk(
+                // fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk(
+                //     &*data, &distance, layer, &mut rng, params,
+                // );
+                fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk_with_core_affinity(
                     &*data, &distance, layer, &mut rng, params,
                 );
             }
@@ -251,13 +254,14 @@ fn fill_hnsw_layer_range_by_brute_force(
     }
 }
 
+#[derive(Debug, Clone)]
 struct VpTreeNode {
     id: u32, // u32 for better align
     idx_in_hnsw_layer: u32,
     dist: f32,
 }
 
-impl StoresDistT for VpTreeNode {
+impl DistAndIdT for VpTreeNode {
     #[inline(always)]
     fn dist(&self) -> f32 {
         self.dist
@@ -266,6 +270,9 @@ impl StoresDistT for VpTreeNode {
     fn set_dist(&mut self, dist: f32) {
         self.dist = dist
     }
+    fn id(&self) -> usize {
+        self.id as usize
+    }
 }
 
 fn fill_hnsw_layer_by_vp_tree_ensemble(
@@ -273,7 +280,7 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
     distance: &DistanceTracker,
     layer: &mut super::slice_hnsw::Layer,
     params: &EnsembleParams,
-    rng: &mut ChaCha20Rng,
+    seed: u64,
 ) {
     let n_entries = layer.entries.len();
     let mut vp_tree: Vec<VpTreeNode> = Vec::with_capacity(n_entries);
@@ -307,11 +314,23 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
 
     // Note: The vp_tree_neighbors are aligned with the nodes in the vp_tree (vp_tree[i] has neighbors stored in vp_tree_neighbors[i]),
     // but the indices stored in the neighbors lists, refer to indices of the hnsw layer!
-    for _ in 0..params.n_vp_trees {
-        arrange_into_vp_tree(&mut vp_tree, &data_get, distance, rng);
-
+    for vp_tree_idx in 0..params.n_vp_trees {
         let before = Instant::now();
-        for chunk in chunks.iter() {
+        let vp_tree_seed = seed + vp_tree_idx as u64;
+
+        #[cfg(feature = "tracking")]
+        let mut vp_tree = vp_tree.clone(); // if tracking mode is enabled (e.g. for visualizations, clone the tree, such that all iterations use the same starting tree )
+        arrange_into_vp_tree(
+            &mut vp_tree,
+            &data_get,
+            distance,
+            &mut ChaCha20Rng::seed_from_u64(vp_tree_seed),
+            &(),
+        );
+
+        let between = before.elapsed();
+        for (chunk_idx, chunk) in chunks.iter().enumerate() {
+            if_tracking!(Tracking.current_chunk = chunk_idx);
             let chunk_nodes = &vp_tree[chunk.range.clone()];
             match params.strategy {
                 EnsembleStrategy::BruteForceKNN => {
@@ -350,8 +369,10 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
             }
         }
         println!(
-            "Non-Threaded: Chunks loop took: {}ms",
-            before.elapsed().as_secs_f32() * 1000.0
+            "Non-Threaded Chunks ({}) loop took: {}ms + {}ms",
+            chunks.len(),
+            between.as_secs_f32() * 1000.0,
+            (before.elapsed() - between).as_secs_f32() * 1000.0
         );
     }
     *layer = layer_cell.into_inner();
@@ -392,7 +413,7 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_vp_tree(
                 dist: 0.0,
             });
         }
-        arrange_into_vp_tree(&mut vp_tree, &data_get, distance, &mut rng);
+        arrange_into_vp_tree(&mut vp_tree, &data_get, distance, &mut rng, &());
         let mut tls = EnsembleBruteForceBuffers::new(max_chunk_size, same_chunk_m_max);
         for chunk in chunks.iter() {
             let chunk_size = chunk.range.len();
@@ -468,7 +489,7 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk(
     let chunks = make_chunks(n_entries, max_chunk_size);
     let data_get = |e: &VpTreeNode| data.get(e.id as usize);
 
-    let num_threads: usize = sanititze_num_threads(0);
+    let num_threads: usize = sanititze_num_threads(8);
     const MIN_CHUNK_CHUNK_SIZE: usize = 4; // to not have chunks that are too small
     let chunk_chunk_size = MIN_CHUNK_CHUNK_SIZE.max(chunks.len() / num_threads);
     let chunk_chunks: Vec<&[Chunk]> = chunks.chunks(chunk_chunk_size).collect();
@@ -480,7 +501,14 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk(
 
     for _tree_idx in 0..params.n_vp_trees {
         let before = Instant::now();
-        arrange_into_vp_tree_parallel(&mut vp_tree, &data_get, distance, rng, max_chunk_size / 2);
+        arrange_into_vp_tree_parallel(
+            &mut vp_tree,
+            &data_get,
+            distance,
+            rng,
+            max_chunk_size / 2,
+            &(),
+        );
 
         let between = before.elapsed();
 
@@ -537,6 +565,134 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk(
                 chunk_chunk.len(),
                 start.elapsed().as_secs_f32() * 1000.0
             );
+        });
+
+        println!(
+            "Chunks ({}) loop took: {}ms + {}ms",
+            chunks.len(),
+            between.as_secs_f32() * 1000.0,
+            (before.elapsed() - between).as_secs_f32() * 1000.0
+        );
+    }
+
+    // put the layer back where it was before (move out of the UnsafeCell we used above)
+    *layer = layer_cell.into_inner();
+}
+
+fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk_with_core_affinity(
+    data: &dyn DatasetT,
+    distance: &DistanceTracker,
+    layer: &mut super::slice_hnsw::Layer,
+    rng: &mut ChaCha20Rng,
+    params: EnsembleParams,
+) {
+    let n_entries = layer.entries.len();
+    let mut vp_tree: Vec<VpTreeNode> = Vec::with_capacity(data.len());
+    for (i, entry) in layer.entries.iter().enumerate() {
+        vp_tree.push(VpTreeNode {
+            id: entry.id as u32,
+            idx_in_hnsw_layer: i as u32,
+            dist: 0.0,
+        });
+    }
+    let max_chunk_size = params.max_chunk_size;
+    let same_chunk_m_max = params.same_chunk_m_max;
+    let chunks = make_chunks(n_entries, max_chunk_size);
+    let data_get = |e: &VpTreeNode| data.get(e.id as usize);
+
+    let num_threads: usize = sanititze_num_threads(0);
+    const MIN_CHUNK_CHUNK_SIZE: usize = 4; // to not have chunks that are too small
+    let chunk_chunk_size = MIN_CHUNK_CHUNK_SIZE.max(chunks.len() / num_threads);
+    let chunk_chunks: Vec<&[Chunk]> = chunks.chunks(chunk_chunk_size).collect();
+
+    // Now we officially get the permission to mutate the layer from multiple threads (MUST wrap in UnsafeCell if mutable accesses to this shared reference can happen):
+    let layer_cell = YoloCell::new(std::mem::replace(layer, super::slice_hnsw::Layer::new(1)));
+    let unsafe_get_mut_neighbors_in_hnsw_at_idx =
+        |idx_in_hnsw: usize| unsafe { &mut layer_cell.get_mut().entries[idx_in_hnsw].neighbors };
+
+    for _tree_idx in 0..params.n_vp_trees {
+        let before = Instant::now();
+        arrange_into_vp_tree_parallel(
+            &mut vp_tree,
+            &data_get,
+            distance,
+            rng,
+            max_chunk_size / 2,
+            &(),
+        );
+
+        let between = before.elapsed();
+
+        let core_ids = core_affinity::get_core_ids().unwrap();
+        assert!(num_threads <= core_ids.len());
+
+        std::thread::scope(|s| {
+            let mut t_handles: Vec<std::thread::ScopedJoinHandle<'_, ()>> = vec![];
+            for t_idx in 0..num_threads {
+                let chunk_chunk = chunk_chunks[t_idx];
+                let core_id = &core_ids[t_idx];
+                let handle = s.spawn(|| {
+                    let affinity_is_set = core_affinity::set_for_current(*core_id);
+                    assert!(affinity_is_set);
+
+                    let start = Instant::now();
+                    for chunk in chunk_chunk.iter() {
+                        // Attention: This needs to be ABSOLUTELY sure, that all threads operate on distinct regions of
+                        // the HNSW. We cannot risk accessing the same neighbor lists at the same time, all hell would break loose.
+                        // But because all the chunks are non-overlapping and we parallelize only across chunks, all
+                        // references HNSW elements should be unique and no race conditions should occur reading or editing them.
+                        let chunk_nodes = &vp_tree[chunk.range.clone()];
+                        let chunk_size = chunk.range.len();
+                        assert!(chunk_size >= max_chunk_size / 2);
+                        assert!(chunk_size <= max_chunk_size);
+
+                        match params.strategy {
+                            EnsembleStrategy::BruteForceKNN => {
+                                connect_vp_tree_chunk_and_update_neighbors_in_hnsw_brute_force(
+                                    chunk_nodes,
+                                    data,
+                                    distance,
+                                    ensemble_brute_force_buffers_tls(),
+                                    &unsafe_get_mut_neighbors_in_hnsw_at_idx,
+                                    same_chunk_m_max,
+                                );
+                            }
+                            EnsembleStrategy::RNNDescent {
+                                i_loops: inner_loops,
+                                o_loops: outer_loops,
+                            } => {
+                                connect_vp_tree_chunk_and_update_neighbors_in_hnsw_rnn_descent(
+                                    chunk_nodes,
+                                    data,
+                                    distance,
+                                    ensemble_rnn_descent_tls(),
+                                    &unsafe_get_mut_neighbors_in_hnsw_at_idx,
+                                    same_chunk_m_max,
+                                    inner_loops,
+                                    outer_loops,
+                                );
+                            }
+                            EnsembleStrategy::BruteForceExactRNG => {
+                                connect_vp_tree_chunk_and_update_neighbors_in_hnsw_exact_rng(
+                                    chunk_nodes,
+                                    data,
+                                    distance,
+                                    &unsafe_get_mut_neighbors_in_hnsw_at_idx,
+                                );
+                            }
+                        }
+                    }
+                    println!(
+                        "    Thread finished work for {} chunks in {}ms",
+                        chunk_chunk.len(),
+                        start.elapsed().as_secs_f32() * 1000.0
+                    );
+                });
+                t_handles.push(handle);
+            }
+            for handle in t_handles {
+                handle.join();
+            }
         });
 
         println!(
@@ -740,7 +896,7 @@ fn ensemble_brute_force_buffers_tls() -> &'static mut EnsembleBruteForceBuffers 
 
 fn heavy_work_dummy_task() {
     let mut x: i64 = 0;
-    for i in 0..1000000i64 {
+    for i in 0..10000000i64 {
         for j in 0..100i64 {
             x += j + i % 113;
         }
@@ -761,12 +917,15 @@ fn connect_vp_tree_chunk_and_update_neighbors_in_hnsw_brute_force<'task, 'total>
     >,
     same_chunk_m_max: usize,
 ) {
+    // heavy_work_dummy_task();
+    // return;
     let chunk_size = chunk_nodes.len();
     buffers.init(chunk_size, same_chunk_m_max);
     let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
 
     // calculate distances between all the nodes in this chunk. (clearing chunk_dst_mat not necessary, because everything relevant should be overwritten).
     for i in 0..chunk_size {
+        if_tracking!(Tracking.pt_meta(chunk_nodes[i].id as usize).chunk = Tracking.current_chunk);
         for j in i + 1..chunk_size {
             let i_data = data.get(chunk_nodes[i].id as usize);
             let j_data = data.get(chunk_nodes[j].id as usize);
@@ -834,7 +993,7 @@ pub fn build_hnsw_by_vp_tree_stitching(
     }
 
     let data_get = |e: &vp_tree::Node| data.get(e.id);
-    arrange_into_vp_tree(&mut vp_tree, &data_get, &mut distance, &mut rng);
+    arrange_into_vp_tree(&mut vp_tree, &data_get, &mut distance, &mut rng, &());
 
     // create an hnsw layer with same order as vp-tree but no neighbors:
     let mut layer = slice_hnsw::Layer::new(params.m_max);
@@ -958,29 +1117,29 @@ fn stitch_chunks(
         },
     };
 
-    let stitch_candidates =
-        generate_stitch_candidates(data, distance, pos_chunk, neg_chunk, entries, params, rng);
+    let stitching_candidates =
+        generate_stitching_candidates(data, distance, pos_chunk, neg_chunk, entries, params, rng);
 
-    for c in stitch_candidates.iter() {
+    for c in stitching_candidates.iter() {
         let pos_entry = &mut entries[c.pos_cand_idx];
-        let pos_to_neg_inserted = pos_entry
+        let _pos_to_neg_inserted = pos_entry
             .neighbors
-            .insert_if_better(DistAnd(c.dist, c.neg_cand_idx)); // todo! no simple push!!! check len of neighbors and if better
+            .insert_if_better(DistAnd(c.dist, c.neg_cand_idx));
 
         let neg_entry = &mut entries[c.neg_cand_idx];
-        let neg_to_pos_inserted = neg_entry
+        let _neg_to_pos_inserted = neg_entry
             .neighbors
             .insert_if_better(DistAnd(c.dist, c.pos_cand_idx));
 
         if_tracking!(
             let pos_cand_id = entries[c.pos_cand_idx].id;
             let neg_cand_id = entries[c.neg_cand_idx].id;
-            if pos_to_neg_inserted {
+            if _pos_to_neg_inserted {
                 Tracking
                     .edge_meta(pos_cand_id, neg_cand_id)
                     .is_pos_to_neg = true;
             }
-            if neg_to_pos_inserted {
+            if _neg_to_pos_inserted {
                 Tracking
                     .edge_meta(neg_cand_id, pos_cand_id)
                     .is_neg_to_pos = true;
@@ -1049,6 +1208,10 @@ pub enum StitchMode {
     ///
     /// Afterwards, search from the X pos candidates in pos half towards the X found neg candidates.
     DontStarveXXSearch,
+    /// search exactly like in RandomNegToRandomPosAndBack but search with higher ef to find multiple points near the seam.
+    /// idea: could also tie ef loosely to chunk size???
+    /// ef == x
+    MultiEf,
 }
 
 impl StitchMode {
@@ -1059,11 +1222,12 @@ impl StitchMode {
             StitchMode::RandomSubsetOfSubset => "RandomSubsetOfSubset",
             StitchMode::BestXofRandomXTimesX => "BestXofRandomXTimesX",
             StitchMode::DontStarveXXSearch => "DontStarveXXSearch",
+            StitchMode::MultiEf => "MultiEf",
         }
     }
 }
 
-fn generate_stitch_candidates(
+fn generate_stitching_candidates(
     data: &dyn DatasetT,
     distance: &DistanceTracker,
     pos_chunk: &Chunk,
@@ -1073,6 +1237,10 @@ fn generate_stitch_candidates(
     rng: &mut ChaCha20Rng,
 ) -> HashSet<StitchCandidate> {
     let mut result: HashSet<StitchCandidate> = HashSet::new();
+
+    // reusable buffer
+    let mut visited = &mut HashSet::<usize>::new();
+
     match params.stitch_mode {
         StitchMode::RandomNegToPosCenterAndBack => {
             let pos_center_idx = pos_chunk.range.start + pos_chunk.pos_center_idx_offset;
@@ -1095,13 +1263,13 @@ fn generate_stitch_candidates(
                     let random_id = entries[random_idx].id;
                     Tracking.pt_meta(random_id).is_neg_random = true;
                 );
-                let (neg_cand_idx, _) = greedy_search_in_range(
+                let DistAnd(_, neg_cand_idx) = search_layer_ef_1(
                     data,
                     distance,
+                    visited,
                     entries,
-                    neg_chunk.range.clone(),
-                    random_idx,
                     pos_center_data,
+                    random_idx,
                 );
 
                 if neg_candidates.insert(neg_cand_idx) {
@@ -1110,13 +1278,13 @@ fn generate_stitch_candidates(
                         Tracking.pt_meta(neg_cand_id).is_neg_cand = true;
                     );
                     let neg_cand_data = data.get(neg_cand_id);
-                    let (pos_cand_idx, dist) = greedy_search_in_range(
+                    let DistAnd(dist, pos_cand_idx) = search_layer_ef_1(
                         data,
                         distance,
+                        visited,
                         entries,
-                        pos_chunk.range.clone(),
-                        pos_center_idx,
                         neg_cand_data,
+                        pos_center_idx,
                     );
                     result.insert(StitchCandidate {
                         neg_cand_idx,
@@ -1140,24 +1308,44 @@ fn generate_stitch_candidates(
                 let pos_random_idx = pos_random_indices[i];
                 let pos_random_id = entries[pos_random_idx].id;
                 let pos_random_data = data.get(pos_random_id);
-                let (neg_cand_idx, _) = greedy_search_in_range(
+                // let (neg_cand_idx, _) = greedy_search_in_range(
+                //     data,
+                //     distance,
+                //     entries,
+                //     neg_chunk.range.clone(),
+                //     neg_random_idx,
+                //     pos_random_data,
+                // );
+
+                let DistAnd(_, neg_cand_idx) = search_layer_ef_1(
                     data,
                     distance,
+                    visited,
                     entries,
-                    neg_chunk.range.clone(),
-                    neg_random_idx,
                     pos_random_data,
+                    neg_random_idx,
                 );
+
                 let neg_cand_id = entries[neg_cand_idx].id;
                 let neg_cand_data = data.get(neg_cand_id);
-                let (pos_cand_idx, dist) = greedy_search_in_range(
+                // let (pos_cand_idx, dist) = greedy_search_in_range(
+                //     data,
+                //     distance,
+                //     entries,
+                //     pos_chunk.range.clone(),
+                //     pos_random_idx,
+                //     neg_cand_data,
+                // );
+
+                let DistAnd(dist, pos_cand_idx) = search_layer_ef_1(
                     data,
                     distance,
+                    visited,
                     entries,
-                    pos_chunk.range.clone(),
-                    pos_random_idx,
                     neg_cand_data,
+                    pos_random_idx,
                 );
+
                 result.insert(StitchCandidate {
                     neg_cand_idx,
                     pos_cand_idx,
@@ -1255,18 +1443,17 @@ fn generate_stitch_candidates(
             neg_random_indices.truncate(outer_loops * x);
             pos_random_indices.truncate(outer_loops * x);
 
-            let mut neg_search_results: Vec<usize> = vec![];
+            let mut x_searches: BinaryHeap<StitchCandidate> = Default::default();
 
             for i in 0..outer_loops {
-                neg_search_results.clear();
-                // perform the XX search, it is like football players running towards each other, but they can starve or duplicate.
+                x_searches.clear();
+                // perform the XX search, it is like football players running towards each other, but they can starve or duplicate. What??!
 
                 let range = i * x..(i + 1) * x;
                 let neg_indices = &neg_random_indices[range.clone()];
                 let pos_indices = &pos_random_indices[range];
 
-                // X^2 distance calculations (random in neg, random in pos), then X searches from neg to pos.
-                let mut x_searches: BinaryHeap<StitchCandidate> = Default::default();
+                // X^2 distance calculations (random in neg, random in pos), to determine which X point pairs are closest and should have searches between them:
                 for &neg_cand_idx in neg_indices.iter() {
                     let neg_id = entries[neg_cand_idx].id;
                     let neg_data = data.get(neg_id);
@@ -1285,100 +1472,116 @@ fn generate_stitch_candidates(
                     }
                 }
                 assert_eq!(x_searches.len(), x);
+                // peform the x different searches and attempt to connect the neighbors:
                 for x_search in x_searches.iter() {
-                    let pos_id = entries[x_search.pos_cand_idx].id;
+                    let neg_start_idx = x_search.neg_cand_idx;
+                    let pos_start_idx = x_search.pos_cand_idx;
+
+                    let pos_id = entries[pos_start_idx].id;
                     let pos_data = data.get(pos_id);
-                    let (neg_search_res_idx, dist) = greedy_search_in_range(
+                    let DistAnd(_, neg_cand_idx) = search_layer_ef_1(
                         data,
                         distance,
+                        visited,
                         entries,
-                        neg_chunk.range.clone(),
-                        x_search.neg_cand_idx,
                         pos_data,
+                        neg_start_idx,
                     );
-                    neg_search_results.push(neg_search_res_idx)
-                }
 
-                // X^2 distance calculations (found in neg, random in pos), then X searches from pos to neg.
-                x_searches.clear();
-                for &neg_search_res_idx in neg_search_results.iter() {
-                    let neg_id = entries[neg_search_res_idx].id;
+                    let neg_id = entries[neg_cand_idx].id;
                     let neg_data = data.get(neg_id);
-                    for &pos_cand_idx in pos_indices.iter() {
-                        let pos_id = entries[pos_cand_idx].id;
-                        let pos_data = data.get(pos_id);
-                        let dist = distance.distance(neg_data, pos_data);
-                        x_searches.insert_if_better(
-                            StitchCandidate {
-                                pos_cand_idx,
-                                neg_cand_idx: neg_search_res_idx,
-                                dist,
-                            },
-                            x,
-                        );
-                    }
-                }
-                assert_eq!(x_searches.len(), x);
-                for x_search in x_searches.iter() {
-                    let neg_id = entries[x_search.neg_cand_idx].id;
-                    let neg_data = data.get(neg_id);
-                    let (pos_search_res_idx, dist) = greedy_search_in_range(
+
+                    let DistAnd(dist, pos_cand_idx) = search_layer_ef_1(
                         data,
                         distance,
+                        visited,
                         entries,
-                        pos_chunk.range.clone(),
-                        x_search.pos_cand_idx,
                         neg_data,
+                        pos_start_idx,
                     );
-
                     result.insert(StitchCandidate {
-                        pos_cand_idx: pos_search_res_idx,
-                        neg_cand_idx: x_search.neg_cand_idx,
+                        pos_cand_idx,
+                        neg_cand_idx,
                         dist,
                     });
                 }
             }
         }
+        StitchMode::MultiEf => {
+            let mut neg_random_indices =
+                random_idx_sample(neg_chunk.range.clone(), params.neg_fraction, rng);
+            let mut pos_random_indices =
+                random_idx_sample(pos_chunk.range.clone(), params.neg_fraction, rng);
+            let len = neg_random_indices.len().min(pos_random_indices.len());
+            neg_random_indices.truncate(len);
+            pos_random_indices.truncate(len);
+
+            let ef = params.x;
+
+            let buffers = &mut SearchBuffers::new();
+            let mut neg_cand_indices: Vec<usize> = vec![];
+
+            for i in 0..len {
+                let pos_start_idx = pos_random_indices[i];
+                let pos_start_id = entries[pos_start_idx].id;
+                let pos_start_data = data.get(pos_start_id);
+
+                let neg_start_idx = neg_random_indices[i];
+
+                // search from neg to pos: (stores result in buffers.found)
+                search_layer(
+                    data,
+                    distance,
+                    buffers,
+                    entries,
+                    pos_start_data,
+                    ef,
+                    &[neg_start_idx],
+                );
+                // save the ef found points in negative half:
+                neg_cand_indices.clear();
+                for DistAnd(_, idx) in buffers.found.as_slice() {
+                    neg_cand_indices.push(*idx);
+                }
+                // pick the best one as search target and search to it in positive half:
+                let target_neg_cand_idx =
+                    *neg_cand_indices.iter().min().expect("min 1 element found");
+                let neg_cand_id = entries[target_neg_cand_idx].id;
+                let neg_cand_data = data.get(neg_cand_id);
+                search_layer(
+                    data,
+                    distance,
+                    buffers,
+                    entries,
+                    neg_cand_data,
+                    ef,
+                    &[pos_start_idx],
+                );
+
+                // insert all ef^2 candidates
+                for &DistAnd(dist, pos_cand_idx) in buffers.found.iter() {
+                    for &neg_cand_idx in neg_cand_indices.iter() {
+                        // calculate distance between the point pair
+                        let dist = if neg_cand_idx == target_neg_cand_idx {
+                            dist // already calculated if this was the neg candidate searched towards
+                        } else {
+                            let pos_cand_id = entries[pos_cand_idx].id;
+                            let pos_cand_data = data.get(pos_cand_id);
+                            let neg_cand_id = entries[neg_cand_idx].id;
+                            let neg_cand_data = data.get(neg_cand_id);
+                            distance.distance(pos_cand_data, neg_cand_data)
+                        };
+                        result.insert(StitchCandidate {
+                            pos_cand_idx,
+                            neg_cand_idx,
+                            dist,
+                        });
+                    }
+                }
+            }
+        }
     }
     result
-}
-
-/// returns the index in range that was found. This is an index into the entire layer entries.
-/// Returns also the best distance.
-fn greedy_search_in_range(
-    data: &dyn DatasetT,
-    distance: &DistanceTracker,
-    entries: &[slice_hnsw::LayerEntry],
-    range: Range<usize>,
-    start_idx: usize,
-    query: &[f32],
-) -> (usize, f32) {
-    assert!(start_idx >= range.start);
-    assert!(start_idx < range.end);
-
-    let mut visited_indices: HashSet<usize> = HashSet::new(); // to not calculate distances twice. // todo! reuse
-    let mut best_idx = start_idx;
-    let start_data = data.get(entries[best_idx].id);
-    let mut best_dist = distance.distance(start_data, query);
-    loop {
-        let neighbors = &entries[best_idx].neighbors;
-        let best_idx_before = best_idx;
-        for n in neighbors.iter() {
-            let n_idx = n.1;
-            if !visited_indices.insert(n_idx) {
-                continue;
-            }
-            let n_data = data.get(entries[n_idx].id);
-            let n_dist = distance.distance(n_data, query);
-            if n_dist < best_dist {
-                best_dist = n_dist;
-                best_idx = n_idx;
-            }
-        }
-        if best_idx == best_idx_before {
-            return (best_idx, best_dist);
-        }
-    }
 }
 
 /// Note: the negative half with the same level as the positive half is

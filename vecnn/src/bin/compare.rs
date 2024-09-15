@@ -74,7 +74,7 @@ fn main() {
     };
 
     let stitch_params = StitchingParams {
-        max_chunk_size: 128,
+        max_chunk_size: 512,
         same_chunk_m_max: 20,
         neg_fraction: 0.4,
         keep_fraction: 0.0,
@@ -86,29 +86,42 @@ fn main() {
     };
 
     let test_setup = ExperimentSetup {
-        n: 100000,
+        n: 80000,
         n_queries: 100,
         params: vec![
+            ModelParams::VpTreeEnsemble(
+                EnsembleParams {
+                    n_vp_trees: 6,
+                    max_chunk_size: 256,
+                    same_chunk_m_max: 16,
+                    m_max: 20,
+                    m_max_0: 40,
+                    distance: Distance::Dot,
+                    level_norm: 0.3,
+                    strategy: EnsembleStrategy::BruteForceKNN,
+                },
+                false,
+            ),
             ModelParams::Hnsw(
                 HnswParams {
                     level_norm_param: 0.3,
                     ef_construction: 20,
-                    m_max: 8,
-                    m_max_0: 16,
+                    m_max: 20,
+                    m_max_0: 40,
                     distance: Dot,
                 },
                 SliceS2,
             ),
-            ModelParams::Hnsw(
-                HnswParams {
-                    level_norm_param: 0.3,
-                    ef_construction: 20,
-                    m_max: 8,
-                    m_max_0: 16,
-                    distance: Dot,
-                },
-                SliceParralelRayon,
-            ),
+            // ModelParams::Hnsw(
+            //     HnswParams {
+            //         level_norm_param: 0.3,
+            //         ef_construction: 20,
+            //         m_max: 8,
+            //         m_max_0: 16,
+            //         distance: Dot,
+            //     },
+            //     SliceParralelRayon,
+            // ),
             // ModelParams::RNNGraph(RNNGraphParams {
             //     distance: Dot,
             //     outer_loops: 2,
@@ -121,35 +134,54 @@ fn main() {
             //     ..stitch_params
             // }),
             // ModelParams::Stitching(StitchingParams {
-            //     stitch_mode: StitchMode::DontStarveXXSearch,
+            //     stitch_mode: StitchMode::MultiEf,
+            //     x: 1,
             //     ..stitch_params
             // }),
-            ModelParams::VpTreeEnsemble(
-                EnsembleParams {
-                    n_vp_trees: 3,
-                    max_chunk_size: 256,
-                    same_chunk_m_max: 16,
-                    m_max: 16,
-                    m_max_0: 16,
-                    distance: Distance::Dot,
-                    level_norm: 0.0,
-                    strategy: EnsembleStrategy::BruteForceKNN,
-                },
-                true,
-            ),
-            ModelParams::VpTreeEnsemble(
-                EnsembleParams {
-                    n_vp_trees: 3,
-                    max_chunk_size: 256,
-                    same_chunk_m_max: 16,
-                    m_max: 16,
-                    m_max_0: 16,
-                    distance: Distance::Dot,
-                    level_norm: 0.0,
-                    strategy: EnsembleStrategy::BruteForceKNN,
-                },
-                false,
-            ),
+            // ModelParams::Stitching(StitchingParams {
+            //     stitch_mode: StitchMode::MultiEf,
+            //     x: 3,
+            //     ..stitch_params
+            // }),
+            // ModelParams::Stitching(StitchingParams {
+            //     stitch_mode: StitchMode::MultiEf,
+            //     x: 10,
+            //     ..stitch_params
+            // }),
+            // ModelParams::Stitching(StitchingParams {
+            //     stitch_mode: StitchMode::DontStarveXXSearch,
+            //     x: 3,
+            //     ..stitch_params
+            // }),
+            // ModelParams::Stitching(StitchingParams {
+            //     stitch_mode: StitchMode::DontStarveXXSearch,
+            //     x: 10,
+            //     ..stitch_params
+            // }),
+            // ModelParams::Stitching(StitchingParams {
+            //     stitch_mode: StitchMode::DontStarveXXSearch,
+            //     x: 3,
+            //     ..stitch_params
+            // }),
+            // ModelParams::Stitching(StitchingParams {
+            //     stitch_mode: StitchMode::DontStarveXXSearch,
+            //     x: 10,
+            //     ..stitch_params
+            // }),
+
+            // ModelParams::VpTreeEnsemble(
+            //     EnsembleParams {
+            //         n_vp_trees: 3,
+            //         max_chunk_size: 256,
+            //         same_chunk_m_max: 16,
+            //         m_max: 16,
+            //         m_max_0: 16,
+            //         distance: Distance::Dot,
+            //         level_norm: 0.0,
+            //         strategy: EnsembleStrategy::BruteForceKNN,
+            //     },
+            //     false,
+            // ),
             // ModelParams::Stitching(StitchingParams {
             //     stitch_mode: StitchMode::RandomNegToPosCenterAndBack,
             //     ..stitch_params
@@ -198,7 +230,7 @@ fn main() {
             vp_max_visits: 0,
         }],
         random_seeds: true,
-        repeats: 3,
+        repeats: 1,
         title: "try it out",
     };
 
@@ -208,6 +240,13 @@ fn main() {
         // try_hnsw_effect_of_level_norm(),
         // try_hnsw_effect_of_ef_search(),
         // try_hnsw_effect_of_m_max(),
+        try_vp_tree_ensemble_hnsw_scaling_with_n(10000),
+        try_vp_tree_ensemble_hnsw_scaling_with_n(30000),
+        try_vp_tree_ensemble_hnsw_scaling_with_n(100000),
+        try_vp_tree_ensemble_hnsw_scaling_with_n(300000),
+        try_vp_tree_ensemble_hnsw_scaling_with_n(1000000),
+        try_vp_tree_ensemble_hnsw_scaling_with_n(3000000),
+        try_vp_tree_ensemble_hnsw_scaling_with_n(10000000),
     ];
     for e in experiments.iter() {
         println!("Start experiment {}", e.to_string());
@@ -218,6 +257,48 @@ fn main() {
 const SMALL_N: usize = 1_000;
 const MEDIUM_N: usize = 1_000_000;
 const LARGE_N: usize = 10_000_000;
+
+fn try_vp_tree_ensemble_hnsw_scaling_with_n(n: usize) -> ExperimentSetup {
+    ExperimentSetup {
+        n,
+        n_queries: 100,
+        params: vec![
+            ModelParams::VpTreeEnsemble(
+                EnsembleParams {
+                    n_vp_trees: 6,
+                    max_chunk_size: 256,
+                    same_chunk_m_max: 16,
+                    m_max: 20,
+                    m_max_0: 40,
+                    distance: Distance::Dot,
+                    level_norm: 0.3,
+                    strategy: EnsembleStrategy::BruteForceKNN,
+                },
+                false,
+            ),
+            ModelParams::Hnsw(
+                HnswParams {
+                    level_norm_param: 0.3,
+                    ef_construction: 20,
+                    m_max: 20,
+                    m_max_0: 40,
+                    distance: Dot,
+                },
+                SliceS2,
+            ),
+        ],
+        search_params: vec![SearchParams {
+            truth_distance: Dot,
+            k: 30,
+            ef: 100,
+            start_candidates: 0,
+            vp_max_visits: 0,
+        }],
+        random_seeds: false,
+        repeats: 1,
+        title: "hnsw_effect_of_ef_construction",
+    }
+}
 
 fn try_hnsw_effect_of_ef_construction() -> ExperimentSetup {
     let ef_construction: Vec<usize> = vec![
@@ -685,7 +766,7 @@ fn eval_models(data: Arc<dyn DatasetT>, queries: Arc<dyn DatasetT>, setup: &Expe
                         ))
                     }
                 }
-                ModelParams::VpTree(params) => Model::VpTree(VpTree::new(data, params, seed)),
+                ModelParams::VpTree(params) => Model::VpTree(VpTree::new(data, params, seed, 0)),
                 ModelParams::HnswByRnnDescent(params, level_norm_param) => Model::SliceHnsw(
                     build_hnsw_by_rnn_descent(data, params, level_norm_param, seed),
                 ),

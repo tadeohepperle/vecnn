@@ -96,3 +96,22 @@ repeated 3 times, still the winner:
   3      100000    dist=Dot k=30 ef=100  SliceParralelRayonHnswParams { level_norm_param: 0.3, ef_construction: 20, m_max: 8, m_max_0: 16, distance: Dot }                                                        24004253     7827.6714    0.727          748.290     1.309  
   3      100000    dist=Dot k=30 ef=100  Threaded EnsembleParams { n_vp_trees: 3, max_chunk_size: 256, same_chunk_m_max: 16, m_max: 16, m_max_0: 16, level_norm: 0.0, distance: Dot, strategy: BruteForceKNN }    32140932     6921.405     0.796          874.393     1.238  
   3      100000    dist=Dot k=30 ef=100  EnsembleParams { n_vp_trees: 3, max_chunk_size: 256, same_chunk_m_max: 16, m_max: 16, m_max_0: 16, level_norm: 0.0, distance: Dot, strategy: BruteForceKNN }             33588342     6002.6323    0.781          880.523     0.584  
+
+  # a small indication that multi-ef or kxk search could be a tiny bit valuable for (ef or k low e.g. 3). But multi ef not worth the runtime cost.
+
+    rep    n        search_params                              params                                                                                                                                                                                                 build_ndc    build_ms     recall_mean    ndc_mean    time_ms_mean  
+  1      80000    dist=Dot k=30 ef=100 start_candidates=1    StitchingParams { max_chunk_size: 512, same_chunk_m_max: 20, neg_fraction: 0.4, keep_fraction: 0.0, m_max: 20, x: 2, only_n_chunks: None, distance: Dot, stitch_mode: RandomNegToRandomPosAndBack }    27001734     4380.886     0.724          1168.000    0.596  
+  1      80000    dist=Dot k=30 ef=100 start_candidates=1    StitchingParams { max_chunk_size: 512, same_chunk_m_max: 20, neg_fraction: 0.4, keep_fraction: 0.0, m_max: 20, x: 1, only_n_chunks: None, distance: Dot, stitch_mode: MultiEf }                        27265480     4464.5957    0.751          1282.170    0.658  
+  1      80000    dist=Dot k=30 ef=100 start_candidates=1    StitchingParams { max_chunk_size: 512, same_chunk_m_max: 20, neg_fraction: 0.4, keep_fraction: 0.0, m_max: 20, x: 3, only_n_chunks: None, distance: Dot, stitch_mode: MultiEf }                        37687557     7152.831     0.784          1079.360    0.585  
+  1      80000    dist=Dot k=30 ef=100 start_candidates=1    StitchingParams { max_chunk_size: 512, same_chunk_m_max: 20, neg_fraction: 0.4, keep_fraction: 0.0, m_max: 20, x: 10, only_n_chunks: None, distance: Dot, stitch_mode: MultiEf }                       62111514     25400.262    0.693          993.150     0.775  
+  1      80000    dist=Dot k=30 ef=100 start_candidates=1    StitchingParams { max_chunk_size: 512, same_chunk_m_max: 20, neg_fraction: 0.4, keep_fraction: 0.0, m_max: 20, x: 3, only_n_chunks: None, distance: Dot, stitch_mode: DontStarveXXSearch }             25977874     6188.2544    0.754          1285.780    1.261  
+  1      80000    dist=Dot k=30 ef=100 start_candidates=1    StitchingParams { max_chunk_size: 512, same_chunk_m_max: 20, neg_fraction: 0.4, keep_fraction: 0.0, m_max: 20, x: 10, only_n_chunks: None, distance: Dot, stitch_mode: DontStarveXXSearch }            25680941     5887.3853    0.730          1217.950    0.976  
+
+
+
+# ensemble params and hnsw roughly same recall 0.94:
+
+
+  rep    n        search_params                              params                                                                                                                                                          build_ndc    build_ms     recall_mean    ndc_mean    time_ms_mean  
+  1      80000    dist=Dot k=30 ef=100 start_candidates=1    EnsembleParams { n_vp_trees: 6, max_chunk_size: 256, same_chunk_m_max: 16, m_max: 20, m_max_0: 40, level_norm: 0.3, distance: Dot, strategy: BruteForceKNN }    46022016     8506.6045    0.944          1820.800    1.153  
+  1      80000    dist=Dot k=30 ef=100 start_candidates=1    SliceS2HnswParams { level_norm_param: 0.3, ef_construction: 20, m_max: 20, m_max_0: 40, distance: Dot }                                                         35582876     15879.692    0.942          1271.520    0.740  
