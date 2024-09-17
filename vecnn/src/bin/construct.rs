@@ -39,6 +39,7 @@ fn main() {
             level_norm: 0.0,
             distance,
             strategy: EnsembleStrategy::BruteForceKNN,
+            n_candidates: 0,
         },
         true,
         210,

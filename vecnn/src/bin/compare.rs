@@ -55,6 +55,7 @@ fn main() {
         distance: Distance::Dot,
         level_norm: 0.0,
         strategy: EnsembleStrategy::BruteForceKNN,
+        n_candidates: 0,
     };
 
     let hnsw_params = HnswParams {
@@ -83,145 +84,22 @@ fn main() {
         distance: Distance::Dot,
         stitch_mode: StitchMode::BestXofRandomXTimesX,
         m_max: 20,
+        n_candidates: 0,
     };
 
     let test_setup = ExperimentSetup {
         n: 80000,
         n_queries: 100,
-        params: vec![
-            ModelParams::VpTreeEnsemble(
-                EnsembleParams {
-                    n_vp_trees: 6,
-                    max_chunk_size: 256,
-                    same_chunk_m_max: 16,
-                    m_max: 20,
-                    m_max_0: 40,
-                    distance: Distance::Dot,
-                    level_norm: 0.3,
-                    strategy: EnsembleStrategy::BruteForceKNN,
-                },
-                false,
-            ),
-            ModelParams::Hnsw(
-                HnswParams {
-                    level_norm_param: 0.3,
-                    ef_construction: 20,
-                    m_max: 20,
-                    m_max_0: 40,
-                    distance: Dot,
-                },
-                SliceS2,
-            ),
-            // ModelParams::Hnsw(
-            //     HnswParams {
-            //         level_norm_param: 0.3,
-            //         ef_construction: 20,
-            //         m_max: 8,
-            //         m_max_0: 16,
-            //         distance: Dot,
-            //     },
-            //     SliceParralelRayon,
-            // ),
-            // ModelParams::RNNGraph(RNNGraphParams {
-            //     distance: Dot,
-            //     outer_loops: 2,
-            //     inner_loops: 3,
-            //     max_neighbors_after_reverse_pruning: 10,
-            //     initial_neighbors: 12,
-            // }),
-            // ModelParams::Stitching(StitchingParams {
-            //     stitch_mode: StitchMode::RandomNegToRandomPosAndBack,
-            //     ..stitch_params
-            // }),
-            // ModelParams::Stitching(StitchingParams {
-            //     stitch_mode: StitchMode::MultiEf,
-            //     x: 1,
-            //     ..stitch_params
-            // }),
-            // ModelParams::Stitching(StitchingParams {
-            //     stitch_mode: StitchMode::MultiEf,
-            //     x: 3,
-            //     ..stitch_params
-            // }),
-            // ModelParams::Stitching(StitchingParams {
-            //     stitch_mode: StitchMode::MultiEf,
-            //     x: 10,
-            //     ..stitch_params
-            // }),
-            // ModelParams::Stitching(StitchingParams {
-            //     stitch_mode: StitchMode::DontStarveXXSearch,
-            //     x: 3,
-            //     ..stitch_params
-            // }),
-            // ModelParams::Stitching(StitchingParams {
-            //     stitch_mode: StitchMode::DontStarveXXSearch,
-            //     x: 10,
-            //     ..stitch_params
-            // }),
-            // ModelParams::Stitching(StitchingParams {
-            //     stitch_mode: StitchMode::DontStarveXXSearch,
-            //     x: 3,
-            //     ..stitch_params
-            // }),
-            // ModelParams::Stitching(StitchingParams {
-            //     stitch_mode: StitchMode::DontStarveXXSearch,
-            //     x: 10,
-            //     ..stitch_params
-            // }),
-
-            // ModelParams::VpTreeEnsemble(
-            //     EnsembleParams {
-            //         n_vp_trees: 3,
-            //         max_chunk_size: 256,
-            //         same_chunk_m_max: 16,
-            //         m_max: 16,
-            //         m_max_0: 16,
-            //         distance: Distance::Dot,
-            //         level_norm: 0.0,
-            //         strategy: EnsembleStrategy::BruteForceKNN,
-            //     },
-            //     false,
-            // ),
-            // ModelParams::Stitching(StitchingParams {
-            //     stitch_mode: StitchMode::RandomNegToPosCenterAndBack,
-            //     ..stitch_params
-            // }),
-            // ModelParams::Stitching(StitchingParams {
-            //     stitch_mode: StitchMode::RandomSubsetOfSubset,
-            //     ..stitch_params
-            // }),
-            // ModelParams::Stitching(StitchingParams {
-            //     stitch_mode: StitchMode::BestXofRandomXTimesX,
-            //     ..stitch_params
-            // }),
-
-            // ModelParams::Hnsw(
-            //     HnswParams {
-            //         level_norm_param: 0.3,
-            //         ef_construction: 50,
-            //         m_max: 20,
-            //         m_max_0: 40,
-            //         distance: Dot,
-            //     },
-            //     SliceS2,
-            // ),
-            // ModelParams::VpTreeEnsemble(
-            //     EnsembleParams {
-            //         level_norm: 0.5,
-            //         strategy: EnsembleStrategy::BruteForceKNN,
-            //         ..ensemble_params
-            //     },
-            //     false,
-            // ),
-            // ModelParams::VpTreeEnsemble(
-            //     EnsembleParams {
-            //         level_norm: 0.0,
-            //         strategy: EnsembleStrategy::BruteForceKNN,
-            //         ..ensemble_params
-            //     },
-            //     true,
-            // ),
-        ],
+        params: vec![ModelParams::Hnsw(
+            HnswParams {
+                level_norm_param: 0.3,
+                ef_construction: 20,
+                m_max: 20,
+                m_max_0: 40,
+                distance: Dot,
+            },
+            SliceS2,
+        )],
         search_params: vec![SearchParams {
             truth_distance: Dot,
             k: 30,
@@ -235,18 +113,12 @@ fn main() {
     };
 
     let experiments: Vec<ExperimentSetup> = vec![
-        test_setup,
+        // test_setup,
         // try_hnsw_effect_of_ef_construction(),
         // try_hnsw_effect_of_level_norm(),
         // try_hnsw_effect_of_ef_search(),
         // try_hnsw_effect_of_m_max(),
-        try_vp_tree_ensemble_hnsw_scaling_with_n(10000),
-        try_vp_tree_ensemble_hnsw_scaling_with_n(30000),
-        try_vp_tree_ensemble_hnsw_scaling_with_n(100000),
-        try_vp_tree_ensemble_hnsw_scaling_with_n(300000),
-        try_vp_tree_ensemble_hnsw_scaling_with_n(1000000),
-        try_vp_tree_ensemble_hnsw_scaling_with_n(3000000),
-        try_vp_tree_ensemble_hnsw_scaling_with_n(10000000),
+        try_stitching_n_candidates(1000000),
     ];
     for e in experiments.iter() {
         println!("Start experiment {}", e.to_string());
@@ -258,34 +130,46 @@ const SMALL_N: usize = 1_000;
 const MEDIUM_N: usize = 1_000_000;
 const LARGE_N: usize = 10_000_000;
 
-fn try_vp_tree_ensemble_hnsw_scaling_with_n(n: usize) -> ExperimentSetup {
+fn try_stitching_n_candidates(n: usize) -> ExperimentSetup {
+    let stitch_params = StitchingParams {
+        max_chunk_size: 128,
+        same_chunk_m_max: 20,
+        neg_fraction: 0.4,
+        keep_fraction: 0.0,
+        m_max: 20,
+        x: 2,
+        only_n_chunks: None,
+        distance: Dot,
+        stitch_mode: StitchMode::RandomNegToRandomPosAndBack,
+        n_candidates: 0,
+    };
     ExperimentSetup {
         n,
         n_queries: 100,
         params: vec![
-            ModelParams::VpTreeEnsemble(
-                EnsembleParams {
-                    n_vp_trees: 6,
-                    max_chunk_size: 256,
-                    same_chunk_m_max: 16,
-                    m_max: 20,
-                    m_max_0: 40,
-                    distance: Distance::Dot,
-                    level_norm: 0.3,
-                    strategy: EnsembleStrategy::BruteForceKNN,
-                },
-                false,
-            ),
-            ModelParams::Hnsw(
-                HnswParams {
-                    level_norm_param: 0.3,
-                    ef_construction: 20,
-                    m_max: 20,
-                    m_max_0: 40,
-                    distance: Dot,
-                },
-                SliceS2,
-            ),
+            ModelParams::Stitching(stitch_params),
+            ModelParams::Stitching(StitchingParams {
+                n_candidates: 20,
+                ..stitch_params
+            }),
+            ModelParams::Stitching(StitchingParams {
+                n_candidates: 40,
+                ..stitch_params
+            }),
+            // ModelParams::VpTreeEnsemble(
+            //     EnsembleParams {
+            //         n_candidates: 0,
+            //         ..params
+            //     },
+            //     false,
+            // ),
+            // ModelParams::VpTreeEnsemble(
+            //     EnsembleParams {
+            //         n_candidates: 3,
+            //         ..params
+            //     },
+            //     false,
+            // ),
         ],
         search_params: vec![SearchParams {
             truth_distance: Dot,
@@ -296,7 +180,7 @@ fn try_vp_tree_ensemble_hnsw_scaling_with_n(n: usize) -> ExperimentSetup {
         }],
         random_seeds: false,
         repeats: 1,
-        title: "hnsw_effect_of_ef_construction",
+        title: "stitching_n_candidates",
     }
 }
 

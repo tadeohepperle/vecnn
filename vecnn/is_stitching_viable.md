@@ -115,3 +115,27 @@ repeated 3 times, still the winner:
   rep    n        search_params                              params                                                                                                                                                          build_ndc    build_ms     recall_mean    ndc_mean    time_ms_mean  
   1      80000    dist=Dot k=30 ef=100 start_candidates=1    EnsembleParams { n_vp_trees: 6, max_chunk_size: 256, same_chunk_m_max: 16, m_max: 20, m_max_0: 40, level_norm: 0.3, distance: Dot, strategy: BruteForceKNN }    46022016     8506.6045    0.944          1820.800    1.153  
   1      80000    dist=Dot k=30 ef=100 start_candidates=1    SliceS2HnswParams { level_norm_param: 0.3, ef_construction: 20, m_max: 20, m_max_0: 40, distance: Dot }                                                         35582876     15879.692    0.942          1271.520    0.740  
+
+
+  # ensemble method does not seem to profit from vp tree n candidates heuristic:
+
+    rep    n         search_params    params                                                                                                                                                                            build_ndc    build_ms     recall_mean    ndc_mean    time_ms_mean  
+  1      100000    k=30 ef=100      EnsembleParams { n_vp_trees: 6, max_chunk_size: 512, same_chunk_m_max: 16, m_max: 20, m_max_0: 40, level_norm: 0.3, distance: Dot, strategy: BruteForceKNN, n_candidates: 0 }     130930650    25085.672    0.954          1657.500    1.144  
+  1      100000    k=30 ef=100      EnsembleParams { n_vp_trees: 6, max_chunk_size: 512, same_chunk_m_max: 16, m_max: 20, m_max_0: 40, level_norm: 0.3, distance: Dot, strategy: BruteForceKNN, n_candidates: 20 }    135747150    22658.156    0.947          1696.580    1.186  
+    rep    n         search_params    params                                                                                                                                                                           build_ndc    build_ms     recall_mean    ndc_mean    time_ms_mean  
+  1      100000    k=30 ef=100      EnsembleParams { n_vp_trees: 4, max_chunk_size: 512, same_chunk_m_max: 16, m_max: 20, m_max_0: 40, level_norm: 0.0, distance: Dot, strategy: BruteForceKNN, n_candidates: 0 }    83846856     14772.367    0.956          1823.150    1.357  
+  1      100000    k=30 ef=100      EnsembleParams { n_vp_trees: 4, max_chunk_size: 512, same_chunk_m_max: 16, m_max: 20, m_max_0: 40, level_norm: 0.0, distance: Dot, strategy: BruteForceKNN, n_candidates: 3 }    84115776     15751.248    0.948          1828.930    1.261  
+
+# for stitching, selecting multiple vp trees also does not provide any benefit
+
+    rep    n         search_params    params                                                                                                                                                                                                                   build_ndc    build_ms     recall_mean    ndc_mean    time_ms_mean  
+  1      100000    k=30 ef=100      StitchingParams { max_chunk_size: 128, same_chunk_m_max: 20, neg_fraction: 0.4, keep_fraction: 0.0, m_max: 20, x: 2, only_n_chunks: None, distance: Dot, stitch_mode: RandomNegToRandomPosAndBack, n_candidates: 0 }     24919580     7939.873     0.703          1325.510    0.980  
+  1      100000    k=30 ef=100      StitchingParams { max_chunk_size: 128, same_chunk_m_max: 20, neg_fraction: 0.4, keep_fraction: 0.0, m_max: 20, x: 2, only_n_chunks: None, distance: Dot, stitch_mode: RandomNegToRandomPosAndBack, n_candidates: 20 }    27392371     7983.5586    0.698          1341.950    1.132  
+  1      100000    k=30 ef=100      StitchingParams { max_chunk_size: 128, same_chunk_m_max: 20, neg_fraction: 0.4, keep_fraction: 0.0, m_max: 20, x: 2, only_n_chunks: None, distance: Dot, stitch_mode: RandomNegToRandomPosAndBack, n_candidates: 40 }    28541031     8654.287     0.703          1295.570    1.025  
+
+### maybe tiny benefit for more vptree candidates
+  Start experiment stitching_n_candidates_n=200000_queries_n=100
+  rep    n         search_params    params                                                                                                                                                                                                                   build_ndc    build_ms     recall_mean    ndc_mean    time_ms_mean  
+  1      200000    k=30 ef=100      StitchingParams { max_chunk_size: 128, same_chunk_m_max: 20, neg_fraction: 0.4, keep_fraction: 0.0, m_max: 20, x: 2, only_n_chunks: None, distance: Dot, stitch_mode: RandomNegToRandomPosAndBack, n_candidates: 0 }     56489457     17794.785    0.658          1403.620    0.990  
+  1      200000    k=30 ef=100      StitchingParams { max_chunk_size: 128, same_chunk_m_max: 20, neg_fraction: 0.4, keep_fraction: 0.0, m_max: 20, x: 2, only_n_chunks: None, distance: Dot, stitch_mode: RandomNegToRandomPosAndBack, n_candidates: 20 }    60550408     17874.648    0.660          1350.100    0.933  
+  1      200000    k=30 ef=100      StitchingParams { max_chunk_size: 128, same_chunk_m_max: 20, neg_fraction: 0.4, keep_fraction: 0.0, m_max: 20, x: 2, only_n_chunks: None, distance: Dot, stitch_mode: RandomNegToRandomPosAndBack, n_candidates: 40 }    63165243     18093.848    0.679          1367.720    0.968  

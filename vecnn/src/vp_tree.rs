@@ -300,41 +300,24 @@ pub fn construct_vp_tree(
     // arrange items in self.tmp into a vp tree
     let data_get = |e: &Node| data.get(e.id);
 
-    if n_candidates >= 2 {
-        let strategy = SelectVantagePointWithNCandidates { n: n_candidates };
-        if parallel {
-            arrange_into_vp_tree_parallel(
-                &mut nodes,
-                &data_get,
-                &distance_tracker,
-                &mut rng,
-                0,
-                &strategy,
-            );
-        } else {
-            arrange_into_vp_tree(
-                &mut nodes,
-                &data_get,
-                &distance_tracker,
-                &mut rng,
-                &strategy,
-            );
-        }
+    if parallel {
+        arrange_into_vp_tree_parallel_with_n_candidates(
+            &mut nodes,
+            &data_get,
+            &distance_tracker,
+            &mut rng,
+            0,
+            n_candidates,
+        );
     } else {
-        if parallel {
-            arrange_into_vp_tree_parallel(
-                &mut nodes,
-                &data_get,
-                &distance_tracker,
-                &mut rng,
-                0,
-                &(),
-            );
-        } else {
-            arrange_into_vp_tree(&mut nodes, &data_get, &distance_tracker, &mut rng, &());
-        }
+        arrange_into_vp_tree_with_n_candidates(
+            &mut nodes,
+            &data_get,
+            &distance_tracker,
+            &mut rng,
+            n_candidates,
+        );
     }
-
     let build_stats = Stats {
         num_distance_calculations: distance_tracker.num_calculations(),
         duration: start.elapsed(),
@@ -365,6 +348,34 @@ impl DistAndIdT for Node {
     #[inline(always)]
     fn id(&self) -> usize {
         self.id
+    }
+}
+
+pub fn arrange_into_vp_tree_parallel_with_n_candidates<'a, T, F>(
+    tmp: &mut [T],
+    data_get: &'a F,
+    distance: &DistanceTracker,
+    rng: &mut rand_chacha::ChaCha20Rng,
+    min_chunk_size: usize,
+    n_candidates: usize,
+) where
+    T: DistAndIdT,
+    F: Fn(&T) -> &'a [f32] + Send + Sync,
+{
+    match n_candidates {
+        0 | 1 => {
+            arrange_into_vp_tree_parallel(tmp, data_get, distance, rng, min_chunk_size, &());
+        }
+        n => {
+            arrange_into_vp_tree_parallel(
+                tmp,
+                data_get,
+                distance,
+                rng,
+                min_chunk_size,
+                &SelectVantagePointWithNCandidates { n },
+            );
+        }
     }
 }
 
@@ -557,6 +568,31 @@ impl SelectVantagePointStrategyT for SelectVantagePointWithNCandidates {
             }
         }
         return max_dist_idx;
+    }
+}
+
+pub fn arrange_into_vp_tree_with_n_candidates<'a, T>(
+    tmp: &mut [T],
+    data_get: &'a impl Fn(&T) -> &'a [f32],
+    distance: &DistanceTracker,
+    rng: &mut rand_chacha::ChaCha20Rng,
+    n_candidates: usize,
+) where
+    T: DistAndIdT,
+{
+    match n_candidates {
+        0 | 1 => {
+            arrange_into_vp_tree(tmp, data_get, distance, rng, &());
+        }
+        n => {
+            arrange_into_vp_tree(
+                tmp,
+                data_get,
+                distance,
+                rng,
+                &SelectVantagePointWithNCandidates { n },
+            );
+        }
     }
 }
 

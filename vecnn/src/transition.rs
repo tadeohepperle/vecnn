@@ -34,8 +34,9 @@ use crate::{
         BinaryHeapExt, SliceBinaryHeap, SlicesMemory, Stats, YoloCell,
     },
     vp_tree::{
-        self, arrange_into_vp_tree, arrange_into_vp_tree_parallel, left, left_with_root, right,
-        DistAndIdT, Node, VpTree,
+        self, arrange_into_vp_tree_parallel_with_n_candidates,
+        arrange_into_vp_tree_with_n_candidates, left, left_with_root, right, DistAndIdT, Node,
+        VpTree,
     },
 };
 
@@ -49,6 +50,7 @@ pub struct EnsembleParams {
     pub level_norm: f32, // see hnsw params, controls height
     pub distance: Distance,
     pub strategy: EnsembleStrategy,
+    pub n_candidates: usize, // referring to vptree candidates selection. 0 and 1 mean just pick a random point as vantage point
 }
 
 /// Describes how WITHIN each chunk elements are connected.
@@ -100,7 +102,13 @@ pub fn build_single_layer_hnsw_by_vp_tree_ensemble(
     let data_get = |e: &vp_tree::Node| data.get(e.id);
     for vp_tree_iteration in 0..params.n_vp_trees {
         // build the vp_tree, chunk it and brute force search the best neighbors per chunk, put them in vp_tree_neighbors list
-        arrange_into_vp_tree(&mut vp_tree, &data_get, &mut distance, &mut rng, &());
+        arrange_into_vp_tree_with_n_candidates(
+            &mut vp_tree,
+            &data_get,
+            &mut distance,
+            &mut rng,
+            params.n_candidates,
+        );
         for (chunk_i, chunk) in chunks.iter().enumerate() {
             let chunk_size = chunk.range.len();
             let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
@@ -320,12 +328,13 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
 
         #[cfg(feature = "tracking")]
         let mut vp_tree = vp_tree.clone(); // if tracking mode is enabled (e.g. for visualizations, clone the tree, such that all iterations use the same starting tree )
-        arrange_into_vp_tree(
+
+        arrange_into_vp_tree_with_n_candidates(
             &mut vp_tree,
             &data_get,
             distance,
             &mut ChaCha20Rng::seed_from_u64(vp_tree_seed),
-            &(),
+            params.n_candidates,
         );
 
         let between = before.elapsed();
@@ -413,7 +422,13 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_vp_tree(
                 dist: 0.0,
             });
         }
-        arrange_into_vp_tree(&mut vp_tree, &data_get, distance, &mut rng, &());
+        arrange_into_vp_tree_with_n_candidates(
+            &mut vp_tree,
+            &data_get,
+            distance,
+            &mut rng,
+            params.n_candidates,
+        );
         let mut tls = EnsembleBruteForceBuffers::new(max_chunk_size, same_chunk_m_max);
         for chunk in chunks.iter() {
             let chunk_size = chunk.range.len();
@@ -501,13 +516,13 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk(
 
     for _tree_idx in 0..params.n_vp_trees {
         let before = Instant::now();
-        arrange_into_vp_tree_parallel(
+        arrange_into_vp_tree_parallel_with_n_candidates(
             &mut vp_tree,
             &data_get,
             distance,
             rng,
             max_chunk_size / 2,
-            &(),
+            params.n_candidates,
         );
 
         let between = before.elapsed();
@@ -612,13 +627,13 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk_with_core_affinity(
 
     for _tree_idx in 0..params.n_vp_trees {
         let before = Instant::now();
-        arrange_into_vp_tree_parallel(
+        arrange_into_vp_tree_parallel_with_n_candidates(
             &mut vp_tree,
             &data_get,
             distance,
             rng,
             max_chunk_size / 2,
-            &(),
+            params.n_candidates,
         );
 
         let between = before.elapsed();
@@ -973,6 +988,7 @@ pub struct StitchingParams {
     pub only_n_chunks: Option<usize>, // this is only for debugging
     pub distance: Distance,
     pub stitch_mode: StitchMode,
+    pub n_candidates: usize,
 }
 
 pub fn build_hnsw_by_vp_tree_stitching(
@@ -993,7 +1009,13 @@ pub fn build_hnsw_by_vp_tree_stitching(
     }
 
     let data_get = |e: &vp_tree::Node| data.get(e.id);
-    arrange_into_vp_tree(&mut vp_tree, &data_get, &mut distance, &mut rng, &());
+    arrange_into_vp_tree_with_n_candidates(
+        &mut vp_tree,
+        &data_get,
+        &mut distance,
+        &mut rng,
+        params.n_candidates,
+    );
 
     // create an hnsw layer with same order as vp-tree but no neighbors:
     let mut layer = slice_hnsw::Layer::new(params.m_max);
