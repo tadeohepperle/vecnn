@@ -6,6 +6,7 @@ use std::{
     io::Write,
     ops::{Add, AddAssign},
     sync::Arc,
+    time::Instant,
 };
 
 use ahash::{HashMap, HashMapExt};
@@ -114,21 +115,488 @@ fn main() {
 
     let experiments: Vec<ExperimentSetup> = vec![
         // test_setup,
-        // try_hnsw_effect_of_ef_construction(),
-        // try_hnsw_effect_of_level_norm(),
-        // try_hnsw_effect_of_ef_search(),
-        // try_hnsw_effect_of_m_max(),
-        try_stitching_n_candidates(1000000),
     ];
+    let experiments = final_experiment_collection();
     for e in experiments.iter() {
         println!("Start experiment {}", e.to_string());
         eval_models_on_laion(e)
     }
 }
+const N_10K: usize = 10_000;
+const N_100K: usize = 100_000;
+const N_1M: usize = 1_000_000;
+const N_10M: usize = 10_000_000;
 
-const SMALL_N: usize = 1_000;
-const MEDIUM_N: usize = 1_000_000;
-const LARGE_N: usize = 10_000_000;
+fn final_experiment_collection() -> Vec<ExperimentSetup> {
+    fn search_params() -> Vec<SearchParams> {
+        vec![SearchParams {
+            truth_distance: Dot,
+            k: 30,
+            ef: 60,
+            start_candidates: 0,
+            vp_max_visits: 0,
+        }]
+    }
+
+    fn search_params_varied_k_and_ef() -> Vec<SearchParams> {
+        (30..=200usize)
+            .step_by(10)
+            .map(|ef| SearchParams {
+                truth_distance: Dot,
+                k: 30,
+                ef,
+                start_candidates: 0,
+                vp_max_visits: 0,
+            })
+            .chain((30..=200usize).step_by(10).map(|k_and_ef| SearchParams {
+                truth_distance: Dot,
+                k: k_and_ef,
+                ef: k_and_ef,
+                start_candidates: 0,
+                vp_max_visits: 0,
+            }))
+            .collect()
+    }
+    fn n_log_steps_per_magnitude(
+        min_n: usize,
+        max_n: usize,
+        steps_per_magnitude: usize,
+    ) -> Vec<usize> {
+        let mut ns: Vec<usize> = vec![];
+        let mut n: f64 = min_n as f64;
+        let factor = (10.0f64).powf(1.0 / steps_per_magnitude as f64);
+        while n as usize <= max_n {
+            ns.push(n as usize);
+            n *= factor;
+        }
+        assert!(ns[0] == min_n);
+        assert!(*ns.last().unwrap() == max_n);
+        return ns;
+    }
+    // /////////////////////////////////////////////////////////////////////////////
+    // SECTION: HNSW
+    // /////////////////////////////////////////////////////////////////////////////
+    fn exp_hnsw_effect_of_m_max() -> ExperimentSetup {
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: 100,
+            params: (8..=48usize)
+                .step_by(4)
+                .map(|m_max| {
+                    ModelParams::Hnsw(
+                        HnswParams {
+                            level_norm_param: 0.3,
+                            ef_construction: 40,
+                            m_max,
+                            m_max_0: m_max * 2,
+                            distance: Dot,
+                        },
+                        SliceS2,
+                    )
+                })
+                .collect(),
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 10,
+            title: "exp_hnsw_effect_of_m_max",
+        }
+    }
+    fn exp_hnsw_effect_of_ef_construction() -> ExperimentSetup {
+        let ef_construction: Vec<usize> = vec![
+            30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200,
+        ];
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: 100,
+            params: ef_construction
+                .into_iter()
+                .map(|ef_construction| {
+                    ModelParams::Hnsw(
+                        HnswParams {
+                            level_norm_param: 0.3,
+                            ef_construction,
+                            m_max: 20,
+                            m_max_0: 40,
+                            distance: Dot,
+                        },
+                        SliceS2,
+                    )
+                })
+                .collect(),
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 10,
+            title: "exp_hnsw_effect_of_ef_construction",
+        }
+    }
+    fn exp_hnsw_effect_of_level_norm() -> ExperimentSetup {
+        let level_norm_params: Vec<f32> = (0..=20).map(|e| (e as f32) / 20.0).collect();
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: 100,
+            params: level_norm_params
+                .into_iter()
+                .map(|level_norm_param| {
+                    ModelParams::Hnsw(
+                        HnswParams {
+                            level_norm_param,
+                            ef_construction: 40,
+                            m_max: 20,
+                            m_max_0: 40,
+                            distance: Dot,
+                        },
+                        SliceS2,
+                    )
+                })
+                .collect(),
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 10,
+            title: "exp_hnsw_effect_of_level_norm",
+        }
+    }
+    fn exp_hnsw_effect_of_ef_search_and_k() -> ExperimentSetup {
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: 100,
+            params: vec![ModelParams::Hnsw(
+                HnswParams {
+                    level_norm_param: 0.3,
+                    ef_construction: 40,
+                    m_max: 20,
+                    m_max_0: 40,
+                    distance: Dot,
+                },
+                SliceS2,
+            )],
+            search_params: search_params_varied_k_and_ef(),
+            random_seeds: false,
+            repeats: 10,
+            title: "exp_hnsw_effect_of_ef_search_and_k",
+        }
+    }
+    // WARNING! CAN BE FAIRLY EXPENSIVE AND LONG RUNNING!
+    fn exp_hnsw_effect_of_n() -> Vec<ExperimentSetup> {
+        return n_log_steps_per_magnitude(N_10K, N_10M, 5)
+            .into_iter()
+            .map(|n| ExperimentSetup {
+                n,
+                n_queries: 100,
+                params: vec![ModelParams::Hnsw(
+                    HnswParams {
+                        level_norm_param: 0.3,
+                        ef_construction: 60,
+                        m_max: 20,
+                        m_max_0: 40,
+                        distance: Dot,
+                    },
+                    SliceS2,
+                )],
+                search_params: search_params(),
+                random_seeds: false,
+                repeats: 1,
+                title: "exp_hnsw_effect_of_n",
+            })
+            .collect();
+    }
+    // /////////////////////////////////////////////////////////////////////////////
+    // SECTION: RNN Graphs
+    // /////////////////////////////////////////////////////////////////////////////
+    fn exp_rnn_effect_of_inner_loops() -> ExperimentSetup {
+        ExperimentSetup {
+            n: 10000,
+            n_queries: 10000,
+            params: (1..=24)
+                .map(|t_inner| {
+                    ModelParams::RNNGraph(RNNGraphParams {
+                        outer_loops: 1,
+                        inner_loops: t_inner,
+                        max_neighbors_after_reverse_pruning: 40,
+                        initial_neighbors: 40,
+                        distance: Dot,
+                    })
+                })
+                .collect(),
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 1,
+            title: "exp_rnn_effect_of_inner_loops",
+        }
+    }
+    fn exp_rnn_effect_of_outer_loops() -> ExperimentSetup {
+        fn loops(inner_loops: usize, outer_loops: usize) -> ModelParams {
+            ModelParams::RNNGraph(RNNGraphParams {
+                inner_loops,
+                outer_loops,
+                max_neighbors_after_reverse_pruning: 40,
+                initial_neighbors: 40,
+                distance: Dot,
+            })
+        }
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: 10000,
+            params: vec![
+                loops(48, 1),
+                loops(24, 2),
+                loops(16, 3),
+                loops(12, 4),
+                loops(8, 6),
+                loops(6, 8),
+                loops(4, 12),
+                loops(2, 24),
+                loops(48, 1),
+            ],
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 1,
+            title: "exp_rnn_effect_of_outer_loops",
+        }
+    }
+    fn exp_rnn_effect_of_ef_search_and_k() -> ExperimentSetup {
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: 100,
+            params: vec![ModelParams::RNNGraph(RNNGraphParams {
+                inner_loops: 4,
+                outer_loops: 3,
+                max_neighbors_after_reverse_pruning: 40,
+                initial_neighbors: 40,
+                distance: Dot,
+            })],
+            search_params: search_params_varied_k_and_ef(),
+            random_seeds: false,
+            repeats: 5,
+            title: "exp_rnn_effect_of_ef_search_and_k",
+        }
+    }
+    fn exp_rnn_effect_of_multi_start_points() -> ExperimentSetup {
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: 1000,
+            params: vec![ModelParams::RNNGraph(RNNGraphParams {
+                inner_loops: 4,
+                outer_loops: 3,
+                max_neighbors_after_reverse_pruning: 40,
+                initial_neighbors: 40,
+                distance: Dot,
+            })],
+            search_params: (1usize..=20)
+                .map(|start_candidates| SearchParams {
+                    truth_distance: Dot,
+                    k: 30,
+                    ef: 60,
+                    start_candidates,
+                    vp_max_visits: 0,
+                })
+                .collect(),
+            random_seeds: false,
+            repeats: 5,
+            title: "exp_rnn_effect_of_ef_search_and_k",
+        }
+    }
+    fn exp_rnn_effect_of_n() -> Vec<ExperimentSetup> {
+        return n_log_steps_per_magnitude(N_10K, N_10M, 5)
+            .into_iter()
+            .map(|n| ExperimentSetup {
+                n,
+                n_queries: 100,
+                params: vec![ModelParams::RNNGraph(RNNGraphParams {
+                    inner_loops: 4,
+                    outer_loops: 3,
+                    max_neighbors_after_reverse_pruning: 40,
+                    initial_neighbors: 40,
+                    distance: Dot,
+                })],
+                search_params: search_params(),
+                random_seeds: false,
+                repeats: 1,
+                title: "exp_rnn_effect_of_n",
+            })
+            .collect();
+    }
+
+    // /////////////////////////////////////////////////////////////////////////////
+    // SECTION: VP Tree (just for construction, of course not for search)
+    // /////////////////////////////////////////////////////////////////////////////
+
+    // /////////////////////////////////////////////////////////////////////////////
+    // SECTION: Chunk Stitching
+    // /////////////////////////////////////////////////////////////////////////////
+
+    // /////////////////////////////////////////////////////////////////////////////
+    // SECTION: VP Tree Ensemble
+    // /////////////////////////////////////////////////////////////////////////////
+    fn exp_ensemble_effect_of_n_vp_trees() -> ExperimentSetup {
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: 500,
+            params: (2..=20)
+                .map(|n_vp_trees| {
+                    ModelParams::VpTreeEnsemble(
+                        EnsembleParams {
+                            n_vp_trees,
+                            max_chunk_size: 256,
+                            same_chunk_m_max: 16,
+                            m_max: 20,
+                            m_max_0: 40,
+                            distance: Distance::Dot,
+                            level_norm: 0.0,
+                            strategy: EnsembleStrategy::BruteForceKNN,
+                            n_candidates: 0,
+                        },
+                        false,
+                    )
+                })
+                .collect(),
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 5,
+            title: "exp_ensemble_effect_of_n_vp_trees",
+        }
+    }
+
+    fn exp_ensemble_effect_of_chunk_size() -> ExperimentSetup {
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: 500,
+            params: [64usize, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048]
+                .into_iter()
+                .map(|chunk_size| {
+                    ModelParams::VpTreeEnsemble(
+                        EnsembleParams {
+                            n_vp_trees: 6,
+                            max_chunk_size: chunk_size,
+                            same_chunk_m_max: 16,
+                            m_max: 20,
+                            m_max_0: 40,
+                            distance: Distance::Dot,
+                            level_norm: 0.0,
+                            strategy: EnsembleStrategy::BruteForceKNN,
+                            n_candidates: 0,
+                        },
+                        false,
+                    )
+                })
+                .collect(),
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 5,
+            title: "exp_ensemble_effect_of_chunk_size",
+        }
+    }
+    fn exp_ensemble_effect_of_multiple_vantage_points() -> ExperimentSetup {
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: 500,
+            params: [1, 4, 8, 16, 32, 64, 128]
+                .into_iter()
+                .map(|n_candidates| {
+                    ModelParams::VpTreeEnsemble(
+                        EnsembleParams {
+                            n_vp_trees: 6,
+                            max_chunk_size: 256,
+                            same_chunk_m_max: 16,
+                            m_max: 20,
+                            m_max_0: 40,
+                            distance: Distance::Dot,
+                            level_norm: 0.0,
+                            strategy: EnsembleStrategy::BruteForceKNN,
+                            n_candidates,
+                        },
+                        false,
+                    )
+                })
+                .collect(),
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 5,
+            title: "exp_ensemble_effect_of_multiple_vantage_points",
+        }
+    }
+    fn exp_ensemble_effect_of_level_norm() -> ExperimentSetup {
+        let level_norm_params: Vec<f32> = (0..=20).map(|e| (e as f32) / 20.0).collect();
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: 100,
+            params: level_norm_params
+                .into_iter()
+                .map(|level_norm| {
+                    ModelParams::VpTreeEnsemble(
+                        EnsembleParams {
+                            n_vp_trees: 6,
+                            max_chunk_size: 256,
+                            same_chunk_m_max: 16,
+                            m_max: 20,
+                            m_max_0: 40,
+                            distance: Distance::Dot,
+                            level_norm,
+                            strategy: EnsembleStrategy::BruteForceKNN,
+                            n_candidates: 0,
+                        },
+                        false,
+                    )
+                })
+                .collect(),
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 3,
+            title: "exp_ensemble_effect_of_level_norm",
+        }
+    }
+
+    // /////////////////////////////////////////////////////////////////////////////
+
+    const WHAT_TO_RUN: WhatToRun = WhatToRun {
+        hnsw_100k: true,
+        rnn_100k: true,
+        ensemble_100k: true,
+        hnsw_by_n: false,
+        rnn_graph_by_n: false,
+    };
+    struct WhatToRun {
+        hnsw_100k: bool,
+        hnsw_by_n: bool,
+        rnn_100k: bool,
+        rnn_graph_by_n: bool,
+        ensemble_100k: bool,
+    }
+
+    let mut res = vec![];
+    if WHAT_TO_RUN.hnsw_100k {
+        res.extend([
+            exp_hnsw_effect_of_m_max(),
+            exp_hnsw_effect_of_ef_search_and_k(),
+            exp_hnsw_effect_of_ef_construction(),
+            exp_hnsw_effect_of_level_norm(),
+        ]);
+    }
+
+    if WHAT_TO_RUN.rnn_100k {
+        res.extend([
+            exp_rnn_effect_of_inner_loops(),
+            exp_rnn_effect_of_outer_loops(),
+            exp_rnn_effect_of_ef_search_and_k(),
+            exp_rnn_effect_of_multi_start_points(),
+        ]);
+    }
+    if WHAT_TO_RUN.ensemble_100k {
+        res.extend([
+            exp_ensemble_effect_of_chunk_size(),
+            exp_ensemble_effect_of_n_vp_trees(),
+            exp_ensemble_effect_of_multiple_vantage_points(),
+            exp_ensemble_effect_of_level_norm(),
+        ]);
+    }
+    if WHAT_TO_RUN.hnsw_by_n {
+        res.extend(exp_hnsw_effect_of_n());
+    }
+    if WHAT_TO_RUN.rnn_graph_by_n {
+        res.extend(exp_rnn_effect_of_n());
+    }
+
+    return res;
+}
 
 fn try_stitching_n_candidates(n: usize) -> ExperimentSetup {
     let stitch_params = StitchingParams {
@@ -181,136 +649,6 @@ fn try_stitching_n_candidates(n: usize) -> ExperimentSetup {
         random_seeds: false,
         repeats: 1,
         title: "stitching_n_candidates",
-    }
-}
-
-fn try_hnsw_effect_of_ef_construction() -> ExperimentSetup {
-    let ef_construction: Vec<usize> = vec![
-        30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200,
-    ];
-    ExperimentSetup {
-        n: SMALL_N,
-        n_queries: 100,
-        params: ef_construction
-            .into_iter()
-            .map(|ef_construction| {
-                ModelParams::Hnsw(
-                    HnswParams {
-                        level_norm_param: 0.3,
-                        ef_construction,
-                        m_max: 20,
-                        m_max_0: 40,
-                        distance: Dot,
-                    },
-                    SliceS2,
-                )
-            })
-            .collect(),
-        search_params: vec![SearchParams {
-            truth_distance: Dot,
-            k: 30,
-            ef: 60,
-            start_candidates: 0,
-            vp_max_visits: 0,
-        }],
-        random_seeds: false,
-        repeats: 10,
-        title: "hnsw_effect_of_ef_construction",
-    }
-}
-
-fn try_hnsw_effect_of_level_norm() -> ExperimentSetup {
-    let level_norm_params: Vec<f32> = (0..=20).map(|e| (e as f32) / 20.0).collect();
-    ExperimentSetup {
-        n: SMALL_N,
-        n_queries: 100,
-        params: level_norm_params
-            .into_iter()
-            .map(|level_norm_param| {
-                ModelParams::Hnsw(
-                    HnswParams {
-                        level_norm_param,
-                        ef_construction: 40,
-                        m_max: 20,
-                        m_max_0: 40,
-                        distance: Dot,
-                    },
-                    SliceS2,
-                )
-            })
-            .collect(),
-        search_params: vec![SearchParams {
-            truth_distance: Dot,
-            k: 30,
-            ef: 60,
-            start_candidates: 0,
-            vp_max_visits: 0,
-        }],
-        random_seeds: false,
-        repeats: 10,
-        title: "hnsw_effect_of_level_norm_param",
-    }
-}
-
-fn try_hnsw_effect_of_m_max() -> ExperimentSetup {
-    ExperimentSetup {
-        n: SMALL_N,
-        n_queries: 100,
-        params: (8..=48usize)
-            .step_by(4)
-            .map(|m_max| {
-                ModelParams::Hnsw(
-                    HnswParams {
-                        level_norm_param: 0.3,
-                        ef_construction: 40,
-                        m_max,
-                        m_max_0: m_max * 2,
-                        distance: Dot,
-                    },
-                    SliceS2,
-                )
-            })
-            .collect(),
-        search_params: vec![SearchParams {
-            truth_distance: Dot,
-            k: 30,
-            ef: 60,
-            start_candidates: 0,
-            vp_max_visits: 0,
-        }],
-        random_seeds: false,
-        repeats: 10,
-        title: "hnsw_effect_of_m_max",
-    }
-}
-
-fn try_hnsw_effect_of_ef_search() -> ExperimentSetup {
-    ExperimentSetup {
-        n: SMALL_N,
-        n_queries: 100,
-        params: vec![ModelParams::Hnsw(
-            HnswParams {
-                level_norm_param: 0.3,
-                ef_construction: 40,
-                m_max: 20,
-                m_max_0: 40,
-                distance: Dot,
-            },
-            SliceS2,
-        )],
-        search_params: (30..=200usize)
-            .step_by(10)
-            .map(|ef| SearchParams {
-                truth_distance: Dot,
-                k: 30,
-                ef,
-                start_candidates: 0,
-                vp_max_visits: 0,
-            })
-            .collect(),
-        random_seeds: false,
-        repeats: 10,
-        title: "hnsw_effect_of_level_norm_param",
     }
 }
 
@@ -556,6 +894,7 @@ fn eval_models(data: Arc<dyn DatasetT>, queries: Arc<dyn DatasetT>, setup: &Expe
 
     let mut true_knns_by_search_params: Vec<Vec<HashSet<usize>>> = vec![];
     for search_params in setup.search_params.iter() {
+        let start_time = Instant::now();
         let mut true_knns: Vec<HashSet<usize>> = vec![];
         for i in 0..n_queries {
             let q_data = queries.get(i);
@@ -571,6 +910,11 @@ fn eval_models(data: Arc<dyn DatasetT>, queries: Arc<dyn DatasetT>, setup: &Expe
             true_knns.push(knn);
         }
         true_knns_by_search_params.push(true_knns);
+        println!(
+            "    Determined true KNN for {} in {}secs",
+            queries.len(),
+            start_time.elapsed().as_secs_f32()
+        );
     }
 
     #[derive(Debug, Clone, Copy, Default)]
@@ -664,6 +1008,13 @@ fn eval_models(data: Arc<dyn DatasetT>, queries: Arc<dyn DatasetT>, setup: &Expe
                 }
             }
 
+            println!(
+                "    Built model for {:?} in {} secs",
+                model_params,
+                model.build_stats().duration.as_secs_f32()
+            );
+
+            let model_search_start_time = Instant::now();
             for (search_params_idx, search_params) in setup.search_params.iter().enumerate() {
                 let true_knns = &true_knns_by_search_params[search_params_idx];
 
@@ -725,6 +1076,10 @@ fn eval_models(data: Arc<dyn DatasetT>, queries: Arc<dyn DatasetT>, setup: &Expe
                     results.push((model_params, *search_params, vec![model_result]))
                 }
             }
+            println!(
+                "        Finished searches for model in {} secs",
+                model_search_start_time.elapsed().as_secs_f32()
+            );
         }
     }
 

@@ -7,12 +7,12 @@ def sum_as_string(a: int, b: int) -> str:
     "adds two numbers and returns their sum as a string"
 
 
-def build_hnsw_by_transition(data: Dataset, max_chunk_size: int, same_chunk_m_max: int, m_max: int, neg_fraction: float,  keep_fraction: float, distance: Distance, seed: int) -> Hnsw:
+def build_hnsw_by_transition(data: Dataset, max_chunk_size: int, same_chunk_m_max: int, m_max: int, neg_fraction: float,  keep_fraction: float, n_candidates: int, distance: Distance, seed: int) -> Hnsw:
     pass
 
 
 
-def build_hnsw_by_vp_tree_ensemble(data: Dataset, max_chunk_size: int, same_chunk_m_max: int, m_max: int,  m_max_0: int, n_vp_trees: int, level_norm: float, distance: Distance, threaded: bool, seed: int) -> Hnsw:
+def build_hnsw_by_vp_tree_ensemble(data: Dataset, max_chunk_size: int, same_chunk_m_max: int, m_max: int,  m_max_0: int, n_vp_trees: int, level_norm: float, n_candidates: int, distance: Distance, threaded: bool, seed: int) -> Hnsw:
     pass
 
 

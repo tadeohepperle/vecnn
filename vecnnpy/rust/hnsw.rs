@@ -19,6 +19,7 @@ pub fn build_hnsw_by_vp_tree_ensemble(
     m_max_0: usize,
     n_vp_trees: usize,
     level_norm: f32,
+    n_candidates: usize,
     distance: String,
     threaded: bool,
     seed: u64,
@@ -33,6 +34,7 @@ pub fn build_hnsw_by_vp_tree_ensemble(
         level_norm,
         distance: dist_from_str(&distance)?,
         strategy: vecnn::transition::EnsembleStrategy::BruteForceKNN, // todo! needs to be configurable
+        n_candidates,
     };
 
     let hnsw = vecnn::transition::build_hnsw_by_vp_tree_ensemble_multi_layer(
@@ -52,6 +54,7 @@ pub fn build_hnsw_by_transition(
     m_max: usize,
     neg_fraction: f32,
     keep_fraction: f32,
+    n_candidates: usize,
     distance: String,
     seed: u64,
 ) -> PyResult<Hnsw> {
@@ -66,6 +69,7 @@ pub fn build_hnsw_by_transition(
         stitch_mode: StitchMode::RandomNegToPosCenterAndBack,
         only_n_chunks: None,
         x: 3,
+        n_candidates,
     };
     let hnsw =
         vecnn::transition::build_hnsw_by_vp_tree_stitching(data.as_dyn_dataset(), params, seed);

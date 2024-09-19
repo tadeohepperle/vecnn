@@ -7,15 +7,22 @@ one or more csv files. It should do a few things:
 This helps us to extract the actual useful information from all the info spit out by the compare.rs Rust script.
 """
 
+import matplotlib.pyplot as plt
+
 from typing import List, Tuple
 import pandas as pd
 
 class Experiment:
+    name: str
     csv_paths: List[str]
     df: pd.DataFrame
     common: dict
 
-    def __init__(self, csv_paths: List[str]):
+    def __init__(self, csv_paths: List[str], name: str | None = None):
+        if name == None:
+            self.name = csv_paths[0].split("/")[-1].split(".csv")[0]
+        else:
+            self.name = name
         all_rows = [] # list of dicts
 
         # flatten out structure into individual rows:
@@ -38,6 +45,7 @@ class Experiment:
             if df[col].nunique(dropna=False) == 1:
                 common[col] = df[col].iloc[0]
                 del df[col]
+        df.rename(lambda x: x if not x.endswith("_mean") else x[:-5], axis=1, inplace=True)
 
         self.csv_paths = csv_paths
         self.common = common
@@ -45,10 +53,44 @@ class Experiment:
         pass
 
     def print(self):
-        print(self.common)
-        print(self.df)
-        pass
+        print("Common: ", self.common)
+        with pd.option_context('display.max_rows', 1000, 'display.max_columns', 1000, "display.width",1000):
+            print(self.df)
 
+    def filter(self, col, value):
+        self.df = self.df[self.df[col] == value]
+        return self
+    
+    def print_latex(self, columns = None):
+        if columns != None:
+            df = self.df[columns]
+        else:
+            df = self.df
+        caption = str(self.common)
+        caption = "experiment: " + caption.replace("{", "").replace("}", "").replace("'", "").replace("_", "\_").replace(": ", "=")
+        latex_str = df.to_latex(index=False, caption=caption, label=self.name)
+        print(latex_str)
+
+    def plot(self, x_col: str, y_col: str, x_label = None, y_label = None, save_path: str = None, show: bool = True, log_x: bool = True, log_y: bool = False):
+        if x_label == None:
+            x_label = x_col
+        if y_label == None:
+            y_label = y_col
+        plt.plot(self.df[x_col], self.df[y_col])
+        # make x axis logarithmic
+        # draw points on line:
+        plt.scatter(self.df[x_col], self.df[y_col])
+        if log_x:
+            plt.xscale("log")
+        if log_y:
+            plt.yscale("log")
+        plt.xlabel(x_label)
+        plt.ylabel(y_label)
+        plt.show()
+        
+        if save_path:
+            plt.savefig(save_path)
+        return self
 
 def split_params_column(row_dict):
     if "params" not in row_dict:
@@ -77,7 +119,6 @@ def split_search_params_column(row_dict):
 def str_to_float_or_int(s: str):
     return int(s) if s.isdigit() else float(s) if s.replace('.', '', 1).isdigit() else s
 
-
 def extract_params_from_path(file_name: str) -> dict:
     try:
         split = file_name.split("n=")
@@ -88,7 +129,7 @@ def extract_params_from_path(file_name: str) -> dict:
         print(e)
         return {}
 
-PATH1 = "../vecnn/experiments/hnsw_effect_of_ef_construction_n=1000_queries_n=100.csv"
-PATH2 = "../vecnn/experiments/stitching_n_candidates_n=200000_queries_n=100.csv"
+# PATH1 = "../vecnn/experiments/hnsw_effect_of_ef_construction_n=1000_queries_n=100.csv"
+# PATH2 = "../vecnn/experiments/stitching_n_candidates_n=200000_queries_n=100.csv"
 
-Experiment([PATH1]).print()
+# Experiment([PATH1]).print()

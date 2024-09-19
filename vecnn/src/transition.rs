@@ -199,7 +199,8 @@ pub fn build_hnsw_by_vp_tree_ensemble_multi_layer(
     let distance = DistanceTracker::new(params.distance);
     // do the ensemble approach for each layer:
     for (level, layer) in layers.iter_mut().enumerate() {
-        if layer.entries.len() <= params.max_chunk_size * 2 && false {
+        // && false //for disabling it
+        if layer.entries.len() <= params.max_chunk_size * 2 {
             // brute force connect neighbors!
             fill_hnsw_layer_range_by_brute_force(&*data, &distance, layer);
         } else {
