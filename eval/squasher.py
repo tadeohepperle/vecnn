@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 
 from typing import List, Tuple
 import pandas as pd
+import os
+
 
 class Experiment:
     name: str
@@ -18,15 +20,16 @@ class Experiment:
     df: pd.DataFrame
     common: dict
 
-    def __init__(self, csv_paths: List[str], name: str | None = None):
+    def __init__(self, csv_path_prefix: str, name: str | None = None):
+        self.csv_paths = find_paths_with_prefix(csv_path_prefix)
         if name == None:
-            self.name = csv_paths[0].split("/")[-1].split(".csv")[0]
+            self.name = self.csv_paths[0].split("/")[-1].split(".csv")[0]
         else:
             self.name = name
         all_rows = [] # list of dicts
 
         # flatten out structure into individual rows:
-        for path in csv_paths:
+        for path in self.csv_paths:
             df = pd.read_csv(path)
             meta_params = extract_params_from_path(path)
             for index, row in df.iterrows():
@@ -47,29 +50,51 @@ class Experiment:
                 del df[col]
         df.rename(lambda x: x if not x.endswith("_mean") else x[:-5], axis=1, inplace=True)
 
-        self.csv_paths = csv_paths
         self.common = common
         self.df = df
+        global ALL_EXPERIMENTS
+        ALL_EXPERIMENTS.append(self)
         pass
 
     def print(self):
+        print("#" * 80)
+        print("Name: ", self.name)
         print("Common: ", self.common)
+        print("Data: ")
         with pd.option_context('display.max_rows', 1000, 'display.max_columns', 1000, "display.width",1000):
-            print(self.df)
+            print(self.df.to_string(index=False))
+        print("#" * 80)
+
+
+    def sort_by(self, col: str):
+        self.df = self.df.sort_values(by=col)
+        return self
 
     def filter(self, col, value):
         self.df = self.df[self.df[col] == value]
         return self
     
-    def print_latex(self, columns = None):
+    def filter_col_eq(self, col1, col2):
+        self.df = self.df[self.df[col1] == self.df[col2]]
+        return self
+    
+    def discard_cols(self, cols: List[str]):
+        for col in cols:
+            del self.df[col]
+        return self
+    
+    def print_latex(self, columns = None, decimal_digits=3):
+        print(self.latex_str(columns, decimal_digits))
+
+    def latex_str(self, columns = None, decimal_digits=3):
         if columns != None:
             df = self.df[columns]
         else:
             df = self.df
         caption = str(self.common)
         caption = "experiment: " + caption.replace("{", "").replace("}", "").replace("'", "").replace("_", "\_").replace(": ", "=")
-        latex_str = df.to_latex(index=False, caption=caption, label=self.name)
-        print(latex_str)
+        latex_str = df.to_latex(index=False, caption=caption, label=self.name, float_format=f"%.{decimal_digits}f")
+        return latex_str
 
     def plot(self, x_col: str, y_col: str, x_label = None, y_label = None, save_path: str = None, show: bool = True, log_x: bool = True, log_y: bool = False):
         if x_label == None:
@@ -91,6 +116,15 @@ class Experiment:
         if save_path:
             plt.savefig(save_path)
         return self
+
+ALL_EXPERIMENTS: List[Experiment] =[]
+
+# returns all paths to files with the given prefix
+def find_paths_with_prefix(prefix: str) -> List[str]:
+    directory = os.path.dirname(prefix)
+    prefix_name = os.path.basename(prefix)
+    
+    return [directory + "/" + f for f in os.listdir(directory) if f.startswith(prefix_name)]
 
 def split_params_column(row_dict):
     if "params" not in row_dict:
@@ -128,6 +162,18 @@ def extract_params_from_path(file_name: str) -> dict:
     except Exception as e:
         print(e)
         return {}
+
+
+def save_all_experiments_as_latex_tables(path: str = "latex_tables.txt"):
+    s = ""
+    for exp in ALL_EXPERIMENTS:
+        s+="\n\n\n"
+        name = exp.name.replace("_", "-")
+        s+="\n"
+        s+=exp.latex_str()
+    with open(path, "w") as f:
+        f.write(s)
+
 
 # PATH1 = "../vecnn/experiments/hnsw_effect_of_ef_construction_n=1000_queries_n=100.csv"
 # PATH2 = "../vecnn/experiments/stitching_n_candidates_n=200000_queries_n=100.csv"

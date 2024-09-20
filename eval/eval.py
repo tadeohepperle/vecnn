@@ -346,7 +346,7 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
             table.add(
                 **model.params.to_dict(),
                 **s_dict,
-                data_n = n, 
+                n = n, 
                 data_dims = dim,
                 build_time = model.build_metrics.build_time,
                 build_ndc = model.build_metrics.num_distance_calculations,
@@ -361,7 +361,10 @@ def benchmark_models(model_params: list[ModelParams], data: np.ndarray, queries:
 # queries = np.random.random((300,dims)).astype("float32")
 # k = 10
 
-laion_data = laion_util.load_laion_data()
+LAION_DATA_PATH = '../data/laion2B-en-clip768v2-n=300K.h5'
+LAION_QUERIES_PATH ='../data/public-queries-2024-laion2B-en-clip768v2-n=10k.h5'
+
+laion_data = laion_util.load_laion_data(LAION_DATA_PATH, LAION_QUERIES_PATH)
 data, queries = laion_data.subset(100000, 1000)
 
 ef_construction =40
