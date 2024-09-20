@@ -207,7 +207,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
         ];
         ExperimentSetup {
             n: N_100K,
-            n_queries: 100,
+            n_queries: 1000,
             params: ef_construction
                 .into_iter()
                 .map(|ef_construction| {
@@ -225,7 +225,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
                 .collect(),
             search_params: search_params(),
             random_seeds: false,
-            repeats: 10,
+            repeats: 1,
             title: "exp_hnsw_effect_of_ef_construction",
         }
     }
@@ -233,7 +233,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
         let level_norm_params: Vec<f32> = (0..=20).map(|e| (e as f32) / 20.0).collect();
         ExperimentSetup {
             n: N_100K,
-            n_queries: 100,
+            n_queries: 1000,
             params: level_norm_params
                 .into_iter()
                 .map(|level_norm_param| {
@@ -251,14 +251,14 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
                 .collect(),
             search_params: search_params(),
             random_seeds: false,
-            repeats: 10,
+            repeats: 1,
             title: "exp_hnsw_effect_of_level_norm",
         }
     }
     fn exp_hnsw_effect_of_ef_search_and_k() -> ExperimentSetup {
         ExperimentSetup {
             n: N_100K,
-            n_queries: 100,
+            n_queries: 1000,
             params: vec![ModelParams::Hnsw(
                 HnswParams {
                     level_norm_param: 0.3,
@@ -271,7 +271,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             )],
             search_params: search_params_varied_k_and_ef(),
             random_seeds: false,
-            repeats: 10,
+            repeats: 1,
             title: "exp_hnsw_effect_of_ef_search_and_k",
         }
     }
@@ -304,7 +304,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
     // /////////////////////////////////////////////////////////////////////////////
     fn exp_rnn_effect_of_inner_loops() -> ExperimentSetup {
         ExperimentSetup {
-            n: 10000,
+            n: N_100K,
             n_queries: 10000,
             params: (1..=24)
                 .map(|t_inner| {
@@ -430,7 +430,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
     fn exp_ensemble_effect_of_n_vp_trees() -> ExperimentSetup {
         ExperimentSetup {
             n: N_100K,
-            n_queries: 500,
+            n_queries: 1000,
             params: (2..=20)
                 .map(|n_vp_trees| {
                     ModelParams::VpTreeEnsemble(
@@ -451,7 +451,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
                 .collect(),
             search_params: search_params(),
             random_seeds: false,
-            repeats: 5,
+            repeats: 1,
             title: "exp_ensemble_effect_of_n_vp_trees",
         }
     }
@@ -459,7 +459,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
     fn exp_ensemble_effect_of_chunk_size() -> ExperimentSetup {
         ExperimentSetup {
             n: N_100K,
-            n_queries: 500,
+            n_queries: 1000,
             params: [64usize, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048]
                 .into_iter()
                 .map(|chunk_size| {
@@ -481,7 +481,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
                 .collect(),
             search_params: search_params(),
             random_seeds: false,
-            repeats: 5,
+            repeats: 1,
             title: "exp_ensemble_effect_of_chunk_size",
         }
     }
@@ -489,7 +489,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
         ExperimentSetup {
             n: N_100K,
             n_queries: 500,
-            params: [1, 4, 8, 16, 32, 64, 128]
+            params: [1, 4, 8, 16, 32, 64]
                 .into_iter()
                 .map(|n_candidates| {
                     ModelParams::VpTreeEnsemble(
@@ -510,7 +510,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
                 .collect(),
             search_params: search_params(),
             random_seeds: false,
-            repeats: 5,
+            repeats: 1,
             title: "exp_ensemble_effect_of_multiple_vantage_points",
         }
     }
@@ -540,7 +540,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
                 .collect(),
             search_params: search_params(),
             random_seeds: false,
-            repeats: 3,
+            repeats: 1,
             title: "exp_ensemble_effect_of_level_norm",
         }
     }
@@ -565,25 +565,25 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
     let mut res = vec![];
     if WHAT_TO_RUN.hnsw_100k {
         res.extend([
-            exp_hnsw_effect_of_m_max(),
-            exp_hnsw_effect_of_ef_search_and_k(),
-            exp_hnsw_effect_of_ef_construction(),
-            exp_hnsw_effect_of_level_norm(),
+            // exp_hnsw_effect_of_m_max(),
+            // exp_hnsw_effect_of_ef_search_and_k(),
+            // exp_hnsw_effect_of_ef_construction(),
+            // exp_hnsw_effect_of_level_norm(),
         ]);
     }
 
     if WHAT_TO_RUN.rnn_100k {
         res.extend([
-            exp_rnn_effect_of_inner_loops(),
-            exp_rnn_effect_of_outer_loops(),
-            exp_rnn_effect_of_ef_search_and_k(),
-            exp_rnn_effect_of_multi_start_points(),
+            // exp_rnn_effect_of_inner_loops(),
+            // exp_rnn_effect_of_outer_loops(),
+            // exp_rnn_effect_of_ef_search_and_k(),
+            // exp_rnn_effect_of_multi_start_points(),
         ]);
     }
     if WHAT_TO_RUN.ensemble_100k {
         res.extend([
-            exp_ensemble_effect_of_chunk_size(),
-            exp_ensemble_effect_of_n_vp_trees(),
+            // exp_ensemble_effect_of_chunk_size(),
+            // exp_ensemble_effect_of_n_vp_trees(),
             exp_ensemble_effect_of_multiple_vantage_points(),
             exp_ensemble_effect_of_level_norm(),
         ]);
