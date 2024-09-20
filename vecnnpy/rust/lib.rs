@@ -18,7 +18,7 @@ mod utils;
 mod vp_tree;
 
 use crate::dataset::Dataset;
-use crate::hnsw::{build_hnsw_by_transition, build_hnsw_by_vp_tree_ensemble};
+use crate::hnsw::{build_hnsw_by_chunk_stitching, build_hnsw_by_vp_tree_ensemble};
 use crate::nn_descent::RNNGraph;
 use crate::utils::{pyarray1_to_slice, KnnResult};
 use crate::vp_tree::VpTree;
@@ -42,7 +42,7 @@ fn _lib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(linear_knn, m)?)?;
     m.add_function(wrap_pyfunction!(knn_recall, m)?)?;
     m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
-    m.add_function(wrap_pyfunction!(build_hnsw_by_transition, m)?)?;
+    m.add_function(wrap_pyfunction!(build_hnsw_by_chunk_stitching, m)?)?;
     m.add_function(wrap_pyfunction!(build_hnsw_by_vp_tree_ensemble, m)?)?;
     Ok(())
 }

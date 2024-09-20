@@ -10,18 +10,25 @@ use vecnn::{
 
 use crate::utils::{pyarray1_to_slice, KnnResult};
 
+// level_norm: float = 0.3
+// n_vp_trees: int = 6
+// n_candidates: int = 0      # for vptree  construction
+// max_chunk_size: int = 256  # max size of the chunks the vptree is split into
+// same_chunk_m_max: int = 20 # max neighbors within each chunk.
+// m_max: int = 20            # of the resulting graph
+// threaded: bool = False
 #[pyfunction]
 pub fn build_hnsw_by_vp_tree_ensemble(
     data: crate::Dataset,
+    level_norm: f32,
+    n_vp_trees: usize,
+    n_candidates: usize,
     max_chunk_size: usize,
     same_chunk_m_max: usize,
     m_max: usize,
     m_max_0: usize,
-    n_vp_trees: usize,
-    level_norm: f32,
-    n_candidates: usize,
-    distance: String,
     threaded: bool,
+    distance: String,
     seed: u64,
 ) -> PyResult<Hnsw> {
     // todo! the python side of this interface needs to be adjusted!!!
@@ -46,29 +53,53 @@ pub fn build_hnsw_by_vp_tree_ensemble(
     Ok(Hnsw(Inner::SliceImpl(hnsw)))
 }
 
+// """
+// method1: random negative to positive center
+// method2: random negative to random positive
+// method3: x candidates in pos and neg half, do x searches between the closest ones.
+// method4: method2 but with mofe than 1 ef, uses x param as ef
+// """
+// method: Literal["method1", "method2", "method3", "method4"]
+// n_candidates: int = 0      # for vptree  construction
+// max_chunk_size: int = 256  # max size of the chunks the vptree is split into
+// same_chunk_m_max: int = 20 # max neighbors within each chunk.
+// m_max: int = 20            # of the resulting graph
+// fraction: float = 0.3      # of negative half sampled
+// x: int = 3                 # ef or x for method2 or method 3
+// threaded: bool = False
+
 #[pyfunction]
-pub fn build_hnsw_by_transition(
+pub fn build_hnsw_by_chunk_stitching(
     data: crate::Dataset,
+    method: &str,
+    n_candidates: usize,
     max_chunk_size: usize,
     same_chunk_m_max: usize,
     m_max: usize,
-    neg_fraction: f32,
-    keep_fraction: f32,
-    n_candidates: usize,
+    fraction: f32,
+    x_or_ef: usize, // x or ef
+    threaded: bool, // currently unused!
     distance: String,
     seed: u64,
 ) -> PyResult<Hnsw> {
+    let stitch_mode: StitchMode = match method {
+        "method1" => StitchMode::RandomNegToPosCenterAndBack,
+        "method2" => StitchMode::RandomNegToRandomPosAndBack,
+        "method3" => StitchMode::DontStarveXXSearch,
+        "method4" => StitchMode::MultiEf,
+        _ => return Err(PyTypeError::new_err("Invalid chunk stitching mode/methods")),
+    };
     // todo! the python side of this interface needs to be adjusted!!!
     let params = StitchingParams {
+        stitch_mode,
         max_chunk_size,
         same_chunk_m_max,
         m_max,
-        neg_fraction,
-        keep_fraction, // todo!!
+        neg_fraction: fraction,
+        keep_fraction: 0.1, // todo!!
         distance: dist_from_str(&distance)?,
-        stitch_mode: StitchMode::RandomNegToPosCenterAndBack,
         only_n_chunks: None,
-        x: 3,
+        x_or_ef,
         n_candidates,
     };
     let hnsw =

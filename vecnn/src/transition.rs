@@ -968,7 +968,7 @@ fn connect_vp_tree_chunk_and_update_neighbors_in_hnsw_brute_force<'task, 'total>
 
     for i in 0..chunk_size {
         let i_idx_in_hnsw = chunk_nodes[i].idx_in_hnsw_layer as usize;
-        let i_neighbors = &mut buffers.chunk_neighbors[i];
+        let i_neighbors: &mut SliceBinaryHeap<'_, DistAnd<usize>> = &mut buffers.chunk_neighbors[i];
         let hnsw_neighbors = unsafe_get_mut_neighbors_in_hnsw_at_idx(i_idx_in_hnsw);
         for &DistAnd(dist, idx_in_hnsw) in i_neighbors.iter() {
             if !hnsw_neighbors.iter().any(|e| e.1 == idx_in_hnsw) {
@@ -985,7 +985,7 @@ pub struct StitchingParams {
     pub neg_fraction: f32,
     pub keep_fraction: f32,
     pub m_max: usize, // max number of neighbors in hnsw
-    pub x: usize,
+    pub x_or_ef: usize,
     pub only_n_chunks: Option<usize>, // this is only for debugging
     pub distance: Distance,
     pub stitch_mode: StitchMode,
@@ -1262,7 +1262,7 @@ fn generate_stitching_candidates(
     let mut result: HashSet<StitchCandidate> = HashSet::new();
 
     // reusable buffer
-    let mut visited = &mut HashSet::<usize>::new();
+    let visited = &mut HashSet::<usize>::new();
 
     match params.stitch_mode {
         StitchMode::RandomNegToPosCenterAndBack => {
@@ -1417,7 +1417,7 @@ fn generate_stitching_candidates(
                 random_idx_sample(neg_chunk.range.clone(), params.neg_fraction, rng);
             let mut pos_random_indices =
                 random_idx_sample(pos_chunk.range.clone(), params.neg_fraction, rng);
-            let x = params.x;
+            let x = params.x_or_ef;
             let outer_loops = neg_random_indices.len().min(pos_random_indices.len()) / x;
 
             neg_random_indices.truncate(outer_loops * x);
@@ -1460,7 +1460,7 @@ fn generate_stitching_candidates(
                 random_idx_sample(neg_chunk.range.clone(), params.neg_fraction, rng);
             let mut pos_random_indices =
                 random_idx_sample(pos_chunk.range.clone(), params.neg_fraction, rng);
-            let x = params.x;
+            let x = params.x_or_ef;
             let outer_loops = neg_random_indices.len().min(pos_random_indices.len()) / x;
 
             neg_random_indices.truncate(outer_loops * x);
@@ -1539,7 +1539,7 @@ fn generate_stitching_candidates(
             neg_random_indices.truncate(len);
             pos_random_indices.truncate(len);
 
-            let ef = params.x;
+            let ef = params.x_or_ef;
 
             let buffers = &mut SearchBuffers::new();
             let mut neg_cand_indices: Vec<usize> = vec![];

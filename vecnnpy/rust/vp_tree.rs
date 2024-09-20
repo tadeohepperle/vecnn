@@ -16,13 +16,19 @@ pub struct VpTree(vecnn::vp_tree::VpTree);
 #[pymethods]
 impl VpTree {
     #[new]
-    fn new(data: crate::Dataset, distance: String, threaded: bool, seed: u64) -> PyResult<Self> {
+    fn new(
+        data: crate::Dataset,
+        n_candidates: usize,
+        threaded: bool,
+        distance: String,
+        seed: u64,
+    ) -> PyResult<Self> {
         let distance = dist_from_str(&distance)?;
         let tree = vecnn::vp_tree::VpTree::new(
             data.as_dyn_dataset(),
             VpTreeParams { distance, threaded },
             seed,
-            0,
+            n_candidates,
         );
         Ok(Self(tree))
     }

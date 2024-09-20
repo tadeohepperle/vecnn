@@ -6,13 +6,10 @@ type Distance = Literal['l1', 'l2', 'cos', 'dot']
 def sum_as_string(a: int, b: int) -> str:
     "adds two numbers and returns their sum as a string"
 
-
-def build_hnsw_by_transition(data: Dataset, max_chunk_size: int, same_chunk_m_max: int, m_max: int, neg_fraction: float,  keep_fraction: float, n_candidates: int, distance: Distance, seed: int) -> Hnsw:
+def build_hnsw_by_chunk_stitching(data: Dataset, method: str, n_candidates: int, max_chunk_size: int, same_chunk_m_max: int, m_max: int, fraction: float, x_or_ef: int, threaded: bool, distance: Distance, seed: int) -> Hnsw:
     pass
 
-
-
-def build_hnsw_by_vp_tree_ensemble(data: Dataset, max_chunk_size: int, same_chunk_m_max: int, m_max: int,  m_max_0: int, n_vp_trees: int, level_norm: float, n_candidates: int, distance: Distance, threaded: bool, seed: int) -> Hnsw:
+def build_hnsw_by_vp_tree_ensemble(data: Dataset, level_norm: float,n_vp_trees: int, n_candidates: int, max_chunk_size: int, same_chunk_m_max: int, m_max: int, m_max_0: int, threaded: bool, distance: Distance, seed: int) -> Hnsw:
     pass
 
 
@@ -45,7 +42,7 @@ class VpTree():
     '''A vp-tree, built on a DataSet'''
     num_distance_calculations_in_build: int
     
-    def __init__(self, data: Dataset, distance: Distance, threaded: bool, seed: int):
+    def __init__(self, data: Dataset, n_candidates: int, threaded: bool, distance: Distance, seed: int):
         """constructs a new vp-tree on the dataset passed in."""
         pass
 
