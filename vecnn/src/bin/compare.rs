@@ -37,10 +37,30 @@ use vecnn::{
 };
 use HnswStructure::*;
 
-const DATA_PATH: &str = "../eval/laion_data_(300000, 768).bin";
-const DATA_LEN: usize = 300000;
+const IS_ON_SERVER: bool = false; // Uni Server for testing 10M dataset
 
-const QUERIES_PATH: &str = "../eval/laion_queries_(10000, 768).bin";
+const DATA_PATH: &str = const {
+    if IS_ON_SERVER {
+        "/data/hepperle/laion_10m_(10120191, 768).bin"
+    } else {
+        "../eval/laion_data_(300000, 768).bin"
+    }
+};
+const DATA_LEN: usize = const {
+    if IS_ON_SERVER {
+        10120191
+    } else {
+        300000
+    }
+};
+
+const QUERIES_PATH: &str = const {
+    if IS_ON_SERVER {
+        "/data/hepperle/laion_10k_queries_(10000, 768).bin"
+    } else {
+        "../eval/laion_queries_(10000, 768).bin"
+    }
+};
 const QUERIES_LEN: usize = 10000;
 
 const DIMS: usize = 768;

@@ -521,7 +521,7 @@ impl SelectVantagePointStrategyT for () {
 struct SelectVantagePointWithNCandidates {
     n: usize,
 }
-const VANTAGE_POINT_MAX_CANDIDATES: usize = 40;
+const VANTAGE_POINT_MAX_CANDIDATES: usize = 64;
 impl SelectVantagePointStrategyT for SelectVantagePointWithNCandidates {
     // note: This strategy selections the point with the highest mean distance to other candidates.
     // Selecting for highest median as sometimes intended for VP-trees could have different results.

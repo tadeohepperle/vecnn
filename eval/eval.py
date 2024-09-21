@@ -135,6 +135,19 @@ class SearchParams:
 Distance = Literal["l2", "dot", "cos"]
 ModelParams = Union[HnswParams, RNNGraphParams, StitchingParams, EnsembleParams, VpTreeParams]
 
+def model_params_to_str(params: ModelParams) -> str:
+    if isinstance(params, HnswParams):
+        return f"Hnsw_{params.implementation} {{ef_constr: {params.ef_construction}, m_max: {params.m_max}, m_max0: {params.m_max_0}, level_norm: {params.level_norm}, threaded: {params.threaded}}}"
+    elif isinstance(params, RNNGraphParams):
+        return f"RNNGraph {{outer_loops: {params.outer_loops}, inner_loops: {params.inner_loops}, m_pruned: {params.m_pruned}, m_initial: {params.m_initial}}}"
+    elif isinstance(params, StitchingParams):
+        return f"Stitching {{method: {params.method}, n_candidates: {params.n_candidates}, max_chunk_size: {params.max_chunk_size}, same_chunk_m_max: {params.same_chunk_m_max}, m_max: {params.m_max}, fraction: {params.fraction}, x_or_ef: {params.x_or_ef}, threaded: {params.threaded}}}"
+    elif isinstance(params, EnsembleParams):
+        return f"Ensemble {{level_norm: {params.level_norm}, n_vp_trees: {params.n_vp_trees}, n_candidates: {params.n_candidates}, max_chunk_size: {params.max_chunk_size}, same_chunk_m_max: {params.same_chunk_m_max}, m_max: {params.m_max}, m_max0: {params.m_max_0}, threaded: {params.threaded}}}"
+    elif isinstance(params, VpTreeParams):
+        return f"VpTree {{n_candidates: {params.n_candidates}, threaded: {params.threaded}}}"
+    else: 
+        raise Exception(f"Invalid ModelParams")
 
 def check_params(params: ModelParams):
     if isinstance(params, HnswParams):
@@ -330,7 +343,7 @@ class Model:
                 return (indices[0,:], search_time, None)
             return knn
         else: 
-            raise Exception(f"No model contained in this instance of the Model class: {asdict(self.params)}")
+            raise Exception(f"No model contained in this instance of the Model class: {model_params_to_str(self.params)}")
 
     def knn(self, queries: np.ndarray, params: SearchParams, truth_indices: np.ndarray) -> SearchMetrics:
         """
@@ -418,7 +431,7 @@ def benchmark_models(params_list: list[ModelParams], data: np.ndarray, queries: 
                 n = n, 
                 dims = dim,
                 **search_params_dict,
-                **asdict(model.params),
+                params = model_params_to_str(model.params),
                 build_secs = model.build_metrics.build_secs,
                 build_ndc = model.build_metrics.num_distance_calculations,
                 search_ms = metrics.search_ms,
@@ -432,17 +445,18 @@ def benchmark_models(params_list: list[ModelParams], data: np.ndarray, queries: 
 # queries = np.random.random((300,dims)).astype("float32")
 # k = 10
 
-LAION_DATA_PATH = '../data/laion2B-en-clip768v2-n=300K.h5'
-LAION_QUERIES_PATH ='../data/public-queries-2024-laion2B-en-clip768v2-n=10k.h5'
+IS_ON_SERVER = False
+LAION_DATA_PATH = '/data/hepperle/laion2B-en-clip768v2-n=10M.h5' if IS_ON_SERVER else '../data/laion2B-en-clip768v2-n=300K.h5'
+LAION_QUERIES_PATH = '/data/hepperle/public-queries-2024-laion2B-en-clip768v2-n=10k.h5' if IS_ON_SERVER else '../data/public-queries-2024-laion2B-en-clip768v2-n=10k.h5'
 
 laion_data = laion_util.load_laion_data(LAION_DATA_PATH, LAION_QUERIES_PATH)
-data, queries = laion_data.subset(1000000, 1000)
+data, queries = laion_data.subset(4000, 1000)
 
 # (truth_indices, search_time) = linear_search_true_knn(data, queries, k, "dot")
 model_params: list[ModelParams] = [
-    # VpTreeParams(n_candidates  = 0, threaded=False),
-    # RNNGraphParams(outer_loops=3, inner_loops=5, m_initial=40, m_pruned=40),
-    # StitchingParams("method2", n_candidates=0, max_chunk_size=256, same_chunk_m_max=20, m_max=20, fraction=0.3, x_or_ef=3, threaded=False),
+    VpTreeParams(n_candidates  = 0, threaded=False),
+    RNNGraphParams(outer_loops=3, inner_loops=5, m_initial=40, m_pruned=40),
+    StitchingParams("method2", n_candidates=0, max_chunk_size=256, same_chunk_m_max=20, m_max=20, fraction=0.3, x_or_ef=3, threaded=False),
     # EnsembleParams(level_norm=0.3, n_vp_trees=6, n_candidates=0, max_chunk_size=256, same_chunk_m_max=20, m_max=20, m_max_0=40, threaded=False),
     EnsembleParams(level_norm=0.3, n_vp_trees=6, n_candidates=0, max_chunk_size=256, same_chunk_m_max=20, m_max=20, m_max_0=40, threaded=True),
     HnswParams("rustcv", threaded=False),
@@ -453,11 +467,9 @@ model_params: list[ModelParams] = [
     HnswParams("vecnn", threaded=True),
     HnswParams("hnswlib", threaded=True),
     HnswParams("faiss", threaded=True),
-    # ModelParams('vecnn_rnn_descent',outer_loops=50, inner_loops=1, max_neighbors_after_reverse_pruning=4, initial_neighbors = 10, distance = "dot"),
-    # ModelParams('vecnn_vptree'),
 ]
 search_params: list[SearchParams] = [
-    SearchParams(k=30, ef = 60, start_candidates = 10) # make sure ef >= k
+    SearchParams(k=30, ef = 60, start_candidates = 1) # make sure ef >= k
 ]
 
 start = time.time()
