@@ -207,12 +207,16 @@ pub fn build_hnsw_by_vp_tree_ensemble_multi_layer(
             if !threaded {
                 fill_hnsw_layer_by_vp_tree_ensemble(&*data, &distance, layer, &params, seed);
             } else {
-                // fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk(
-                //     &*data, &distance, layer, &mut rng, params,
-                // );
-                fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk_with_core_affinity(
-                    &*data, &distance, layer, &mut rng, params,
-                );
+                const USE_CORE_AFFINITY_INSTEAD_OF_RAYON: bool = false;
+                if USE_CORE_AFFINITY_INSTEAD_OF_RAYON {
+                    fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk_with_core_affinity(
+                        &*data, &distance, layer, &mut rng, params,
+                    );
+                } else {
+                    fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk(
+                        &*data, &distance, layer, &mut rng, params,
+                    );
+                }
             }
         }
     }
@@ -616,10 +620,13 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_chunk_with_core_affinity(
     let chunks = make_chunks(n_entries, max_chunk_size);
     let data_get = |e: &VpTreeNode| data.get(e.id as usize);
 
-    let num_threads: usize = sanititze_num_threads(0);
+    let mut num_threads: usize = sanititze_num_threads(0);
     const MIN_CHUNK_CHUNK_SIZE: usize = 4; // to not have chunks that are too small
     let chunk_chunk_size = MIN_CHUNK_CHUNK_SIZE.max(chunks.len() / num_threads);
     let chunk_chunks: Vec<&[Chunk]> = chunks.chunks(chunk_chunk_size).collect();
+    if chunk_chunks.len() < num_threads {
+        num_threads = chunk_chunks.len();
+    }
 
     // Now we officially get the permission to mutate the layer from multiple threads (MUST wrap in UnsafeCell if mutable accesses to this shared reference can happen):
     let layer_cell = YoloCell::new(std::mem::replace(layer, super::slice_hnsw::Layer::new(1)));

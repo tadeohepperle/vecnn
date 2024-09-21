@@ -1,6 +1,9 @@
 /target
 /data
 /vecnnpy/.venv
+/vecnnpy/python/vecnn/*.so
+/vecnnpy/python/vecnn/_lib.cpython-311-x86_64-linux-gnu.so
+/vecnnpy/python/vecnn/_lib.cpython-312-x86_64-linux-gnu.so
 /eval/.venv
 /eval/experiments
 /eval/thesis_experiments

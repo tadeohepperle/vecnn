@@ -436,15 +436,15 @@ LAION_DATA_PATH = '../data/laion2B-en-clip768v2-n=300K.h5'
 LAION_QUERIES_PATH ='../data/public-queries-2024-laion2B-en-clip768v2-n=10k.h5'
 
 laion_data = laion_util.load_laion_data(LAION_DATA_PATH, LAION_QUERIES_PATH)
-data, queries = laion_data.subset(5000, 1000)
+data, queries = laion_data.subset(1000000, 1000)
 
 # (truth_indices, search_time) = linear_search_true_knn(data, queries, k, "dot")
 model_params: list[ModelParams] = [
-    VpTreeParams(n_candidates  = 0, threaded=False),
-    RNNGraphParams(outer_loops=3, inner_loops=5, m_initial=40, m_pruned=40),
-    StitchingParams("method1", n_candidates=0, max_chunk_size=256, same_chunk_m_max=20, m_max=20, fraction=0.3, x_or_ef=3, threaded=False),
-    EnsembleParams(level_norm=0.3, n_vp_trees=6, n_candidates=0, max_chunk_size=256, same_chunk_m_max=20, m_max=20, m_max_0=40, threaded=False),
-    # ModelParams('vecnn_rnn_descent',outer_loops=3, inner_loops=5, max_neighbors_after_reverse_pruning=20, initial_neighbors = 10, distance = "dot"),
+    # VpTreeParams(n_candidates  = 0, threaded=False),
+    # RNNGraphParams(outer_loops=3, inner_loops=5, m_initial=40, m_pruned=40),
+    # StitchingParams("method2", n_candidates=0, max_chunk_size=256, same_chunk_m_max=20, m_max=20, fraction=0.3, x_or_ef=3, threaded=False),
+    # EnsembleParams(level_norm=0.3, n_vp_trees=6, n_candidates=0, max_chunk_size=256, same_chunk_m_max=20, m_max=20, m_max_0=40, threaded=False),
+    EnsembleParams(level_norm=0.3, n_vp_trees=6, n_candidates=0, max_chunk_size=256, same_chunk_m_max=20, m_max=20, m_max_0=40, threaded=True),
     HnswParams("rustcv", threaded=False),
     HnswParams("jpboth", threaded=False),
     HnswParams("vecnn", threaded=False),
