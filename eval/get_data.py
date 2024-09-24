@@ -8,6 +8,22 @@ import os
 from typing import Any, Tuple
 import h5py
 
+
+if len(sys.argv) <2:
+    print("Usage: get_data.py <data_dir> [clear] [convert] [300k] [10m] [100m]")
+    print("    data_dir: directory to download the data to")
+    print("    clear: clear the data directory before downloading")
+    print("    download: download the datasets from sisap servers")
+    print("    convert: convert the h5 files to binary (slice of f32 or usize) for easier uncompressed reading from rust")
+    print("    all: include all of the datasets below:")
+    print("        queries: include the 10k queries dataset")
+    print("        300k: include the 300k dataset")
+    print("        10m: include the 10m dataset")
+    print("        100m: include the 100m dataset")
+    print("Example: get_data.py ./my_data_dir clear convert 300k 10m 100m")
+    print("Note: the 10k queries are always downloaded")
+    sys.exit(1)
+
 data_dir = sys.argv[1]
 options = sys.argv[2:]
 
@@ -45,7 +61,7 @@ def clear_dir(data_dir: str):
 class Source:
     name: str
     url: str
-    key: Literal["emb", "knn"]
+    key: Literal["emb", "knns"]
 
 LAION_100M_URL = "https://sisap-23-challenge.s3.amazonaws.com/SISAP23-Challenge/laion2B-en-clip768v2-n=100M.h5"
 LAION_10M_URL = "https://sisap-23-challenge.s3.amazonaws.com/SISAP23-Challenge/laion2B-en-clip768v2-n=10M.h5"
@@ -55,28 +71,15 @@ LAION_10K_QUERIES_100M_GOLD_URL = "http://ingeotec.mx/~sadit/sisap2024-data/gold
 LAION_10K_QUERIES_10M_GOLD_URL = "http://ingeotec.mx/~sadit/sisap2024-data/gold-standard-dbsize=10M--public-queries-2024-laion2B-en-clip768v2-n=10k.h5"
 LAION_10K_QUERIES_300K_GOLD_URL = "http://ingeotec.mx/~sadit/sisap2024-data/gold-standard-dbsize=300K--public-queries-2024-laion2B-en-clip768v2-n=10k.h5"
 SOURCES = [
-    Source("queries_10k", LAION_10K_QUERIES_URL, "emb"),
+    Source("queries", LAION_10K_QUERIES_URL, "emb"),
     Source("300k", LAION_300K_URL, "emb"),
     Source("10m", LAION_10M_URL, "emb"),
     Source("100m", LAION_100M_URL, "emb"),
-    Source("gold_300k", LAION_10K_QUERIES_300K_GOLD_URL, "knn"),
-    Source("gold_10m", LAION_10K_QUERIES_10M_GOLD_URL, "knn"),
-    Source("gold_100m", LAION_10K_QUERIES_100M_GOLD_URL, "knn"),
+    Source("gold_300k", LAION_10K_QUERIES_300K_GOLD_URL, "knns"),
+    Source("gold_10m", LAION_10K_QUERIES_10M_GOLD_URL, "knns"),
+    Source("gold_100m", LAION_10K_QUERIES_100M_GOLD_URL, "knns"),
 ]
 
-if len(sys.argv) <2:
-    print("Usage: get_data.py <data_dir> [clear] [convert] [300k] [10m] [100m]")
-    print("    data_dir: directory to download the data to")
-    print("    clear: clear the data directory before downloading")
-    print("    convert: convert the h5 files to binary (slice of f32 or usize) for easier uncompressed reading from rust")
-    print("    all: include all of the datasets below:")
-    print("        queries: include the 10k queries dataset")
-    print("        300k: include the 300k dataset")
-    print("        10m: include the 10m dataset")
-    print("        100m: include the 100m dataset")
-    print("Example: get_data.py ./my_data_dir clear convert 300k 10m 100m")
-    print("Note: the 10k queries are always downloaded")
-    sys.exit(1)
 
 
 OPTION_ALL = "all" in options
@@ -95,9 +98,12 @@ for source in SOURCES:
         print(f"Downloaded {source.name} to {source_h5_path}")
         if OPTION_CONVERT:
             f = h5py.File(source_h5_path, 'r')
+            assert source.key == "emb" or source.key == "knns"
             dtype = "float32" if source.key == "emb" else "uint64"
             data = np.array(f[source.key]).astype(dtype)
-            bin_path = f"{data_dir}/laion_{source.name }_{data.shape}.bin"
+            if source.key == "knns":
+                data = np.subtract(data, 1) # for some reason the gold standard knn indices from sisap website are 1-based.
+            bin_path = f"{data_dir}/laion_{source.name}_{data.shape}.bin"
             data.tofile(bin_path)
             print(f"Converted {source_h5_path} to {bin_path}")
 

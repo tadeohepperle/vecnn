@@ -1,21 +1,15 @@
 use std::{
     collections::HashSet,
+    env::args,
     fmt::Display,
     fs::{File, OpenOptions},
-    hash::Hash,
-    io::Write,
-    ops::{Add, AddAssign, DerefMut},
-    os, slice,
+    slice,
     sync::Arc,
     time::Instant,
 };
 
-use ahash::{HashMap, HashMapExt};
-use prettytable::{
-    format::{FormatBuilder, LineSeparator, TableFormat},
-    row, AsTableSlice, Slice, Table,
-};
-use rand::{seq::SliceRandom, thread_rng, Rng, SeedableRng};
+use prettytable::{format::FormatBuilder, row, AsTableSlice, Slice, Table};
+use rand::{thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use vecnn::{
@@ -24,9 +18,8 @@ use vecnn::{
     distance::{
         cos, dot, l2,
         Distance::{self, *},
-        DistanceFn,
     },
-    hnsw::{self, Hnsw, HnswParams},
+    hnsw::{Hnsw, HnswParams},
     relative_nn_descent::{RNNGraph, RNNGraphParams},
     slice_hnsw::SliceHnsw,
     transition::{
@@ -34,12 +27,12 @@ use vecnn::{
         build_hnsw_by_vp_tree_stitching, build_single_layer_hnsw_by_vp_tree_ensemble,
         EnsembleParams, EnsembleStrategy, StitchMode, StitchingParams,
     },
-    utils::{linear_knn_search, random_data_set, Stats, YoloCell},
+    utils::{linear_knn_search, Stats, YoloCell},
     vp_tree::{VpTree, VpTreeParams},
 };
 use HnswStructure::*;
 
-const IS_ON_SERVER: bool = false; // Uni Server for testing 10M dataset
+const IS_ON_SERVER: bool = false; // modify on uni Server for testing 10M dataset!
 const DATA_PATH: &str = const {
     if IS_ON_SERVER {
         "/data/hepperle"
@@ -52,6 +45,11 @@ const FILE_NAME_10M: &str = "laion_10m_(10120191, 768).bin";
 const FILE_NAME_QUERIES: &str = "laion_queries_(10000, 768).bin";
 const FILE_NAME_GOLD_300K: &str = "laion_gold_300k_(10000, 1000).bin";
 const FILE_NAME_GOLD_10M: &str = "laion_gold_10m_(10000, 1000).bin";
+const N_10K: usize = 10_000;
+const N_100K: usize = 100_000;
+const N_300K: usize = 300_000;
+const N_1M: usize = 1_000_000;
+const N_10M: usize = 10_000_000;
 
 #[derive(Debug, Clone, Copy)]
 enum DataSetSize {
@@ -77,53 +75,17 @@ impl RequiredData {
     }
 }
 
-const RNG_SEED: u64 = 21321424198;
-
 fn main() {
-    let ensemble_params = EnsembleParams {
-        n_vp_trees: 6,
-        max_chunk_size: 256,
-        same_chunk_m_max: 16,
-        m_max: 20,
-        m_max_0: 40,
-        distance: Distance::Dot,
-        level_norm: 0.0,
-        strategy: EnsembleStrategy::BruteForceKNN,
-        n_candidates: 0,
-    };
-
-    let hnsw_params = HnswParams {
-        level_norm_param: 0.5,
-        ef_construction: 40,
-        m_max: 20,
-        m_max_0: 40,
-        distance: Dot,
-    };
-
-    let rnn_params = RNNGraphParams {
-        distance: Dot,
-        outer_loops: 2,
-        inner_loops: 3,
-        max_neighbors_after_reverse_pruning: 20,
-        initial_neighbors: 40,
-    };
-
-    let stitch_params = StitchingParams {
-        max_chunk_size: 512,
-        same_chunk_m_max: 20,
-        neg_fraction: 0.4,
-        keep_fraction: 0.0,
-        x_or_ef: 2,
-        only_n_chunks: None,
-        distance: Distance::Dot,
-        stitch_mode: StitchMode::BestXofRandomXTimesX,
-        m_max: 20,
-        n_candidates: 0,
-    };
+    if args().len() > 1 && args().any(|e| e == "gen") {
+        // allows you to call `cargo run --bin compare --release -- gen 10000 500000` to just generate subsets of he 10m data
+        // and write it to the data folder for e.g. use in python. Makes sure true knns are also either calculated or already present.
+        gen_binary_datasets_by_subsampling_main();
+        return;
+    }
 
     let test_setup = ExperimentSetup {
-        n: 10000,
-        n_queries: 100,
+        n: 300000,
+        n_queries: N_10K,
         params: vec![ModelParams::Hnsw(
             HnswParams {
                 level_norm_param: 0.3,
@@ -132,33 +94,57 @@ fn main() {
                 m_max_0: 40,
                 distance: Dot,
             },
-            SliceS2,
+            SliceParralelRayon,
         )],
         search_params: vec![SearchParams {
             truth_distance: Dot,
-            k: 30,
+            k: 70,
             ef: 100,
             start_candidates: 1,
             vp_max_visits: 0,
         }],
         random_seeds: true,
         repeats: 1,
-        title: "try it out",
+        title: "test_setup",
     };
 
     let experiments: Vec<ExperimentSetup> = vec![test_setup];
     // let experiments = final_experiment_collection();
     for e in experiments.iter() {
-        println!("Start experiment {}", e.to_string());
         eval_models_on_laion(e)
     }
 }
-const N_10K: usize = 10_000;
-const N_100K: usize = 100_000;
-const N_1M: usize = 1_000_000;
-const N_10M: usize = 10_000_000;
-
+/// Specify a bunch of experiments in here, comment in/out what is needed for a particular run
 fn final_experiment_collection() -> Vec<ExperimentSetup> {
+    let mut res = vec![];
+    // hnsw:
+    res.extend([
+        _hnsw_effect_of_m_max(),
+        _hnsw_effect_of_ef_search_and_k(),
+        _hnsw_effect_of_ef_construction(),
+        _hnsw_effect_of_level_norm(),
+    ]);
+    res.extend(_hnsw_effect_of_n());
+    // rnn:
+    res.extend([
+        _rnn_effect_of_inner_loops(),
+        _rnn_effect_of_outer_loops(),
+        _rnn_effect_of_ef_search_and_k(),
+        _rnn_effect_of_multi_start_points(),
+    ]);
+    res.extend(_rnn_effect_of_n());
+    // ensemble:
+    res.extend([
+        _ensemble_effect_of_chunk_size(),
+        _ensemble_effect_of_n_vp_trees(),
+        _ensemble_effect_of_multiple_vantage_points(),
+        _ensemble_effect_of_level_norm(),
+    ]);
+    return res;
+
+    // /////////////////////////////////////////////////////////////////////////////
+    // SECTION: Utils
+    // /////////////////////////////////////////////////////////////////////////////
     fn search_params() -> Vec<SearchParams> {
         vec![SearchParams {
             truth_distance: Dot,
@@ -168,7 +154,6 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             vp_max_visits: 0,
         }]
     }
-
     fn search_params_varied_k_and_ef() -> Vec<SearchParams> {
         (30..=200usize)
             .step_by(10)
@@ -207,10 +192,10 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
     // /////////////////////////////////////////////////////////////////////////////
     // SECTION: HNSW
     // /////////////////////////////////////////////////////////////////////////////
-    fn exp_hnsw_effect_of_m_max() -> ExperimentSetup {
+    fn _hnsw_effect_of_m_max() -> ExperimentSetup {
         ExperimentSetup {
             n: N_100K,
-            n_queries: 100,
+            n_queries: N_10K,
             params: (8..=48usize)
                 .step_by(4)
                 .map(|m_max| {
@@ -232,13 +217,13 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             title: "exp_hnsw_effect_of_m_max",
         }
     }
-    fn exp_hnsw_effect_of_ef_construction() -> ExperimentSetup {
+    fn _hnsw_effect_of_ef_construction() -> ExperimentSetup {
         let ef_construction: Vec<usize> = vec![
             30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200,
         ];
         ExperimentSetup {
             n: N_100K,
-            n_queries: 1000,
+            n_queries: N_10K,
             params: ef_construction
                 .into_iter()
                 .map(|ef_construction| {
@@ -260,11 +245,11 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             title: "exp_hnsw_effect_of_ef_construction",
         }
     }
-    fn exp_hnsw_effect_of_level_norm() -> ExperimentSetup {
+    fn _hnsw_effect_of_level_norm() -> ExperimentSetup {
         let level_norm_params: Vec<f32> = (0..=20).map(|e| (e as f32) / 20.0).collect();
         ExperimentSetup {
             n: N_100K,
-            n_queries: 1000,
+            n_queries: N_10K,
             params: level_norm_params
                 .into_iter()
                 .map(|level_norm_param| {
@@ -286,10 +271,10 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             title: "exp_hnsw_effect_of_level_norm",
         }
     }
-    fn exp_hnsw_effect_of_ef_search_and_k() -> ExperimentSetup {
+    fn _hnsw_effect_of_ef_search_and_k() -> ExperimentSetup {
         ExperimentSetup {
             n: N_100K,
-            n_queries: 1000,
+            n_queries: N_10K,
             params: vec![ModelParams::Hnsw(
                 HnswParams {
                     level_norm_param: 0.3,
@@ -307,12 +292,12 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
         }
     }
     // WARNING! CAN BE FAIRLY EXPENSIVE AND LONG RUNNING!
-    fn exp_hnsw_effect_of_n() -> Vec<ExperimentSetup> {
+    fn _hnsw_effect_of_n() -> Vec<ExperimentSetup> {
         return n_log_steps_per_magnitude(N_10K, N_10M, 5)
             .into_iter()
             .map(|n| ExperimentSetup {
                 n,
-                n_queries: 100,
+                n_queries: N_10K,
                 params: vec![ModelParams::Hnsw(
                     HnswParams {
                         level_norm_param: 0.3,
@@ -333,10 +318,10 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
     // /////////////////////////////////////////////////////////////////////////////
     // SECTION: RNN Graphs
     // /////////////////////////////////////////////////////////////////////////////
-    fn exp_rnn_effect_of_inner_loops() -> ExperimentSetup {
+    fn _rnn_effect_of_inner_loops() -> ExperimentSetup {
         ExperimentSetup {
             n: N_100K,
-            n_queries: 10000,
+            n_queries: N_10K,
             params: (1..=24)
                 .map(|t_inner| {
                     ModelParams::RNNGraph(RNNGraphParams {
@@ -354,7 +339,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             title: "exp_rnn_effect_of_inner_loops",
         }
     }
-    fn exp_rnn_effect_of_outer_loops() -> ExperimentSetup {
+    fn _rnn_effect_of_outer_loops() -> ExperimentSetup {
         fn loops(inner_loops: usize, outer_loops: usize) -> ModelParams {
             ModelParams::RNNGraph(RNNGraphParams {
                 inner_loops,
@@ -366,7 +351,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
         }
         ExperimentSetup {
             n: N_100K,
-            n_queries: 10000,
+            n_queries: N_10K,
             params: vec![
                 loops(48, 1),
                 loops(24, 2),
@@ -384,10 +369,10 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             title: "exp_rnn_effect_of_outer_loops",
         }
     }
-    fn exp_rnn_effect_of_ef_search_and_k() -> ExperimentSetup {
+    fn _rnn_effect_of_ef_search_and_k() -> ExperimentSetup {
         ExperimentSetup {
             n: N_100K,
-            n_queries: 100,
+            n_queries: N_10K,
             params: vec![ModelParams::RNNGraph(RNNGraphParams {
                 inner_loops: 4,
                 outer_loops: 3,
@@ -401,10 +386,10 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             title: "exp_rnn_effect_of_ef_search_and_k",
         }
     }
-    fn exp_rnn_effect_of_multi_start_points() -> ExperimentSetup {
+    fn _rnn_effect_of_multi_start_points() -> ExperimentSetup {
         ExperimentSetup {
             n: N_100K,
-            n_queries: 1000,
+            n_queries: N_10K,
             params: vec![ModelParams::RNNGraph(RNNGraphParams {
                 inner_loops: 4,
                 outer_loops: 3,
@@ -426,12 +411,12 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             title: "exp_rnn_effect_of_ef_search_and_k",
         }
     }
-    fn exp_rnn_effect_of_n() -> Vec<ExperimentSetup> {
+    fn _rnn_effect_of_n() -> Vec<ExperimentSetup> {
         return n_log_steps_per_magnitude(N_10K, N_10M, 5)
             .into_iter()
             .map(|n| ExperimentSetup {
                 n,
-                n_queries: 100,
+                n_queries: N_10K,
                 params: vec![ModelParams::RNNGraph(RNNGraphParams {
                     inner_loops: 4,
                     outer_loops: 3,
@@ -458,10 +443,10 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
     // /////////////////////////////////////////////////////////////////////////////
     // SECTION: VP Tree Ensemble
     // /////////////////////////////////////////////////////////////////////////////
-    fn exp_ensemble_effect_of_n_vp_trees() -> ExperimentSetup {
+    fn _ensemble_effect_of_n_vp_trees() -> ExperimentSetup {
         ExperimentSetup {
             n: N_100K,
-            n_queries: 1000,
+            n_queries: N_10K,
             params: (2..=20)
                 .map(|n_vp_trees| {
                     ModelParams::VpTreeEnsemble(
@@ -487,10 +472,10 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
         }
     }
 
-    fn exp_ensemble_effect_of_chunk_size() -> ExperimentSetup {
+    fn _ensemble_effect_of_chunk_size() -> ExperimentSetup {
         ExperimentSetup {
             n: N_100K,
-            n_queries: 1000,
+            n_queries: N_10K,
             params: [64usize, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048]
                 .into_iter()
                 .map(|chunk_size| {
@@ -516,10 +501,10 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             title: "exp_ensemble_effect_of_chunk_size",
         }
     }
-    fn exp_ensemble_effect_of_multiple_vantage_points() -> ExperimentSetup {
+    fn _ensemble_effect_of_multiple_vantage_points() -> ExperimentSetup {
         ExperimentSetup {
             n: N_100K,
-            n_queries: 500,
+            n_queries: N_10K,
             params: [1, 4, 8, 16, 32, 64]
                 .into_iter()
                 .map(|n_candidates| {
@@ -545,11 +530,11 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             title: "exp_ensemble_effect_of_multiple_vantage_points",
         }
     }
-    fn exp_ensemble_effect_of_level_norm() -> ExperimentSetup {
+    fn _ensemble_effect_of_level_norm() -> ExperimentSetup {
         let level_norm_params: Vec<f32> = (0..=20).map(|e| (e as f32) / 20.0).collect();
         ExperimentSetup {
             n: N_100K,
-            n_queries: 100,
+            n_queries: N_10K,
             params: level_norm_params
                 .into_iter()
                 .map(|level_norm| {
@@ -575,58 +560,6 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             title: "exp_ensemble_effect_of_level_norm",
         }
     }
-
-    // /////////////////////////////////////////////////////////////////////////////
-
-    const WHAT_TO_RUN: WhatToRun = WhatToRun {
-        hnsw_100k: true,
-        rnn_100k: true,
-        ensemble_100k: true,
-        hnsw_by_n: false,
-        rnn_graph_by_n: false,
-    };
-    struct WhatToRun {
-        hnsw_100k: bool,
-        hnsw_by_n: bool,
-        rnn_100k: bool,
-        rnn_graph_by_n: bool,
-        ensemble_100k: bool,
-    }
-
-    let mut res = vec![];
-    if WHAT_TO_RUN.hnsw_100k {
-        res.extend([
-            // exp_hnsw_effect_of_m_max(),
-            // exp_hnsw_effect_of_ef_search_and_k(),
-            // exp_hnsw_effect_of_ef_construction(),
-            // exp_hnsw_effect_of_level_norm(),
-        ]);
-    }
-
-    if WHAT_TO_RUN.rnn_100k {
-        res.extend([
-            // exp_rnn_effect_of_inner_loops(),
-            // exp_rnn_effect_of_outer_loops(),
-            // exp_rnn_effect_of_ef_search_and_k(),
-            // exp_rnn_effect_of_multi_start_points(),
-        ]);
-    }
-    if WHAT_TO_RUN.ensemble_100k {
-        res.extend([
-            // exp_ensemble_effect_of_chunk_size(),
-            // exp_ensemble_effect_of_n_vp_trees(),
-            exp_ensemble_effect_of_multiple_vantage_points(),
-            exp_ensemble_effect_of_level_norm(),
-        ]);
-    }
-    if WHAT_TO_RUN.hnsw_by_n {
-        res.extend(exp_hnsw_effect_of_n());
-    }
-    if WHAT_TO_RUN.rnn_graph_by_n {
-        res.extend(exp_rnn_effect_of_n());
-    }
-
-    return res;
 }
 
 fn try_stitching_n_candidates(n: usize) -> ExperimentSetup {
@@ -891,8 +824,8 @@ fn extract_two_numbers_from_tuple_in_file_name(file_name: &str) -> (usize, usize
     (a, b)
 }
 
-fn load_data(data_set_size: DataSetSize, n_queries: usize) -> RequiredData {
-    assert!(n_queries <= 10000);
+fn load_data(data_set_size: DataSetSize, n_queries: usize, store_subsampled: bool) -> RequiredData {
+    assert!(n_queries <= N_10K);
     let data_file_name: &str = match data_set_size {
         DataSetSize::Sampled(n) => {
             assert!(n <= 10_000_000); // should be adjusted later maybe
@@ -912,6 +845,7 @@ fn load_data(data_set_size: DataSetSize, n_queries: usize) -> RequiredData {
         len: data_n,
         floats: load_binary_data::<f32>(&data_file_path, data_n, dims),
     };
+    println!("Loaded dataset from {data_file_path}");
 
     let (queries_n, dims_q) = extract_two_numbers_from_tuple_in_file_name(FILE_NAME_QUERIES);
     assert!(dims_q == dims);
@@ -921,6 +855,7 @@ fn load_data(data_set_size: DataSetSize, n_queries: usize) -> RequiredData {
         len: queries_n,
         floats: load_binary_data::<f32>(&queries_file_path, queries_n, dims),
     };
+    println!("Loaded dataset from {queries_file_path}");
 
     // maybe subsample the loaded data:
     if let DataSetSize::Sampled(n) = data_set_size {
@@ -929,6 +864,19 @@ fn load_data(data_set_size: DataSetSize, n_queries: usize) -> RequiredData {
         let data_indices = rand::seq::index::sample(&mut rng, data.len, n).into_vec();
         data.floats = subsample_flat(&data.floats, dims, &data_indices);
         data.len = n;
+
+        if store_subsampled {
+            let subsampled_path = format!("{DATA_PATH}/laion_subsampled_({}, {}).bin", n, dims);
+            let data_floats_bytes = unsafe {
+                std::slice::from_raw_parts(
+                    data.floats.as_ptr() as *const u8,
+                    data.floats.len() * size_of::<f32>(),
+                )
+            };
+            std::fs::write(&subsampled_path, data_floats_bytes);
+            let mb = data_floats_bytes.len() / (1024usize * 1024usize);
+            println!("Wrote subsampled data for n={n} ({mb} MB) to {subsampled_path}");
+        }
     }
 
     // load the 1000 true knns for the dataset size. For fixed sizes use the ones provided by sisap, for custom sizes calculate new ones and cache them for future use (next to the official SISAP gold knns)
@@ -936,11 +884,11 @@ fn load_data(data_set_size: DataSetSize, n_queries: usize) -> RequiredData {
         DataSetSize::_300K => FILE_NAME_GOLD_300K.to_string(), // from sisap website:  https://sisap-challenges.github.io/2024/datasets/#gold_standard_files_for_the_2024_private_queries
         DataSetSize::_10M => FILE_NAME_GOLD_10M.to_string(),   // from sisap website.
         DataSetSize::Sampled(n) => {
-            format!("computed_true_knns_n={n}_(10000,1000).bin")
+            format!("computed_true_knns_n={n}_(10000, 1000).bin")
         }
     };
-    let true_knns_path = format!("{DATA_PATH}/{true_knns_file_name}");
-    let true_knns_path = std::path::Path::new(&true_knns_path);
+    let true_knns_path_str = format!("{DATA_PATH}/{true_knns_file_name}");
+    let true_knns_path = std::path::Path::new(&true_knns_path_str);
     let mut true_knns: Vec<usize>; // flat vec of 10000 * 1000 indices
 
     const K: usize = 1000; // hard coded because the sisap files also come with k = 1000
@@ -964,10 +912,15 @@ fn load_data(data_set_size: DataSetSize, n_queries: usize) -> RequiredData {
                 unsafe { true_knns_cell.get_mut()[K * q_i + nei_i] = nei_id_in_data }
             }
             let n_done = n_done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            println!(
-                "    Calculated {}/{} true knns for n={}",
-                n_done, queries.len, data.len
-            );
+            if n_done % 100 == 0 {
+                println!(
+                    "    Calculated {}/{} true knns for n={}  ({}s)",
+                    n_done,
+                    queries.len,
+                    data.len,
+                    start_time.elapsed().as_secs_f32()
+                );
+            }
         });
         println!(
             "Determined true KNN for {} queries in {}s.",
@@ -984,6 +937,11 @@ fn load_data(data_set_size: DataSetSize, n_queries: usize) -> RequiredData {
         std::fs::write(true_knns_path, true_knn_bytes)
             .expect("could not create file for true knns!");
     } else {
+        println!(
+            "Load true KNN for {} queries from file {}",
+            queries.len, true_knns_path_str,
+        );
+        let start_time = Instant::now();
         // load the true knns from file:
         let mut true_knn_bytes =
             std::fs::read(true_knns_path).expect("could not create file for true knns!");
@@ -997,11 +955,12 @@ fn load_data(data_set_size: DataSetSize, n_queries: usize) -> RequiredData {
             )
         };
         std::mem::forget(true_knn_bytes); // die in dignity, you are now a vec of usizes already.
+        println!("    Loading took {}s", start_time.elapsed().as_secs_f32(),);
     }
     assert!(true_knns.len() == queries.len * K);
 
     // subsample queries and true knn if needed:
-    if n_queries < 10000 {
+    if n_queries < N_10K {
         const QUERY_SUBSAMPLE_SEED: u64 = 123;
         // only keep queries from a sampled indices list:
         let mut rng = ChaCha20Rng::seed_from_u64(QUERY_SUBSAMPLE_SEED);
@@ -1020,7 +979,6 @@ fn load_data(data_set_size: DataSetSize, n_queries: usize) -> RequiredData {
 }
 
 fn load_binary_data<T: Copy>(path: &str, len: usize, elements_per_row: usize) -> Vec<T> {
-    dbg!(path);
     let mut bytes = std::fs::read(path).unwrap();
     assert_eq!(
         bytes.len(),
@@ -1060,20 +1018,15 @@ fn eval_models_on_laion(setup: &ExperimentSetup) {
     if setup.params.len() == 0 {
         return;
     }
+    println!("Start experiment {}", setup.to_string());
     let data_set_size = match setup.n {
         300_000 => DataSetSize::_300K,
-        10_000_000 => DataSetSize::_10M,
+        10_000_000 => DataSetSize::_10M, // Note: is not exactly 10M
         n => DataSetSize::Sampled(n),
     };
-    let data = load_data(data_set_size, setup.n_queries);
+    let data = load_data(data_set_size, setup.n_queries, false);
     eval_models(&data, setup)
 }
-
-// fn eval_models_random_data(dims: usize, setup: &ExperimentSetup) {
-//     let data = random_data_set(setup.n, dims);
-//     let queries = random_data_set(setup.n_queries, dims);
-//     eval_models(data, queries, setup)
-// }
 
 fn eval_models(req_data: &RequiredData, setup: &ExperimentSetup) {
     #[derive(Debug, Clone, Copy, Default)]
@@ -1110,7 +1063,6 @@ fn eval_models(req_data: &RequiredData, setup: &ExperimentSetup) {
             self.build_duration_ms /= n as f32;
         }
     }
-
     let mut results: Vec<(ModelParams, SearchParams, Vec<Result>)> = vec![];
     for _ in 0..setup.repeats {
         for &model_params in setup.params.iter() {
@@ -1294,4 +1246,13 @@ fn eval_models(req_data: &RequiredData, setup: &ExperimentSetup) {
     table.slice(1..).to_csv(&mut file).unwrap();
 
     table.printstd();
+}
+
+fn gen_binary_datasets_by_subsampling_main() {
+    for a in args() {
+        if let Ok(n) = a.parse::<usize>() {
+            let _data = load_data(DataSetSize::Sampled(n), N_10K, true);
+            println!("Subsampled and stored data and true knn for n={n}");
+        }
+    }
 }

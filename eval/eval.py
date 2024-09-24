@@ -8,8 +8,8 @@ import hnswlib
 import faiss
 from typing import Any, Tuple, Literal, Optional, Callable, Tuple, Union
 from dataclasses import dataclass, field, asdict
-from enum import Enum
 import laion_util
+import h5py
 
 class Table:
     runs: list[Tuple[str, Any]]
@@ -345,10 +345,10 @@ class Model:
         else: 
             raise Exception(f"No model contained in this instance of the Model class: {model_params_to_str(self.params)}")
 
-    def knn(self, queries: np.ndarray, params: SearchParams, truth_indices: np.ndarray) -> SearchMetrics:
+    def knn(self, queries: np.ndarray, params: SearchParams, true_knns: np.ndarray) -> SearchMetrics:
         """
         query: 2-d-ndarray of float32
-        truth_indices: 2-d-ndarray of uint64
+        true_knns: 2-d-ndarray of uint64 where each row has 1000 elements! 
         """
         n_queries = queries.shape[0]
 
@@ -367,7 +367,7 @@ class Model:
             else:
                 (indices, duration, ndc) = fn(queries[i,:], params)
             search_secs += duration
-            recall += vecnn.knn_recall(truth_indices[i,:], indices)
+            recall += vecnn.knn_recall(true_knns[i,:params.k], indices) # select onlu the k first (nearest) elements from the true knn row with 1000 items.
             if ndc is not None:
                 num_distance_calculations += ndc
         search_secs /= n_queries
@@ -377,29 +377,8 @@ class Model:
         if num_distance_calculations == 0:
             num_distance_calculations = None
         return SearchMetrics(search_ms=search_secs*1000.0, recall=recall, num_distance_calculations=num_distance_calculations)
-    
-def linear_search_true_knn(data: np.ndarray, queries: np.ndarray, k: int, distance: str) -> Tuple[np.ndarray, float]:
-    """Args:
-    data: 2-d np.ndarray of float32
-    queries: 2-d np.ndarray of float32
 
-    Returns: 
-    truth_indices: 2-d np.ndarray of uint64
-    search_time: float
-    """
-    n_queries = queries.shape[0]
-    truth_indices = np.zeros((n_queries,k)).astype("uint64")  
-    search_time = 0.0
-    dataset = vecnn.Dataset(data)
-    for i in range(n_queries):
-        start = time.time()
-        res = vecnn.linear_knn(dataset, queries[i,:], k, distance)
-        search_time += time.time() - start
-        truth_indices[i:] = res.indices
-    search_time /= n_queries
-    return (truth_indices, search_time)
-
-def benchmark_models(params_list: list[ModelParams], data: np.ndarray, queries: np.ndarray, search_params: list[SearchParams], distance: Distance = "dot", seed: int = 42) -> Table:
+def benchmark_models(params_list: list[ModelParams], data: np.ndarray, queries: np.ndarray, true_knns: np.ndarray, search_params: list[SearchParams], distance: Distance = "dot", seed: int = 42) -> Table:
     # simple sanity checks if all params are valid, before we sink time into building the models and maybe crash
     for params in params_list:
         check_params(params)
@@ -418,14 +397,11 @@ def benchmark_models(params_list: list[ModelParams], data: np.ndarray, queries: 
     for s in search_params:
         search_params_dict = asdict(s)
         print(f"Benchmark {len(models)} models for search params: {search_params_dict}")
-
-        (truth_indices, linear_secs) = linear_search_true_knn(data, queries, s.k, distance)
-        print(f"    Linear search for true neighbors done. Time: {linear_secs}secs")
         i = -1
         for model in models:
             i+=1
             print(f"    Model {i+1}/{len(models)}")
-            metrics = model.knn(queries, s, truth_indices)
+            metrics = model.knn(queries, s, true_knns)
             
             table.add(
                 n = n, 
@@ -440,33 +416,43 @@ def benchmark_models(params_list: list[ModelParams], data: np.ndarray, queries: 
             )
     return table
 
-# dims = 100
-# data = np.random.random((1000,dims)).astype("float32")
-# queries = np.random.random((300,dims)).astype("float32")
-# k = 10
-
+# NOTE: we have data from sisap website for n=300k and n=10M with the corresponding gold standard true knns.
+# If you want to e.g. run for n=1M and n=50k, you need to generate the subsampled data first 
+# and also calculate the true knns and put them into a file.
+# to do that go into ../vecnn and run `cargo run --bin compare --release -- gen 1000000 50000`.
+# this will place files `laion_subsampled_(50000, 768).bin` and `computed_true_knns_n=50000_(10000,1000).bin`
+# into the data folder. You can then load them with the functions from laion_util.py 
 IS_ON_SERVER = False
-LAION_DATA_PATH = '/data/hepperle/laion2B-en-clip768v2-n=10M.h5' if IS_ON_SERVER else '../data/laion2B-en-clip768v2-n=300K.h5'
-LAION_QUERIES_PATH = '/data/hepperle/public-queries-2024-laion2B-en-clip768v2-n=10k.h5' if IS_ON_SERVER else '../data/public-queries-2024-laion2B-en-clip768v2-n=10k.h5'
+DATA_PATH =  "/data/hepperle" if IS_ON_SERVER else "../data"
+QUERIES_FILE_NAME = "laion_queries_(10000, 768).bin"
+DATA_FILE_NAMES = {
+    "100k": ("laion_subsampled_(100000, 768).bin", "computed_true_knns_n=100000_(10000, 1000).bin"), # cargo run --bin compare --release -- gen 1000000
+    "300k": ("laion_300k.h5", "laion_gold_300k_(10000, 1000).bin"),
+    "1m": ("laion_subsampled_(1000000, 768).bin", "computed_true_knns_n=1000000_(10000, 1000).bin"), # cargo run --bin compare --release -- gen 1000000
+    "10m": ("laion_10m.h5", "laion_gold_10m_(10000, 1000).bin"),
+}
 
-laion_data = laion_util.load_laion_data(LAION_DATA_PATH, LAION_QUERIES_PATH)
-data, queries = laion_data.subset(4000, 1000)
+N : Literal["100k", "300k", "1m", "10m"]= "100k" # choose one of the keys from DATA_FILE_NAMES
 
-# (truth_indices, search_time) = linear_search_true_knn(data, queries, k, "dot")
+# n_queries is always 10k, the entire public queries from SISAP 2024
+queries = laion_util.load_data_or_queries(f"{DATA_PATH}/{QUERIES_FILE_NAME}")
+data = laion_util.load_data_or_queries(f"{DATA_PATH}/{DATA_FILE_NAMES[N][0]}")
+true_knns = laion_util.load_true_knns(f"{DATA_PATH}/{DATA_FILE_NAMES[N][1]}")
+
 model_params: list[ModelParams] = [
     # VpTreeParams(n_candidates  = 0, threaded=False),
     # RNNGraphParams(outer_loops=3, inner_loops=5, m_initial=40, m_pruned=40),
     # StitchingParams("method2", n_candidates=0, max_chunk_size=256, same_chunk_m_max=20, m_max=20, fraction=0.3, x_or_ef=3, threaded=False),
-    EnsembleParams(level_norm=0.3, n_vp_trees=6, n_candidates=0, max_chunk_size=256, same_chunk_m_max=16, m_max=20, m_max_0=40, threaded=False),
-    EnsembleParams(level_norm=0.3, n_vp_trees=6, n_candidates=1, max_chunk_size=256, same_chunk_m_max=16, m_max=20, m_max_0=40, threaded=True),
-    HnswParams("rustcv", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
-    HnswParams("jpboth", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    # EnsembleParams(level_norm=0.3, n_vp_trees=6, n_candidates=0, max_chunk_size=256, same_chunk_m_max=16, m_max=20, m_max_0=40, threaded=False),
+    # EnsembleParams(level_norm=0.3, n_vp_trees=6, n_candidates=1, max_chunk_size=256, same_chunk_m_max=16, m_max=20, m_max_0=40, threaded=True),
+    # HnswParams("rustcv", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    # HnswParams("jpboth", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
     HnswParams("vecnn", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
     HnswParams("hnswlib", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
-    HnswParams("jpboth", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
-    HnswParams("vecnn", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
-    HnswParams("hnswlib", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
-    HnswParams("faiss", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    # HnswParams("jpboth", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    # HnswParams("vecnn", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    # HnswParams("hnswlib", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    # HnswParams("faiss", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
  ]
 # EnsembleParams { n_vp_trees: 6, max_chunk_size: 256, same_chunk_m_max: 16, m_max: 20, m_max_0: 40, level_norm: 0.3, distance: Dot, strategy: BruteForceKNN }  
 # SliceS2HnswParams { level_norm_param: 0.3, ef_construction: 20, m_max: 20, m_max_0: 40, distance: Dot }                                                       
@@ -475,7 +461,7 @@ search_params: list[SearchParams] = [
 ]
 
 start = time.time()
-table = benchmark_models(model_params, data, queries, search_params)
+table = benchmark_models(model_params, data, queries, true_knns, search_params)
 total = time.time() -start
 print(table.df().to_string())
 
