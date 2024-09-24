@@ -5,6 +5,7 @@ from typing import Any, Tuple
 import h5py
 
 
+
 class LaionData:
     data: np.ndarray
     queries: np.ndarray
@@ -41,9 +42,17 @@ def load_laion_data(laion_data_path, laion_queries_path) -> LaionData:
 
     return res
 
-# binary data is easy to read from rust
-def convert_h5_emb_to_binary(h5_path: str, out_path_prefix: str):
+# binary data is easy to read from rust, returns dimensions of the data
+def convert_h5_emb_to_binary_f32(h5_path: str, out_path_prefix: str) -> Tuple[int, int]:
     f = h5py.File(h5_path, 'r')
     data = np.array(f["emb"]).astype("float32") # shape: (300000, 768)
+    file_path = f"{out_path_prefix}_{data.shape}.bin"
+    data.tofile(file_path)
+
+
+# binary data is easy to read from rust
+def convert_h5_knns_to_binary_usize(h5_path: str, out_path_prefix: str):
+    f = h5py.File(h5_path, 'r')
+    data = np.array(f["knns"]).astype("uint64") # shape: (300000, 768)
     file_path = f"{out_path_prefix}_{data.shape}.bin"
     data.tofile(file_path)

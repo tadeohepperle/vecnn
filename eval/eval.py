@@ -454,20 +454,22 @@ data, queries = laion_data.subset(4000, 1000)
 
 # (truth_indices, search_time) = linear_search_true_knn(data, queries, k, "dot")
 model_params: list[ModelParams] = [
-    VpTreeParams(n_candidates  = 0, threaded=False),
-    RNNGraphParams(outer_loops=3, inner_loops=5, m_initial=40, m_pruned=40),
-    StitchingParams("method2", n_candidates=0, max_chunk_size=256, same_chunk_m_max=20, m_max=20, fraction=0.3, x_or_ef=3, threaded=False),
-    # EnsembleParams(level_norm=0.3, n_vp_trees=6, n_candidates=0, max_chunk_size=256, same_chunk_m_max=20, m_max=20, m_max_0=40, threaded=False),
-    EnsembleParams(level_norm=0.3, n_vp_trees=6, n_candidates=0, max_chunk_size=256, same_chunk_m_max=20, m_max=20, m_max_0=40, threaded=True),
-    HnswParams("rustcv", threaded=False),
-    HnswParams("jpboth", threaded=False),
-    HnswParams("vecnn", threaded=False),
-    HnswParams("hnswlib", threaded=False),
-    HnswParams("jpboth", threaded=True),
-    HnswParams("vecnn", threaded=True),
-    HnswParams("hnswlib", threaded=True),
-    HnswParams("faiss", threaded=True),
-]
+    # VpTreeParams(n_candidates  = 0, threaded=False),
+    # RNNGraphParams(outer_loops=3, inner_loops=5, m_initial=40, m_pruned=40),
+    # StitchingParams("method2", n_candidates=0, max_chunk_size=256, same_chunk_m_max=20, m_max=20, fraction=0.3, x_or_ef=3, threaded=False),
+    EnsembleParams(level_norm=0.3, n_vp_trees=6, n_candidates=0, max_chunk_size=256, same_chunk_m_max=16, m_max=20, m_max_0=40, threaded=False),
+    EnsembleParams(level_norm=0.3, n_vp_trees=6, n_candidates=1, max_chunk_size=256, same_chunk_m_max=16, m_max=20, m_max_0=40, threaded=True),
+    HnswParams("rustcv", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    HnswParams("jpboth", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    HnswParams("vecnn", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    HnswParams("hnswlib", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    HnswParams("jpboth", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    HnswParams("vecnn", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    HnswParams("hnswlib", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    HnswParams("faiss", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+ ]
+# EnsembleParams { n_vp_trees: 6, max_chunk_size: 256, same_chunk_m_max: 16, m_max: 20, m_max_0: 40, level_norm: 0.3, distance: Dot, strategy: BruteForceKNN }  
+# SliceS2HnswParams { level_norm_param: 0.3, ef_construction: 20, m_max: 20, m_max_0: 40, distance: Dot }                                                       
 search_params: list[SearchParams] = [
     SearchParams(k=30, ef = 60, start_candidates = 1) # make sure ef >= k
 ]

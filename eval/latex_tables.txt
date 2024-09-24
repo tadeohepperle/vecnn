@@ -433,3 +433,51 @@ build_ndc & build_ms & recall & ndc & time_ms & n_candidates \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+
+
+
+\begin{table}
+\caption{experiment: n=1000000, dims=768, k=30, ef=60, start\_candidates=1, m\_max=20, m\_max0=40, level\_norm=0.3}
+\label{compare_10m}
+\begin{tabular}{rrrrrlrlrrrr}
+\toprule
+build_secs & build_ndc & search_ms & search_ndc & search_recall & model & ef_constr & threaded & n_vp_trees & n_candidates & max_chunk_size & same_chunk_m_max \\
+\midrule
+687.005 & NaN & 2.241 & NaN & 0.913 & Hnsw_rustcv & 20.000 & False & NaN & NaN & NaN & NaN \\
+426.421 & NaN & 2.881 & NaN & 0.804 & Hnsw_jpboth & 20.000 & False & NaN & NaN & NaN & NaN \\
+242.746 & 551007532.000 & 0.743 & 1075.370 & 0.847 & Hnsw_vecnn & 20.000 & False & NaN & NaN & NaN & NaN \\
+124.004 & NaN & 0.257 & NaN & 0.752 & Hnsw_hnswlib & 20.000 & False & NaN & NaN & NaN & NaN \\
+25.508 & NaN & 3.645 & NaN & 0.803 & Hnsw_jpboth & 20.000 & True & NaN & NaN & NaN & NaN \\
+33.565 & 538222419.000 & 0.730 & 1062.025 & 0.839 & Hnsw_vecnn & 20.000 & True & NaN & NaN & NaN & NaN \\
+16.708 & NaN & 0.350 & NaN & 0.761 & Hnsw_hnswlib & 20.000 & True & NaN & NaN & NaN & NaN \\
+27.818 & NaN & 0.866 & NaN & 0.892 & Hnsw_faiss & 20.000 & True & NaN & NaN & NaN & NaN \\
+161.125 & 856467040.000 & 1.050 & 1550.570 & 0.800 & Ensemble & NaN & False & 6.000 & 0.000 & 256.000 & 16.000 \\
+66.562 & 824742034.000 & 1.049 & 1541.270 & 0.795 & Ensemble & NaN & True & 6.000 & 1.000 & 256.000 & 16.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+
+
+\begin{table}
+\caption{experiment: n=10000000, dims=768, k=30, ef=60, start\_candidates=1, m\_max=20, m\_max0=40, level\_norm=0.3}
+\label{compare_100m}
+\begin{tabular}{rrrrrlrlrrrr}
+\toprule
+build_secs & build_ndc & search_ms & search_ndc & search_recall & model & ef_constr & threaded & n_vp_trees & n_candidates & max_chunk_size & same_chunk_m_max \\
+\midrule
+197.868 & NaN & 26.242 & NaN & 0.653 & Hnsw_hnswlib & 20.000 & True & NaN & NaN & NaN & NaN \\
+399.895 & NaN & 13.972 & NaN & 0.836 & Hnsw_faiss & 20.000 & True & NaN & NaN & NaN & NaN \\
+1291.379 & 1769851418.000 & 14.427 & 1910.445 & 0.662 & Ensemble & NaN & False & 6.000 & 1.000 & 256.000 & 16.000 \\
+452.250 & 1490179490.000 & 2.010 & 1918.570 & 0.677 & Ensemble & NaN & True & 6.000 & 1.000 & 256.000 & 16.000 \\
+1483.117 & NaN & 0.335 & NaN & 0.632 & Hnsw_hnswlib & 20.000 & False & NaN & NaN & NaN & NaN \\
+3266.860 & 2134321529.000 & 0.743 & 1232.275 & 0.768 & Hnsw_vecnn & 20.000 & False & NaN & NaN & NaN & NaN \\
+456.657 & -2112318859.000 & 5.773 & 1249.345 & 0.774 & Hnsw_vecnn & 20.000 & True & NaN & NaN & NaN & NaN \\
+6524.199 & NaN & 3.858 & NaN & 0.732 & Hnsw_jpboth & 20.000 & False & NaN & NaN & NaN & NaN \\
+301.773 & NaN & 9.253 & NaN & 0.718 & Hnsw_jpboth & 20.000 & True & NaN & NaN & NaN & NaN \\
+10449.207 & NaN & 2.557 & NaN & 0.866 & Hnsw_rustcv & 20.000 & False & NaN & NaN & NaN & NaN \\
+\bottomrule
+\end{tabular}
+\end{table}

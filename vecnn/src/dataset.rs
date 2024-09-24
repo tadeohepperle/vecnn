@@ -52,11 +52,11 @@ impl<const D: usize> DatasetT for [[Float; D]] {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FlatDataSet {
     pub dims: usize,
     pub len: usize,
-    pub data: Vec<Float>,
+    pub floats: Vec<Float>,
 }
 
 impl DatasetT for FlatDataSet {
@@ -71,7 +71,7 @@ impl DatasetT for FlatDataSet {
     fn get(&self, id: usize) -> &[Float] {
         let start = id * self.dims;
         let end = (id + 1) * self.dims;
-        &self.data[start..end]
+        &self.floats[start..end]
     }
 }
 
@@ -81,6 +81,10 @@ impl FlatDataSet {
         let mut data: Vec<Float> = Vec::with_capacity(floats);
         let mut rng = ChaCha20Rng::seed_from_u64(42);
         data.extend((0..floats).map(|_| rng.gen::<f32>()));
-        Arc::new(FlatDataSet { dims, len, data })
+        Arc::new(FlatDataSet {
+            dims,
+            len,
+            floats: data,
+        })
     }
 }

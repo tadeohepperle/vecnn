@@ -4,7 +4,8 @@ use std::{
     fs::{File, OpenOptions},
     hash::Hash,
     io::Write,
-    ops::{Add, AddAssign},
+    ops::{Add, AddAssign, DerefMut},
+    os, slice,
     sync::Arc,
     time::Instant,
 };
@@ -16,9 +17,10 @@ use prettytable::{
 };
 use rand::{seq::SliceRandom, thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use vecnn::{
     const_hnsw::ConstHnsw,
-    dataset::{DatasetT, FlatDataSet},
+    dataset::{self, DatasetT, FlatDataSet},
     distance::{
         cos, dot, l2,
         Distance::{self, *},
@@ -32,38 +34,49 @@ use vecnn::{
         build_hnsw_by_vp_tree_stitching, build_single_layer_hnsw_by_vp_tree_ensemble,
         EnsembleParams, EnsembleStrategy, StitchMode, StitchingParams,
     },
-    utils::{linear_knn_search, random_data_set, Stats},
+    utils::{linear_knn_search, random_data_set, Stats, YoloCell},
     vp_tree::{VpTree, VpTreeParams},
 };
 use HnswStructure::*;
 
 const IS_ON_SERVER: bool = false; // Uni Server for testing 10M dataset
-
 const DATA_PATH: &str = const {
     if IS_ON_SERVER {
-        "/data/hepperle/laion_10m_(10120191, 768).bin"
+        "/data/hepperle"
     } else {
-        "../eval/laion_data_(300000, 768).bin"
+        "../data"
     }
 };
-const DATA_LEN: usize = const {
-    if IS_ON_SERVER {
-        10120191
-    } else {
-        300000
-    }
-};
+const FILE_NAME_300K: &str = "laion_300k_(300000, 768).bin";
+const FILE_NAME_10M: &str = "laion_10m_(10120191, 768).bin";
+const FILE_NAME_QUERIES: &str = "laion_queries_(10000, 768).bin";
+const FILE_NAME_GOLD_300K: &str = "laion_gold_300k_(10000, 1000).bin";
+const FILE_NAME_GOLD_10M: &str = "laion_gold_10m_(10000, 1000).bin";
 
-const QUERIES_PATH: &str = const {
-    if IS_ON_SERVER {
-        "/data/hepperle/laion_10k_queries_(10000, 768).bin"
-    } else {
-        "../eval/laion_queries_(10000, 768).bin"
-    }
-};
-const QUERIES_LEN: usize = 10000;
+#[derive(Debug, Clone, Copy)]
+enum DataSetSize {
+    _300K,
+    _10M,
+    Sampled(usize), // anything below 10M
+}
 
-const DIMS: usize = 768;
+/// for benchmarks we need 3 pieces of data: the big dataset the index is built on, the query set and the the true knn indices in the dataset for each query.
+#[derive(Debug)]
+struct RequiredData {
+    data: Arc<dyn DatasetT>,
+    queries: Arc<dyn DatasetT>,
+    true_knns: Vec<usize>, // true_knns.len = `queries.len * 1000`, indices between 0 and `data.len`
+}
+impl RequiredData {
+    // returns slice of the k true knn indices in the dataset
+    pub fn get_true_knn(&self, query_idx: usize, k: usize) -> &[usize] {
+        assert!(k <= 1000);
+        let start_idx = query_idx * 1000;
+        let end_idx = start_idx + k;
+        &self.true_knns[start_idx..end_idx]
+    }
+}
+
 const RNG_SEED: u64 = 21321424198;
 
 fn main() {
@@ -109,7 +122,7 @@ fn main() {
     };
 
     let test_setup = ExperimentSetup {
-        n: 80000,
+        n: 10000,
         n_queries: 100,
         params: vec![ModelParams::Hnsw(
             HnswParams {
@@ -133,10 +146,8 @@ fn main() {
         title: "try it out",
     };
 
-    let experiments: Vec<ExperimentSetup> = vec![
-        // test_setup,
-    ];
-    let experiments = final_experiment_collection();
+    let experiments: Vec<ExperimentSetup> = vec![test_setup];
+    // let experiments = final_experiment_collection();
     for e in experiments.iter() {
         println!("Start experiment {}", e.to_string());
         eval_models_on_laion(e)
@@ -771,7 +782,7 @@ impl Model {
     pub fn knn_search(
         &self,
         q_data: &[f32],
-        true_res: &HashSet<usize>,
+        true_res: &[usize],
         search_params: SearchParams,
     ) -> (f64, Stats) {
         assert_eq!(search_params.k, true_res.len());
@@ -859,84 +870,212 @@ impl Model {
     }
 }
 
+impl RequiredData {
+    // compare to true knns
+}
+
+// e.g. take "laion_300k_(300000,768).bin" and return 300000, 768
+fn extract_two_numbers_from_tuple_in_file_name(file_name: &str) -> (usize, usize) {
+    let mut iter = file_name
+        .split("(")
+        .skip(1)
+        .next()
+        .unwrap()
+        .split(")")
+        .next()
+        .unwrap()
+        .split(",")
+        .map(|e| e.trim());
+    let a = iter.next().unwrap().parse::<usize>().unwrap();
+    let b = iter.next().unwrap().parse::<usize>().unwrap();
+    (a, b)
+}
+
+fn load_data(data_set_size: DataSetSize, n_queries: usize) -> RequiredData {
+    assert!(n_queries <= 10000);
+    let data_file_name: &str = match data_set_size {
+        DataSetSize::Sampled(n) => {
+            assert!(n <= 10_000_000); // should be adjusted later maybe
+            if n < 300000 {
+                FILE_NAME_300K
+            } else {
+                FILE_NAME_10M
+            }
+        }
+        DataSetSize::_300K => FILE_NAME_300K,
+        DataSetSize::_10M => FILE_NAME_10M,
+    };
+    let (data_n, dims) = extract_two_numbers_from_tuple_in_file_name(data_file_name);
+    let data_file_path = format!("{DATA_PATH}/{data_file_name}");
+    let mut data = FlatDataSet {
+        dims,
+        len: data_n,
+        floats: load_binary_data::<f32>(&data_file_path, data_n, dims),
+    };
+
+    let (queries_n, dims_q) = extract_two_numbers_from_tuple_in_file_name(FILE_NAME_QUERIES);
+    assert!(dims_q == dims);
+    let queries_file_path = format!("{DATA_PATH}/{FILE_NAME_QUERIES}");
+    let mut queries = FlatDataSet {
+        dims,
+        len: queries_n,
+        floats: load_binary_data::<f32>(&queries_file_path, queries_n, dims),
+    };
+
+    // maybe subsample the loaded data:
+    if let DataSetSize::Sampled(n) = data_set_size {
+        const DATA_SUBSAMPLE_SEED: u64 = 123;
+        let mut rng = ChaCha20Rng::seed_from_u64(DATA_SUBSAMPLE_SEED);
+        let data_indices = rand::seq::index::sample(&mut rng, data.len, n).into_vec();
+        data.floats = subsample_flat(&data.floats, dims, &data_indices);
+        data.len = n;
+    }
+
+    // load the 1000 true knns for the dataset size. For fixed sizes use the ones provided by sisap, for custom sizes calculate new ones and cache them for future use (next to the official SISAP gold knns)
+    let true_knns_file_name: String = match data_set_size {
+        DataSetSize::_300K => FILE_NAME_GOLD_300K.to_string(), // from sisap website:  https://sisap-challenges.github.io/2024/datasets/#gold_standard_files_for_the_2024_private_queries
+        DataSetSize::_10M => FILE_NAME_GOLD_10M.to_string(),   // from sisap website.
+        DataSetSize::Sampled(n) => {
+            format!("computed_true_knns_n={n}_(10000,1000).bin")
+        }
+    };
+    let true_knns_path = format!("{DATA_PATH}/{true_knns_file_name}");
+    let true_knns_path = std::path::Path::new(&true_knns_path);
+    let mut true_knns: Vec<usize>; // flat vec of 10000 * 1000 indices
+
+    const K: usize = 1000; // hard coded because the sisap files also come with k = 1000
+    if !true_knns_path.exists() {
+        let start_time = Instant::now();
+        // calculate real 1000 nearest neighbors for all 10k queries and save them to file:
+        let true_knns_cell = YoloCell::new(Vec::<usize>::with_capacity(queries.len * K));
+        unsafe {
+            true_knns_cell.get_mut().set_len(queries.len * K);
+        }
+        let queries_ds: &dyn DatasetT = &queries;
+
+        let n_done = std::sync::atomic::AtomicU64::new(0);
+        (0..queries.len).into_par_iter().for_each(|q_i| {
+            let found = linear_knn_search(&data, queries_ds.get(q_i), K, dot);
+            // note: found comed back sorted already
+            assert!(found.len() == K);
+            for nei_i in 0..K {
+                let nei_id_in_data = found[nei_i].1;
+                // we are only interested in the idx in data not in dist:
+                unsafe { true_knns_cell.get_mut()[K * q_i + nei_i] = nei_id_in_data }
+            }
+            let n_done = n_done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            println!(
+                "    Calculated {}/{} true knns for n={}",
+                n_done, queries.len, data.len
+            );
+        });
+        println!(
+            "Determined true KNN for {} queries in {}s.",
+            queries.len,
+            start_time.elapsed().as_secs_f32()
+        );
+        true_knns = true_knns_cell.into_inner();
+        let true_knn_bytes = unsafe {
+            slice::from_raw_parts(
+                true_knns.as_ptr() as *const u8,
+                true_knns.len() * size_of::<usize>(),
+            )
+        };
+        std::fs::write(true_knns_path, true_knn_bytes)
+            .expect("could not create file for true knns!");
+    } else {
+        // load the true knns from file:
+        let mut true_knn_bytes =
+            std::fs::read(true_knns_path).expect("could not create file for true knns!");
+        assert!(true_knn_bytes.len() == queries.len * K * size_of::<usize>());
+        assert!(true_knn_bytes.capacity() % size_of::<usize>() == 0);
+        true_knns = unsafe {
+            Vec::from_raw_parts(
+                true_knn_bytes.as_mut_ptr() as *mut usize,
+                queries.len * K,
+                true_knn_bytes.capacity() / size_of::<usize>(),
+            )
+        };
+        std::mem::forget(true_knn_bytes); // die in dignity, you are now a vec of usizes already.
+    }
+    assert!(true_knns.len() == queries.len * K);
+
+    // subsample queries and true knn if needed:
+    if n_queries < 10000 {
+        const QUERY_SUBSAMPLE_SEED: u64 = 123;
+        // only keep queries from a sampled indices list:
+        let mut rng = ChaCha20Rng::seed_from_u64(QUERY_SUBSAMPLE_SEED);
+        let query_indices = rand::seq::index::sample(&mut rng, queries.len, n_queries).into_vec();
+        queries.floats = subsample_flat(&queries.floats, dims, &query_indices);
+        queries.len = n_queries;
+        // keep only the same indices from the true knns list:
+        true_knns = subsample_flat(&true_knns, K, &query_indices);
+    }
+
+    RequiredData {
+        data: Arc::new(data),
+        queries: Arc::new(queries),
+        true_knns,
+    }
+}
+
+fn load_binary_data<T: Copy>(path: &str, len: usize, elements_per_row: usize) -> Vec<T> {
+    dbg!(path);
+    let mut bytes = std::fs::read(path).unwrap();
+    assert_eq!(
+        bytes.len(),
+        len * elements_per_row * std::mem::size_of::<T>()
+    );
+    assert!(bytes.capacity() % std::mem::size_of::<T>() == 0);
+    let numbers = unsafe {
+        Vec::<T>::from_raw_parts(
+            bytes.as_mut_ptr() as *mut T,
+            len * elements_per_row,
+            bytes.capacity() / std::mem::size_of::<T>(),
+        )
+    };
+    std::mem::forget(bytes); // the memory is now owned by the floats vec
+    numbers
+}
+
+fn subsample_flat<T: Copy>(flat: &Vec<T>, elements_per_row: usize, indices: &Vec<usize>) -> Vec<T> {
+    assert!(flat.len() % elements_per_row == 0);
+    let n_rows_before = flat.len() / elements_per_row;
+    let n_rows_after = indices.len();
+    assert!(n_rows_after <= n_rows_before);
+    let mut new_flat: Vec<T> = Vec::with_capacity(n_rows_after * elements_per_row);
+    unsafe { new_flat.set_len(n_rows_after * elements_per_row) };
+    for (new_idx, &old_idx) in indices.iter().enumerate() {
+        let old_ptr = &flat[old_idx * elements_per_row] as *const T;
+        let new_ptr = &mut new_flat[new_idx * elements_per_row] as *mut T;
+        unsafe {
+            std::ptr::copy_nonoverlapping::<T>(old_ptr, new_ptr, elements_per_row);
+        }
+    }
+
+    new_flat
+}
+
 fn eval_models_on_laion(setup: &ExperimentSetup) {
     if setup.params.len() == 0 {
         return;
     }
-
-    fn data_set_from_path(
-        path: &str,
-        len: usize,
-        dims: usize,
-        subsample_n: usize,
-    ) -> Arc<dyn DatasetT> {
-        assert!(subsample_n <= len);
-        let bytes = std::fs::read(path).unwrap();
-        assert_eq!(bytes.len(), len * dims * std::mem::size_of::<f32>());
-
-        let mut indices: Vec<usize> = (0..len).collect();
-        let mut rng = ChaCha20Rng::seed_from_u64(RNG_SEED);
-        indices.shuffle(&mut rng);
-
-        let mut flat_float_arr: Vec<f32> = vec![0.0; subsample_n * dims];
-        for i in 0..subsample_n {
-            let idx = indices[i];
-            let slice = &bytes[dims * idx * std::mem::size_of::<f32>()
-                ..dims * (idx + 1) * std::mem::size_of::<f32>()];
-            unsafe {
-                std::ptr::copy(
-                    slice.as_ptr(),
-                    &mut flat_float_arr[i * dims] as *mut f32 as *mut u8,
-                    slice.len(),
-                )
-            }
-        }
-        Arc::new(FlatDataSet {
-            dims,
-            len: subsample_n,
-            data: flat_float_arr,
-        })
-    }
-
-    let data = data_set_from_path(DATA_PATH, DATA_LEN, DIMS, setup.n);
-    let queries = data_set_from_path(QUERIES_PATH, QUERIES_LEN, DIMS, setup.n_queries);
-    eval_models(data, queries, setup)
+    let data_set_size = match setup.n {
+        300_000 => DataSetSize::_300K,
+        10_000_000 => DataSetSize::_10M,
+        n => DataSetSize::Sampled(n),
+    };
+    let data = load_data(data_set_size, setup.n_queries);
+    eval_models(&data, setup)
 }
 
-fn eval_models_random_data(dims: usize, setup: &ExperimentSetup) {
-    let data = random_data_set(setup.n, dims);
-    let queries = random_data_set(setup.n_queries, dims);
-    eval_models(data, queries, setup)
-}
+// fn eval_models_random_data(dims: usize, setup: &ExperimentSetup) {
+//     let data = random_data_set(setup.n, dims);
+//     let queries = random_data_set(setup.n_queries, dims);
+//     eval_models(data, queries, setup)
+// }
 
-fn eval_models(data: Arc<dyn DatasetT>, queries: Arc<dyn DatasetT>, setup: &ExperimentSetup) {
-    let n_queries = queries.len();
-
-    let mut true_knns_by_search_params: Vec<Vec<HashSet<usize>>> = vec![];
-    for search_params in setup.search_params.iter() {
-        let start_time = Instant::now();
-        let mut true_knns: Vec<HashSet<usize>> = vec![];
-        for i in 0..n_queries {
-            let q_data = queries.get(i);
-            let knn = linear_knn_search(
-                &*data,
-                q_data,
-                search_params.k,
-                search_params.truth_distance.to_fn(),
-            )
-            .iter()
-            .map(|e| e.1)
-            .collect::<HashSet<usize>>();
-            true_knns.push(knn);
-        }
-        true_knns_by_search_params.push(true_knns);
-        println!(
-            "    Determined true KNN for {} in {}secs",
-            queries.len(),
-            start_time.elapsed().as_secs_f32()
-        );
-    }
-
+fn eval_models(req_data: &RequiredData, setup: &ExperimentSetup) {
     #[derive(Debug, Clone, Copy, Default)]
     struct Result {
         recall_mean: f64,
@@ -980,7 +1119,7 @@ fn eval_models(data: Arc<dyn DatasetT>, queries: Arc<dyn DatasetT>, setup: &Expe
             } else {
                 42
             };
-            let data = data.clone();
+            let data = req_data.data.clone();
             let mut model = match model_params {
                 ModelParams::Hnsw(params, kind) => match kind {
                     HnswStructure::Old => Model::OldHnsw(Hnsw::new(data, params, seed)),
@@ -1035,16 +1174,16 @@ fn eval_models(data: Arc<dyn DatasetT>, queries: Arc<dyn DatasetT>, setup: &Expe
             );
 
             let model_search_start_time = Instant::now();
+            let n_queries = req_data.queries.len();
             for (search_params_idx, search_params) in setup.search_params.iter().enumerate() {
-                let true_knns = &true_knns_by_search_params[search_params_idx];
-
                 let mut recalls: Vec<f64> = Vec::with_capacity(n_queries);
                 let mut ndcs: Vec<f64> = Vec::with_capacity(n_queries);
                 let mut time_mss: Vec<f64> = Vec::with_capacity(n_queries);
 
-                for i in 0..n_queries {
-                    let q_data = queries.get(i);
-                    let (r, s) = model.knn_search(q_data, &true_knns[i], *search_params);
+                for q_i in 0..n_queries {
+                    let q_data = req_data.queries.get(q_i);
+                    let true_knn = req_data.get_true_knn(q_i, search_params.k);
+                    let (r, s) = model.knn_search(q_data, true_knn, *search_params);
                     recalls.push(r);
                     ndcs.push(s.num_distance_calculations as f64);
                     time_mss.push(s.duration.as_secs_f64() * 1000.0);
@@ -1128,7 +1267,7 @@ fn eval_models(data: Arc<dyn DatasetT>, queries: Arc<dyn DatasetT>, setup: &Expe
 
         table.add_row(row![
             model_params_results.len(),
-            data.len().to_string(),
+            req_data.data.len().to_string(),
             search_params.to_string(),
             model_params.to_string(),
             mean_result.build_ndc,

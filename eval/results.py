@@ -72,4 +72,10 @@ ensemble_n_vp_trees.print()
 ensemble_multiple_vantage_points = thesis_exp("exp_ensemble_effect_of_multiple_vantage_points")
 ensemble_multiple_vantage_points.print()
 
+compare_10m = thesis_exp("compare_10m")
+compare_10m.print()
+
+compare_100m = thesis_exp("compare_100m")
+compare_100m.print()
+
 save_all_experiments_as_latex_tables()

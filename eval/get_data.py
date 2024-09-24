@@ -1,20 +1,15 @@
+from dataclasses import dataclass
 import pandas as pd
 import numpy as np
-from typing import Any, Tuple
+from typing import Any, Literal, Tuple
 import sys
 import urllib.request
 import os
-import laion_util
+from typing import Any, Tuple
+import h5py
 
-LAION_100M_URL = "https://sisap-23-challenge.s3.amazonaws.com/SISAP23-Challenge/laion2B-en-clip768v2-n=100M.h5"
-LAION_10M_URL = "https://sisap-23-challenge.s3.amazonaws.com/SISAP23-Challenge/laion2B-en-clip768v2-n=10M.h5"
-LAION_300K_URL = "https://sisap-23-challenge.s3.amazonaws.com/SISAP23-Challenge/laion2B-en-clip768v2-n=300K.h5"
-LAION_10K_QUERIES_URL = "http://ingeotec.mx/~sadit/sisap2024-data/public-queries-2024-laion2B-en-clip768v2-n=10k.h5"
-
-LAION_100M_FILE_NAME = "laion2B-en-clip768v2-n=100M.h5"
-LAION_10M_FILE_NAME = "laion2B-en-clip768v2-n=10M.h5"
-LAION_300K_FILE_NAME = "laion2B-en-clip768v2-n=300K.h5"
-LAION_10K_QUERIES_FILE_NAME = "public-queries-2024-laion2B-en-clip768v2-n=10k.h5"
+data_dir = sys.argv[1]
+options = sys.argv[2:]
 
 def download_file(url: str, file_name: str):
     print(f"Downloading {url} to {file_name}")
@@ -46,63 +41,66 @@ def clear_dir(data_dir: str):
     else:
         os.makedirs(data_dir)
 
+@dataclass
+class Source:
+    name: str
+    url: str
+    key: Literal["emb", "knn"]
+
+LAION_100M_URL = "https://sisap-23-challenge.s3.amazonaws.com/SISAP23-Challenge/laion2B-en-clip768v2-n=100M.h5"
+LAION_10M_URL = "https://sisap-23-challenge.s3.amazonaws.com/SISAP23-Challenge/laion2B-en-clip768v2-n=10M.h5"
+LAION_300K_URL = "https://sisap-23-challenge.s3.amazonaws.com/SISAP23-Challenge/laion2B-en-clip768v2-n=300K.h5"
+LAION_10K_QUERIES_URL = "http://ingeotec.mx/~sadit/sisap2024-data/public-queries-2024-laion2B-en-clip768v2-n=10k.h5"
+LAION_10K_QUERIES_100M_GOLD_URL = "http://ingeotec.mx/~sadit/sisap2024-data/gold-standard-dbsize=100M--public-queries-2024-laion2B-en-clip768v2-n=10k.h5"
+LAION_10K_QUERIES_10M_GOLD_URL = "http://ingeotec.mx/~sadit/sisap2024-data/gold-standard-dbsize=10M--public-queries-2024-laion2B-en-clip768v2-n=10k.h5"
+LAION_10K_QUERIES_300K_GOLD_URL = "http://ingeotec.mx/~sadit/sisap2024-data/gold-standard-dbsize=300K--public-queries-2024-laion2B-en-clip768v2-n=10k.h5"
+SOURCES = [
+    Source("queries_10k", LAION_10K_QUERIES_URL, "emb"),
+    Source("300k", LAION_300K_URL, "emb"),
+    Source("10m", LAION_10M_URL, "emb"),
+    Source("100m", LAION_100M_URL, "emb"),
+    Source("gold_300k", LAION_10K_QUERIES_300K_GOLD_URL, "knn"),
+    Source("gold_10m", LAION_10K_QUERIES_10M_GOLD_URL, "knn"),
+    Source("gold_100m", LAION_10K_QUERIES_100M_GOLD_URL, "knn"),
+]
 
 if len(sys.argv) <2:
-
     print("Usage: get_data.py <data_dir> [clear] [convert] [300k] [10m] [100m]")
     print("    data_dir: directory to download the data to")
     print("    clear: clear the data directory before downloading")
-    print("    convert: convert the h5 files to binary for easier reading from rust")
-    print("    300k: include the 300k dataset")
-    print("    10m: include the 10m dataset")
-    print("    100m: include the 100m dataset")
+    print("    convert: convert the h5 files to binary (slice of f32 or usize) for easier uncompressed reading from rust")
+    print("    all: include all of the datasets below:")
+    print("        queries: include the 10k queries dataset")
+    print("        300k: include the 300k dataset")
+    print("        10m: include the 10m dataset")
+    print("        100m: include the 100m dataset")
     print("Example: get_data.py ./my_data_dir clear convert 300k 10m 100m")
     print("Note: the 10k queries are always downloaded")
     sys.exit(1)
 
-data_dir = sys.argv[1]
 
-options = sys.argv[2:]
+OPTION_ALL = "all" in options
+OPTION_CLEAR = "clear" in options
+OPTION_CONVERT = "convert" in options
+OPTION_DOWNLOAD = "download" in options
 
-if "clear" in options:
-    clear_dir(data_dir)
-    print(f"Cleared directory {data_dir}")
+if OPTION_CLEAR:
+            clear_dir(data_dir)
 
-laion_10k_queries_path = data_dir + "/" + LAION_10K_QUERIES_FILE_NAME
-download_file(LAION_10K_QUERIES_URL, laion_10k_queries_path)
-print("Downloaded 10K queries to "+ laion_10k_queries_path)
-if "convert" in options:
-    laion_util.convert_h5_emb_to_binary(laion_10k_queries_path, data_dir + "/laion_10k_queries")
-    print("Converted 10K queries")
+for source in SOURCES:
+    source_h5_path = data_dir + "/laion_" + source.name + ".h5"
+    if source.name in options or OPTION_ALL:
+        if OPTION_DOWNLOAD:
+            download_file(source.url, source_h5_path)
+        print(f"Downloaded {source.name} to {source_h5_path}")
+        if OPTION_CONVERT:
+            f = h5py.File(source_h5_path, 'r')
+            dtype = "float32" if source.key == "emb" else "uint64"
+            data = np.array(f[source.key]).astype(dtype)
+            bin_path = f"{data_dir}/laion_{source.name }_{data.shape}.bin"
+            data.tofile(bin_path)
+            print(f"Converted {source_h5_path} to {bin_path}")
 
-if "300k" in options:
-    laion_300k_path = data_dir + "/" + LAION_300K_FILE_NAME
-    download_file(LAION_300K_URL, laion_300k_path)
-    print("Downloaded 300K dataset to "+ laion_300k_path)
-    if "convert" in options:
-        laion_util.convert_h5_emb_to_binary(laion_300k_path, data_dir + "/laion_300k")
-        print("Downloaded 300K dataset")
-
-
-
-if "10m" in options or "10M" in options:
-    laion_10m_path = data_dir + "/" + LAION_10M_FILE_NAME
-    download_file(LAION_10M_URL, laion_10m_path)
-    print("Downloaded 10M dataset to " + laion_10m_path)
-    if "convert" in options:
-        laion_util.convert_h5_emb_to_binary(laion_10m_path, data_dir + "/laion_10m")
-        print("Converted 10M dataset")
-
-if "100m" in options or "100M" in options:
-    laion_100m_path = data_dir + "/" + LAION_100M_FILE_NAME
-    download_file(LAION_100M_URL, laion_100m_path)
-    print("Downloaded 100M dataset to " + laion_100m_path)
-    if "convert" in options:
-        laion_util.convert_h5_emb_to_binary(laion_100m_path, data_dir + "/laion_100m")
-        print("Converted 100M dataset")
-
-
-# print all files that the data dir contains
 print(f"Contents of directory {data_dir}:")
 for f in os.listdir(data_dir):
     f_path = os.path.join(data_dir, f)
