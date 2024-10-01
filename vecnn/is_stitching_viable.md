@@ -147,3 +147,19 @@ rep n search_params params build_ndc build_ms recall_mean ndc_mean time_ms_mean
  1 100000 dist=Dot k=30 ef=60 start_candidates=1 Threaded EnsembleParams { n_vp_trees: 6, max_chunk_size: 512, same_chunk_m_max: 10, m_max: 20, m_max_0: 40, level_norm: 0.0, distance: Dot, strategy: RNNDescent { o_loops: 2, i_loops: 3 }, n_candidates: 0 } 71836660 4802.4937 0.930 1461.148 0.558  
  1 100000 dist=Dot k=30 ef=60 start_candidates=1 Threaded EnsembleParams { n_vp_trees: 6, max_chunk_size: 1024, same_chunk_m_max: 10, m_max: 20, m_max_0: 40, level_norm: 0.0, distance: Dot, strategy: RNNDescent { o_loops: 2, i_loops: 3 }, n_candidates: 0 } 77393482 5455.635 0.940 1443.267 0.561  
  1 100000 dist=Dot k=30 ef=60 start_candidates=1 Threaded EnsembleParams { n_vp_trees: 6, max_chunk_size: 2048, same_chunk_m_max: 10, m_max: 20, m_max_0: 40, level_norm: 0.0, distance: Dot, strategy: RNNDescent { o_loops: 2, i_loops: 3 }, n_candidates: 0 } 81987581 12881.258 0.947 1459.626 0.670
+
+### really weird multithreading speedup results on laptop:
+
+n,dims,k,ef,start_candidates,params,build_secs,build_ndc,search_ms,search_ndc,search_recall
+100000,768,30,60,1,"Hnsw_jpboth {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}",18.488778114318848,,0.5959329605102539,,0.8963433333332845
+100000,768,30,60,1,"Hnsw_vecnn {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}",12.094955444335938,45527724.0,0.40775606632232664,932.8848,0.9129833333332908
+100000,768,30,60,1,"Hnsw_jpboth {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}",3.421511650085449,,0.5859877347946167,,0.8937999999999523
+100000,768,30,60,1,"Hnsw_vecnn {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}",8.346753597259521,45422597.0,0.40857391357421874,934.4684,0.9116733333332946
+100000,768,30,60,1,"Hnsw_vecnn {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}",11.735878705978394,45527724.0,0.3286648511886596,932.8848,0.9129833333332908
+100000,768,30,60,1,"Hnsw_jpboth {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}",18.705764055252075,,0.4428390026092529,,0.8976099999999564
+100000,768,30,60,1,"Hnsw_vecnn {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}",2.51346492767334,45243734.0,0.3265370845794678,931.8262,0.9133033333332907
+100000,768,30,60,1,"Hnsw_jpboth {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}",4.504664182662964,,0.4431221723556518,,0.8978666666666193
+100000,768,30,60,1,"Hnsw_jpboth {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}",18.986008405685425,,0.5681008100509644,,0.8977866666666204
+100000,768,30,60,1,"Hnsw_vecnn {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}",12.292339563369751,45527724.0,0.3969470024108887,932.8848,0.9129833333332908
+100000,768,30,60,1,"Hnsw_jpboth {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}",10.863762617111206,,0.5704250574111938,,0.8944066666666185
+100000,768,30,60,1,"Hnsw_vecnn {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}",10.346777200698853,45150173.0,0.40331599712371824,932.9695,0.9121999999999544

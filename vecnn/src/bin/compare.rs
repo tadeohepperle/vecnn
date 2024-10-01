@@ -32,7 +32,7 @@ use vecnn::{
 };
 use HnswStructure::*;
 
-const IS_ON_SERVER: bool = false; // modify on uni Server for testing 10M dataset!
+const IS_ON_SERVER: bool = true; // modify on uni Server for testing 10M dataset!
 const DATA_PATH: &str = const {
     if IS_ON_SERVER {
         "/data/hepperle"
@@ -84,18 +84,18 @@ fn main() {
     }
 
     let test_setup = ExperimentSetup {
-        n: N_100K,
+        n: N_10M,
         n_queries: N_10K,
         params: vec![
             ModelParams::VpTreeEnsemble(
                 EnsembleParams {
                     n_vp_trees: 6,
                     max_chunk_size: 256,
-                    same_chunk_m_max: 10,
+                    same_chunk_m_max: 16,
                     m_max: 20,
                     m_max_0: 40,
                     distance: Distance::Dot,
-                    level_norm: 0.0,
+                    level_norm: 0.3,
                     strategy: EnsembleStrategy::BruteForceKNN,
                     n_candidates: 0,
                 },
@@ -103,41 +103,13 @@ fn main() {
             ),
             ModelParams::VpTreeEnsemble(
                 EnsembleParams {
-                    n_vp_trees: 6,
+                    n_vp_trees: 8,
                     max_chunk_size: 512,
-                    same_chunk_m_max: 10,
+                    same_chunk_m_max: 20,
                     m_max: 20,
                     m_max_0: 40,
                     distance: Distance::Dot,
-                    level_norm: 0.0,
-                    strategy: EnsembleStrategy::BruteForceKNN,
-                    n_candidates: 0,
-                },
-                true,
-            ),
-            ModelParams::VpTreeEnsemble(
-                EnsembleParams {
-                    n_vp_trees: 6,
-                    max_chunk_size: 1024,
-                    same_chunk_m_max: 10,
-                    m_max: 20,
-                    m_max_0: 40,
-                    distance: Distance::Dot,
-                    level_norm: 0.0,
-                    strategy: EnsembleStrategy::BruteForceKNN,
-                    n_candidates: 0,
-                },
-                true,
-            ),
-            ModelParams::VpTreeEnsemble(
-                EnsembleParams {
-                    n_vp_trees: 6,
-                    max_chunk_size: 2048,
-                    same_chunk_m_max: 10,
-                    m_max: 20,
-                    m_max_0: 40,
-                    distance: Distance::Dot,
-                    level_norm: 0.0,
+                    level_norm: 0.3,
                     strategy: EnsembleStrategy::BruteForceKNN,
                     n_candidates: 0,
                 },
@@ -147,126 +119,106 @@ fn main() {
                 EnsembleParams {
                     n_vp_trees: 6,
                     max_chunk_size: 256,
-                    same_chunk_m_max: 10,
-                    m_max: 20,
-                    m_max_0: 40,
+                    same_chunk_m_max: 30,
+                    m_max: 30,
+                    m_max_0: 60,
                     distance: Distance::Dot,
-                    level_norm: 0.0,
-                    strategy: EnsembleStrategy::RNNDescent {
-                        o_loops: 2,
-                        i_loops: 3,
-                    },
+                    level_norm: 0.3,
+                    strategy: EnsembleStrategy::BruteForceKNN,
                     n_candidates: 0,
                 },
                 true,
             ),
             ModelParams::VpTreeEnsemble(
                 EnsembleParams {
-                    n_vp_trees: 6,
+                    n_vp_trees: 8,
                     max_chunk_size: 512,
-                    same_chunk_m_max: 10,
+                    same_chunk_m_max: 16,
                     m_max: 20,
                     m_max_0: 40,
                     distance: Distance::Dot,
-                    level_norm: 0.0,
+                    level_norm: 0.3,
                     strategy: EnsembleStrategy::RNNDescent {
-                        o_loops: 2,
                         i_loops: 3,
-                    },
-                    n_candidates: 0,
-                },
-                true,
-            ),
-            ModelParams::VpTreeEnsemble(
-                EnsembleParams {
-                    n_vp_trees: 6,
-                    max_chunk_size: 1024,
-                    same_chunk_m_max: 10,
-                    m_max: 20,
-                    m_max_0: 40,
-                    distance: Distance::Dot,
-                    level_norm: 0.0,
-                    strategy: EnsembleStrategy::RNNDescent {
-                        o_loops: 2,
-                        i_loops: 3,
-                    },
-                    n_candidates: 0,
-                },
-                true,
-            ),
-            ModelParams::VpTreeEnsemble(
-                EnsembleParams {
-                    n_vp_trees: 6,
-                    max_chunk_size: 2048,
-                    same_chunk_m_max: 10,
-                    m_max: 20,
-                    m_max_0: 40,
-                    distance: Distance::Dot,
-                    level_norm: 0.0,
-                    strategy: EnsembleStrategy::RNNDescent {
-                        o_loops: 2,
-                        i_loops: 3,
+                        o_loops: 3,
                     },
                     n_candidates: 0,
                 },
                 true,
             ),
         ],
-        search_params: vec![SearchParams {
-            truth_distance: Dot,
-            k: 30,
-            ef: 60,
-            start_candidates: 1,
-            vp_max_visits: 0,
-        }],
+        search_params: vec![
+            SearchParams {
+                truth_distance: Dot,
+                k: 30,
+                ef: 60,
+                start_candidates: 0,
+                vp_max_visits: 0,
+            },
+            SearchParams {
+                truth_distance: Dot,
+                k: 30,
+                ef: 100,
+                start_candidates: 0,
+                vp_max_visits: 0,
+            },
+            SearchParams {
+                truth_distance: Dot,
+                k: 30,
+                ef: 80,
+                start_candidates: 0,
+                vp_max_visits: 0,
+            },
+        ],
         random_seeds: true,
         repeats: 1,
-        title: "test_setup",
+        title: "test_setup_hnsw_10m",
     };
 
-    let experiments: Vec<ExperimentSetup> = vec![test_setup];
-    // let experiments = final_experiment_collection();
+    // let experiments: Vec<ExperimentSetup> = vec![test_setup];
+    let experiments = final_experiment_collection();
     for e in experiments.iter() {
-        eval_models_on_laion(e)
+        eval_models_on_laion(e);
     }
+    // eval_models_on_laion(&test_setup);
 }
 /// Specify a bunch of experiments in here, comment in/out what is needed for a particular run
 fn final_experiment_collection() -> Vec<ExperimentSetup> {
     let mut res = vec![];
-    // hnsw:
+    // // hnsw:
     res.extend([
-        _hnsw_effect_of_m_max(),
-        _hnsw_effect_of_ef_search_and_k(),
-        _hnsw_effect_of_ef_construction(),
-        _hnsw_effect_of_level_norm(),
+        // _hnsw_effect_of_m_max(),
+        // _hnsw_effect_of_ef_search_and_k(),
+        // _hnsw_effect_of_ef_construction(),
+        // _hnsw_effect_of_level_norm(),
     ]);
-    res.extend(_hnsw_effect_of_n());
-    // rnn:
+    //  res.extend(_hnsw_effect_of_n().into_iter().skip(11));
+    // // rnn:
     res.extend([
-        _rnn_effect_of_inner_loops(),
-        _rnn_effect_of_outer_loops(),
-        _rnn_effect_of_ef_search_and_k(),
-        _rnn_effect_of_multi_start_points(),
-        _rnn_effect_of_num_neighbors(),
+        // _rnn_effect_of_inner_loops(),
+        // _rnn_effect_of_outer_loops(),
+        // _rnn_effect_of_ef_search_and_k(),
+        // _rnn_effect_of_multi_start_points(),
+        // _rnn_effect_of_num_neighbors(),
     ]);
-    res.extend(_rnn_effect_of_n());
-    // ensemble:
+    // res.extend(_rnn_effect_of_n());
+    // // ensemble:
     res.extend([
-        _ensemble_effect_of_chunk_size(),
-        _ensemble_effect_of_n_vp_trees(),
-        _ensemble_effect_of_multiple_vantage_points(),
-        _ensemble_effect_of_level_norm(),
+        //  _ensemble_effect_of_chunk_size(),
+        // _ensemble_effect_of_n_vp_trees(),
+        // _ensemble_effect_of_multiple_vantage_points(),
+        // _ensemble_effect_of_level_norm(),
         _ensemble_effect_of_brute_force_vs_rnn(),
-        _ensemble_effect_of_m_max(),
-        _ensemble_effect_of_same_chunk_m_max(),
+        // _ensemble_effect_of_m_max(),
+        // _ensemble_effect_of_same_chunk_m_max(),
     ]);
-    res.extend(_ensemble_effect_of_n());
+    // res.extend(_ensemble_effect_of_n());
     // stitching:
     res.extend([
-        _stitching_effect_of_fraction(),
-        _stitching_effect_of_max_chunk_size(),
-        _stitching_effect_of_multi_ef(),
-        _stitching_effect_of_m_max(),
+        // _stitching_effect_of_fraction(),
+        // _stitching_effect_of_max_chunk_size(),
+        // _stitching_effect_of_multi_ef(),
+        // _stitching_effect_of_m_max(),
     ]);
     return res;
 
@@ -385,9 +337,9 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
         }
     }
     fn _hnsw_effect_of_level_norm() -> ExperimentSetup {
-        let level_norm_params: Vec<f32> = (0..=20).map(|e| (e as f32) / 20.0).collect();
+        let level_norm_params: Vec<f32> = (0..=18).map(|e| (e as f32) / 20.0).collect();
         ExperimentSetup {
-            n: N_100K,
+            n: N_1M,
             n_queries: N_10K,
             params: level_norm_params
                 .into_iter()
@@ -400,14 +352,14 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
                             m_max_0: 40,
                             distance: Dot,
                         },
-                        SliceS2,
+                        SliceParralelRayon,
                     )
                 })
                 .collect(),
             search_params: search_params(),
-            random_seeds: false,
+            random_seeds: true,
             repeats: 1,
-            title: "exp_hnsw_effect_of_level_norm",
+            title: "exp_hnsw_effect_of_level_norm_1m",
         }
     }
     fn _hnsw_effect_of_ef_search_and_k() -> ExperimentSetup {
@@ -492,15 +444,12 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             n: N_100K,
             n_queries: N_10K,
             params: vec![
-                loops(48, 1),
-                loops(24, 2),
-                loops(16, 3),
-                loops(12, 4),
-                loops(8, 6),
-                loops(6, 8),
-                loops(4, 12),
-                loops(2, 24),
-                loops(48, 1),
+                loops(12, 1),
+                loops(6, 2),
+                loops(4, 3),
+                loops(3, 4),
+                loops(2, 6),
+                loops(1, 12),
             ],
             search_params: search_params(),
             random_seeds: false,
@@ -558,18 +507,18 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
                 initial_neighbors: 40,
                 distance: Dot,
             })],
-            search_params: (1usize..=20)
+            search_params: (0usize..=6)
                 .map(|start_candidates| SearchParams {
                     truth_distance: Dot,
                     k: 30,
                     ef: 60,
-                    start_candidates,
+                    start_candidates: 2usize.pow(start_candidates as u32),
                     vp_max_visits: 0,
                 })
                 .collect(),
             random_seeds: false,
             repeats: 5,
-            title: "exp_rnn_effect_of_ef_search_and_k",
+            title: "exp_rnn_effect_of_multi_start_points",
         }
     }
     fn _rnn_effect_of_n() -> Vec<ExperimentSetup> {
@@ -595,6 +544,10 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
 
     // /////////////////////////////////////////////////////////////////////////////
     // SECTION: VP Tree (just for construction, of course not for search)
+    // /////////////////////////////////////////////////////////////////////////////
+
+    // /////////////////////////////////////////////////////////////////////////////
+    // SECTION: Chunk Stitching
     // /////////////////////////////////////////////////////////////////////////////
 
     // /////////////////////////////////////////////////////////////////////////////
@@ -678,7 +631,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
                     EnsembleParams {
                         n_vp_trees: 6,
                         max_chunk_size,
-                        same_chunk_m_max: 20,
+                        same_chunk_m_max: 8,
                         m_max: 20,
                         m_max_0: 40,
                         distance: Distance::Dot,
@@ -697,7 +650,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             search_params: search_params(),
             random_seeds: false,
             repeats: 1,
-            title: "exp_ensemble_effect_of_brute_force_vs_rnn",
+            title: "exp_ensemble_effect_of_brute_force_vs_rnn_lowsame",
         }
     }
     fn _ensemble_effect_of_chunk_size() -> ExperimentSetup {
@@ -727,35 +680,6 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             random_seeds: false,
             repeats: 1,
             title: "exp_ensemble_effect_of_chunk_size",
-        }
-    }
-    fn _ensemble_effect_of_same_chunk_m_max() -> ExperimentSetup {
-        ExperimentSetup {
-            n: N_100K,
-            n_queries: N_10K,
-            params: (5usize..=40usize)
-                .into_iter()
-                .map(|same_chunk_m_max| {
-                    ModelParams::VpTreeEnsemble(
-                        EnsembleParams {
-                            n_vp_trees: 8,
-                            max_chunk_size: 256,
-                            same_chunk_m_max,
-                            m_max: 20,
-                            m_max_0: 40,
-                            distance: Distance::Dot,
-                            level_norm: 0.0,
-                            strategy: EnsembleStrategy::BruteForceKNN,
-                            n_candidates: 0,
-                        },
-                        true,
-                    )
-                })
-                .collect(),
-            search_params: search_params(),
-            random_seeds: false,
-            repeats: 1,
-            title: "exp_ensemble_effect_of_same_chunk_m_max",
         }
     }
     fn _ensemble_effect_of_multiple_vantage_points() -> ExperimentSetup {
@@ -841,11 +765,41 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             params,
             search_params: search_params(),
             random_seeds: false,
-            repeats: 2,
+            repeats: 1,
             title: "exp_ensemble_effect_of_m_max",
         }
     }
 
+    fn _ensemble_effect_of_same_chunk_m_max() -> ExperimentSetup {
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: N_10K,
+            params: (5usize..=7usize)
+                .step_by(1)
+                .into_iter()
+                .map(|same_chunk_m_max| {
+                    ModelParams::VpTreeEnsemble(
+                        EnsembleParams {
+                            n_vp_trees: 8,
+                            max_chunk_size: 256,
+                            same_chunk_m_max,
+                            m_max: 20,
+                            m_max_0: 36,
+                            distance: Distance::Dot,
+                            level_norm: 0.0,
+                            strategy: EnsembleStrategy::BruteForceKNN,
+                            n_candidates: 0,
+                        },
+                        true,
+                    )
+                })
+                .collect(),
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 6,
+            title: "exp_ensemble_effect_of_same_chunk_m_max",
+        }
+    }
     // /////////////////////////////////////////////////////////////////////////////
     // SECTION: Chunk Stitching
     // /////////////////////////////////////////////////////////////////////////////
@@ -860,7 +814,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
                     neg_fraction: fraction,
                     keep_fraction: 0.0,
                     m_max: 40,
-                    x_or_ef: 10,
+                    x_or_ef: 8,
                     only_n_chunks: None,
                     distance: Dot,
                     stitch_mode: mode,

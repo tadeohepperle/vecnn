@@ -1259,6 +1259,7 @@ dependencies = [
  "heapless",
  "nanoserde",
  "num-traits",
+ "parking_lot",
  "prettytable-rs",
  "rand",
  "rand_chacha",

@@ -1,11 +1,6 @@
-use std::{
-    cmp::Reverse,
-    collections::{BinaryHeap, HashSet},
-    ptr::NonNull,
-    sync::Arc,
-    time::Instant,
-    usize,
-};
+use std::{cmp::Reverse, collections::BinaryHeap, ptr::NonNull, sync::Arc, time::Instant, usize};
+
+use ahash::{HashMap, HashMapExt, HashSet};
 
 use rand::{Rng, SeedableRng};
 use rand_chacha::{rand_core::le, ChaCha20Rng};
@@ -443,7 +438,7 @@ struct SearchBuffers {
 impl SearchBuffers {
     pub fn new() -> Self {
         SearchBuffers {
-            visited: HashSet::new(),
+            visited: HashSet::default(),
             frontier: BinaryHeap::new(),
             found: BinaryHeap::new(),
         }

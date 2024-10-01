@@ -11,40 +11,56 @@ use vecnn::{
 
 fn main() {
     let dims = 768;
-    let data = random_data_set(120000, dims);
+    let data = random_data_set(30000, dims);
 
-    let distance = Distance::L2;
-
-    // let hnsw = vecnn::slice_hnsw_par::SliceHnsw::new(
-    //     data.clone(),
-    //     HnswParams {
-    //         level_norm_param: 0.8,
-    //         ef_construction: 40,
-    //         m_max: 20,
-    //         m_max_0: 40,
-    //         distance,
-    //     },
-    //     2342,
-    // );
-
+    let distance = Distance::Dot;
     let start = Instant::now();
-    let hnsw = build_hnsw_by_vp_tree_ensemble_multi_layer(
-        data,
-        EnsembleParams {
-            n_vp_trees: 3,
-            max_chunk_size: 512,
-            same_chunk_m_max: 20,
-            m_max: 30,
-            m_max_0: 40,
-            level_norm: 0.0,
-            distance,
-            strategy: EnsembleStrategy::BruteForceKNN,
-            n_candidates: 0,
-        },
-        true,
-        210,
-    );
+
+    const PARALLEL: bool = false;
+    if PARALLEL {
+        let hnsw = vecnn::slice_hnsw_par::SliceHnsw::new_with_thread_pool(
+            data.clone(),
+            HnswParams {
+                level_norm_param: 0.8,
+                ef_construction: 40,
+                m_max: 20,
+                m_max_0: 40,
+                distance,
+            },
+            2342,
+        );
+    } else {
+        let hnsw = vecnn::slice_hnsw::SliceHnsw::new(
+            data.clone(),
+            HnswParams {
+                level_norm_param: 0.8,
+                ef_construction: 40,
+                m_max: 20,
+                m_max_0: 40,
+                distance,
+            },
+            2342,
+        );
+    }
+
     println!("Total time: {}ms", start.elapsed().as_secs_f32() * 1000.0);
+
+    // let hnsw = build_hnsw_by_vp_tree_ensemble_multi_layer(
+    //     data,
+    //     EnsembleParams {
+    //         n_vp_trees: 3,
+    //         max_chunk_size: 512,
+    //         same_chunk_m_max: 20,
+    //         m_max: 30,
+    //         m_max_0: 40,
+    //         level_norm: 0.0,
+    //         distance,
+    //         strategy: EnsembleStrategy::BruteForceKNN,
+    //         n_candidates: 0,
+    //     },
+    //     true,
+    //     210,
+    // );
 
     // println!(
     //     "Build HNSW.       time:{}       n-distance-calculations: {}",

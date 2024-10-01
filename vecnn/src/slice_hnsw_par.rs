@@ -1,12 +1,14 @@
+use ahash::HashSet;
+use parking_lot::RwLock;
 use std::{
     cell::UnsafeCell,
     cmp::Reverse,
-    collections::{BinaryHeap, HashSet},
+    collections::BinaryHeap,
     mem::MaybeUninit,
     ptr::NonNull,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, RwLock,
+        Arc, // RwLock,
     },
     time::Instant,
     usize,
@@ -20,7 +22,7 @@ use crate::{
     dataset::DatasetT,
     distance::DistanceTracker,
     hnsw::{DistAnd, HnswParams},
-    utils::{extend_lifetime, SliceBinaryHeap, SlicesMemory, Stats},
+    utils::{extend_lifetime, SliceBinaryHeap, SlicesMemory, Stats, YoloCell},
 };
 
 pub const MAX_LAYERS: usize = 16;
@@ -127,7 +129,7 @@ impl SliceHnsw {
             for e in layer.entries.iter() {
                 let idx = new_layer.add_entry_assuming_allocated_memory(e.id, e.lower_level_idx);
                 let new_entry = &mut new_layer.entries[idx];
-                let e_neighbors = e.neighbors.read().unwrap();
+                let e_neighbors = e.neighbors.read(); // .unwrap();
                 unsafe {
                     e_neighbors.clone_into(&mut new_entry.neighbors);
                 }
@@ -197,7 +199,7 @@ impl Layer {
         let entry = LayerEntry {
             id,
             lower_level_idx,
-            neighbors: RwLock::new(SliceBinaryHeap::new(slice)),
+            neighbors: Neighbors::new(SliceBinaryHeap::new(slice)),
         };
         let idx = self.entries.len();
         self.entries.push(entry);
@@ -225,7 +227,7 @@ impl Layer {
         self.allocate_neighbors_memory();
         for (i, entry) in self.entries.iter_mut().enumerate() {
             let slice = unsafe { self.memory.static_slice_at(i) };
-            entry.neighbors = RwLock::new(SliceBinaryHeap::new(slice))
+            entry.neighbors = Neighbors::new(SliceBinaryHeap::new(slice))
         }
     }
 }
@@ -240,6 +242,21 @@ pub struct LayerEntry {
 
 pub type Neighbor = DistAnd<usize>;
 pub type Neighbors = RwLock<SliceBinaryHeap<'static, Neighbor>>;
+
+// This type is emulates a RwLock but does not do anything. Anly good for benchmarking to see the effect of potential locking.
+// #[derive(Debug)]
+// pub struct Neighbors(YoloCell<SliceBinaryHeap<'static, Neighbor>>);
+// impl Neighbors {
+//     pub fn new(neighbors: SliceBinaryHeap<'static, Neighbor>) -> Self {
+//         Self(YoloCell::new(neighbors))
+//     }
+//     pub fn read(&self) -> &SliceBinaryHeap<'static, Neighbor> {
+//         &self.0
+//     }
+//     pub fn write(&self) -> &mut SliceBinaryHeap<'static, Neighbor> {
+//         unsafe { self.0.get_mut() }
+//     }
+// }
 
 #[derive(Debug, Clone, Copy)]
 struct InsertPosition {
@@ -488,10 +505,10 @@ fn insert_element(ctx: &InsertCtx<'_>, id: usize, pos: InsertPosition) {
                 // this can happen (very rarely (about 5/20000)), if other threads access the neighbors lists between the `insert_if_better` calls in this loop.
                 continue;
             }
-            let mut nei_neighbors = layer.entries[nei_idx].neighbors.write().unwrap();
+            let mut nei_neighbors = layer.entries[nei_idx].neighbors.write(); // .unwrap();
             nei_neighbors.insert_if_better(DistAnd(nei_dist_to_q, idx_in_layer));
 
-            let mut q_neighbors = layer.entries[idx_in_layer].neighbors.write().unwrap();
+            let mut q_neighbors = layer.entries[idx_in_layer].neighbors.write(); //.unwrap();
             q_neighbors.insert_if_better(DistAnd(nei_dist_to_q, nei_idx)); // should always have space. // push asserted!
         }
 
@@ -552,7 +569,7 @@ fn search_layer(
         if c_dist > worst_dist_found {
             break;
         };
-        for nei in layer.entries[c_idx].neighbors.read().unwrap().iter() {
+        for nei in layer.entries[c_idx].neighbors.read().iter() {
             let nei_idx = nei.1;
             if buffers.visited.insert(nei_idx) {
                 // only jumps here if was not visited before (newly inserted -> true)
@@ -601,7 +618,7 @@ fn search_layer_ef_1(
     visited.insert(ep_idx);
     loop {
         let mut updated_best = false;
-        for &DistAnd(_, nei_idx) in best_entry.neighbors.read().unwrap().iter() {
+        for &DistAnd(_, nei_idx) in best_entry.neighbors.read().iter() {
             if visited.insert(nei_idx) {
                 let nei_entry = &layer.entries[nei_idx];
                 let nei_data = data.get(nei_entry.id);
@@ -657,7 +674,7 @@ struct SearchBuffers {
 impl SearchBuffers {
     pub fn new() -> Self {
         SearchBuffers {
-            visited: HashSet::new(),
+            visited: HashSet::default(),
             frontier: BinaryHeap::new(),
             found: BinaryHeap::new(),
         }

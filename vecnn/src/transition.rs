@@ -1,7 +1,8 @@
+use ahash::{HashMap, HashMapExt, HashSet};
 use core::f32;
 use std::{
     cell::UnsafeCell,
-    collections::{BinaryHeap, HashSet},
+    collections::BinaryHeap,
     hash::Hash,
     ops::Range,
     sync::{Arc, Mutex},
@@ -80,7 +81,6 @@ pub fn build_single_layer_hnsw_by_vp_tree_ensemble(
 
     let max_chunk_size = params.max_chunk_size;
     let same_chunk_m_max = params.same_chunk_m_max;
-    assert!(same_chunk_m_max <= NEIGHBORS_LIST_MAX_LEN);
 
     let mut distance = DistanceTracker::new(params.distance);
     let start = Instant::now();
@@ -1004,7 +1004,6 @@ pub fn build_hnsw_by_vp_tree_stitching(
 ) -> SliceHnsw {
     let max_chunk_size = params.max_chunk_size;
     let same_chunk_m_max = params.same_chunk_m_max;
-    assert!(same_chunk_m_max <= NEIGHBORS_LIST_MAX_LEN);
     let mut distance = DistanceTracker::new(params.distance);
     let start = Instant::now();
     let mut rng = ChaCha20Rng::seed_from_u64(seed);
@@ -1264,10 +1263,10 @@ fn generate_stitching_candidates(
     params: &StitchingParams,
     rng: &mut ChaCha20Rng,
 ) -> HashSet<StitchCandidate> {
-    let mut result: HashSet<StitchCandidate> = HashSet::new();
+    let mut result: HashSet<StitchCandidate> = HashSet::default();
 
     // reusable buffer
-    let visited = &mut HashSet::<usize>::new();
+    let visited = &mut HashSet::<usize>::default();
 
     match params.stitch_mode {
         StitchMode::RandomNegToPosCenterAndBack => {
@@ -1283,7 +1282,7 @@ fn generate_stitching_candidates(
                meta.annotation = Some(meta.chunk.to_string());
             );
 
-            let mut neg_candidates = HashSet::<usize>::new();
+            let mut neg_candidates = HashSet::<usize>::default();
             let neg_random_indixes =
                 random_idx_sample(neg_chunk.range.clone(), params.neg_fraction, rng);
             for random_idx in neg_random_indixes {
