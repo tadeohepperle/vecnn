@@ -27,6 +27,8 @@ pub fn build_hnsw_by_vp_tree_ensemble(
     same_chunk_m_max: usize,
     m_max: usize,
     m_max_0: usize,
+    rnn_inner_loops: usize,
+    rnn_outer_loops: usize,
     threaded: bool,
     distance: String,
     seed: u64,
@@ -40,7 +42,15 @@ pub fn build_hnsw_by_vp_tree_ensemble(
         m_max_0,
         level_norm,
         distance: dist_from_str(&distance)?,
-        strategy: vecnn::transition::EnsembleStrategy::BruteForceKNN, // todo! needs to be configurable
+        strategy: if rnn_inner_loops == 0 || rnn_outer_loops == 0 {
+            vecnn::transition::EnsembleStrategy::BruteForceKNN
+        } else {
+            vecnn::transition::EnsembleStrategy::RNNDescent {
+                o_loops: rnn_outer_loops,
+                i_loops: rnn_inner_loops,
+            }
+        },
+        // todo! needs to be configurable
         n_candidates,
     };
 

@@ -1,13 +1,11 @@
 use core::f32;
 use std::{
     cell::UnsafeCell,
-    collections::{BinaryHeap, HashMap, HashSet},
+    collections::{BinaryHeap, HashSet},
     hash::Hash,
-    mem::MaybeUninit,
     ops::Range,
     sync::{Arc, Mutex},
-    thread::{JoinHandle, ScopedJoinHandle},
-    time::{Duration, Instant},
+    time::Instant,
     usize,
 };
 
@@ -993,7 +991,7 @@ pub struct StitchingParams {
     pub keep_fraction: f32,
     pub m_max: usize, // max number of neighbors in hnsw
     pub x_or_ef: usize,
-    pub only_n_chunks: Option<usize>, // this is only for debugging
+    pub only_n_chunks: Option<usize>, // this is only for debugging, could theoretically be behind a feature flag
     pub distance: Distance,
     pub stitch_mode: StitchMode,
     pub n_candidates: usize,

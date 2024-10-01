@@ -9,7 +9,8 @@ def sum_as_string(a: int, b: int) -> str:
 def build_hnsw_by_chunk_stitching(data: Dataset, method: str, n_candidates: int, max_chunk_size: int, same_chunk_m_max: int, m_max: int, fraction: float, x_or_ef: int, threaded: bool, distance: Distance, seed: int) -> Hnsw:
     pass
 
-def build_hnsw_by_vp_tree_ensemble(data: Dataset, level_norm: float,n_vp_trees: int, n_candidates: int, max_chunk_size: int, same_chunk_m_max: int, m_max: int, m_max_0: int, threaded: bool, distance: Distance, seed: int) -> Hnsw:
+def build_hnsw_by_vp_tree_ensemble(data: Dataset, level_norm: float,n_vp_trees: int, n_candidates: int, max_chunk_size: int, same_chunk_m_max: int, m_max: int, m_max_0: int, rnn_inner_loops: int, rnn_outer_loops: int, threaded: bool, distance: Distance, seed: int) -> Hnsw:
+    """Note: if rnn_inner_loops or rnn_outer_loops are set to 0, brute force method will be used"""
     pass
 
 
@@ -144,6 +145,6 @@ class RNNGraph:
     def __init__(self, data: Dataset, outer_loops: int, inner_loops: int, max_neighbors_after_reverse_pruning: int, initial_neighbors: int, distance: Distance, seed: int):
         pass
 
-    def knn(self, query: np.ndarray, k: int, start_candidates: int) -> KnnResult:
+    def knn(self, query: np.ndarray, k: int, ef: int, start_candidates: int) -> KnnResult:
         pass
 

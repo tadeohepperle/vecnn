@@ -84,22 +84,138 @@ fn main() {
     }
 
     let test_setup = ExperimentSetup {
-        n: 300000,
+        n: N_100K,
         n_queries: N_10K,
-        params: vec![ModelParams::Hnsw(
-            HnswParams {
-                level_norm_param: 0.3,
-                ef_construction: 20,
-                m_max: 20,
-                m_max_0: 40,
-                distance: Dot,
-            },
-            SliceParralelRayon,
-        )],
+        params: vec![
+            ModelParams::VpTreeEnsemble(
+                EnsembleParams {
+                    n_vp_trees: 6,
+                    max_chunk_size: 256,
+                    same_chunk_m_max: 10,
+                    m_max: 20,
+                    m_max_0: 40,
+                    distance: Distance::Dot,
+                    level_norm: 0.0,
+                    strategy: EnsembleStrategy::BruteForceKNN,
+                    n_candidates: 0,
+                },
+                true,
+            ),
+            ModelParams::VpTreeEnsemble(
+                EnsembleParams {
+                    n_vp_trees: 6,
+                    max_chunk_size: 512,
+                    same_chunk_m_max: 10,
+                    m_max: 20,
+                    m_max_0: 40,
+                    distance: Distance::Dot,
+                    level_norm: 0.0,
+                    strategy: EnsembleStrategy::BruteForceKNN,
+                    n_candidates: 0,
+                },
+                true,
+            ),
+            ModelParams::VpTreeEnsemble(
+                EnsembleParams {
+                    n_vp_trees: 6,
+                    max_chunk_size: 1024,
+                    same_chunk_m_max: 10,
+                    m_max: 20,
+                    m_max_0: 40,
+                    distance: Distance::Dot,
+                    level_norm: 0.0,
+                    strategy: EnsembleStrategy::BruteForceKNN,
+                    n_candidates: 0,
+                },
+                true,
+            ),
+            ModelParams::VpTreeEnsemble(
+                EnsembleParams {
+                    n_vp_trees: 6,
+                    max_chunk_size: 2048,
+                    same_chunk_m_max: 10,
+                    m_max: 20,
+                    m_max_0: 40,
+                    distance: Distance::Dot,
+                    level_norm: 0.0,
+                    strategy: EnsembleStrategy::BruteForceKNN,
+                    n_candidates: 0,
+                },
+                true,
+            ),
+            ModelParams::VpTreeEnsemble(
+                EnsembleParams {
+                    n_vp_trees: 6,
+                    max_chunk_size: 256,
+                    same_chunk_m_max: 10,
+                    m_max: 20,
+                    m_max_0: 40,
+                    distance: Distance::Dot,
+                    level_norm: 0.0,
+                    strategy: EnsembleStrategy::RNNDescent {
+                        o_loops: 2,
+                        i_loops: 3,
+                    },
+                    n_candidates: 0,
+                },
+                true,
+            ),
+            ModelParams::VpTreeEnsemble(
+                EnsembleParams {
+                    n_vp_trees: 6,
+                    max_chunk_size: 512,
+                    same_chunk_m_max: 10,
+                    m_max: 20,
+                    m_max_0: 40,
+                    distance: Distance::Dot,
+                    level_norm: 0.0,
+                    strategy: EnsembleStrategy::RNNDescent {
+                        o_loops: 2,
+                        i_loops: 3,
+                    },
+                    n_candidates: 0,
+                },
+                true,
+            ),
+            ModelParams::VpTreeEnsemble(
+                EnsembleParams {
+                    n_vp_trees: 6,
+                    max_chunk_size: 1024,
+                    same_chunk_m_max: 10,
+                    m_max: 20,
+                    m_max_0: 40,
+                    distance: Distance::Dot,
+                    level_norm: 0.0,
+                    strategy: EnsembleStrategy::RNNDescent {
+                        o_loops: 2,
+                        i_loops: 3,
+                    },
+                    n_candidates: 0,
+                },
+                true,
+            ),
+            ModelParams::VpTreeEnsemble(
+                EnsembleParams {
+                    n_vp_trees: 6,
+                    max_chunk_size: 2048,
+                    same_chunk_m_max: 10,
+                    m_max: 20,
+                    m_max_0: 40,
+                    distance: Distance::Dot,
+                    level_norm: 0.0,
+                    strategy: EnsembleStrategy::RNNDescent {
+                        o_loops: 2,
+                        i_loops: 3,
+                    },
+                    n_candidates: 0,
+                },
+                true,
+            ),
+        ],
         search_params: vec![SearchParams {
             truth_distance: Dot,
-            k: 70,
-            ef: 100,
+            k: 30,
+            ef: 60,
             start_candidates: 1,
             vp_max_visits: 0,
         }],
@@ -131,6 +247,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
         _rnn_effect_of_outer_loops(),
         _rnn_effect_of_ef_search_and_k(),
         _rnn_effect_of_multi_start_points(),
+        _rnn_effect_of_num_neighbors(),
     ]);
     res.extend(_rnn_effect_of_n());
     // ensemble:
@@ -139,6 +256,17 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
         _ensemble_effect_of_n_vp_trees(),
         _ensemble_effect_of_multiple_vantage_points(),
         _ensemble_effect_of_level_norm(),
+        _ensemble_effect_of_brute_force_vs_rnn(),
+        _ensemble_effect_of_m_max(),
+        _ensemble_effect_of_same_chunk_m_max(),
+    ]);
+    res.extend(_ensemble_effect_of_n());
+    // stitching:
+    res.extend([
+        _stitching_effect_of_fraction(),
+        _stitching_effect_of_max_chunk_size(),
+        _stitching_effect_of_multi_ef(),
+        _stitching_effect_of_m_max(),
     ]);
     return res;
 
@@ -189,6 +317,17 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
         assert!(*ns.last().unwrap() == max_n);
         return ns;
     }
+    const STITCHING_MODES: [StitchMode; 4] = [
+        StitchMode::RandomNegToPosCenterAndBack,
+        StitchMode::RandomNegToRandomPosAndBack,
+        StitchMode::DontStarveXXSearch,
+        StitchMode::MultiEf,
+    ];
+    const STITCHING_MODES_OK: [StitchMode; 3] = [
+        StitchMode::RandomNegToRandomPosAndBack,
+        StitchMode::DontStarveXXSearch,
+        StitchMode::MultiEf,
+    ];
     // /////////////////////////////////////////////////////////////////////////////
     // SECTION: HNSW
     // /////////////////////////////////////////////////////////////////////////////
@@ -369,6 +508,28 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             title: "exp_rnn_effect_of_outer_loops",
         }
     }
+    fn _rnn_effect_of_num_neighbors() -> ExperimentSetup {
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: N_10K,
+            params: (8..=48usize)
+                .step_by(4)
+                .map(|m_max| {
+                    ModelParams::RNNGraph(RNNGraphParams {
+                        inner_loops: 3,
+                        outer_loops: 4,
+                        max_neighbors_after_reverse_pruning: m_max,
+                        initial_neighbors: m_max,
+                        distance: Dot,
+                    })
+                })
+                .collect(),
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 2,
+            title: "exp_rnn_effect_of_num_neighbors",
+        }
+    }
     fn _rnn_effect_of_ef_search_and_k() -> ExperimentSetup {
         ExperimentSetup {
             n: N_100K,
@@ -437,12 +598,35 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
     // /////////////////////////////////////////////////////////////////////////////
 
     // /////////////////////////////////////////////////////////////////////////////
-    // SECTION: Chunk Stitching
-    // /////////////////////////////////////////////////////////////////////////////
-
-    // /////////////////////////////////////////////////////////////////////////////
     // SECTION: VP Tree Ensemble
     // /////////////////////////////////////////////////////////////////////////////
+    fn _ensemble_effect_of_n() -> Vec<ExperimentSetup> {
+        return n_log_steps_per_magnitude(N_10K, N_10M, 5)
+            .into_iter()
+            .map(|n| ExperimentSetup {
+                n,
+                n_queries: N_10K,
+                params: vec![ModelParams::VpTreeEnsemble(
+                    EnsembleParams {
+                        n_vp_trees: 6,
+                        max_chunk_size: 256,
+                        same_chunk_m_max: 10,
+                        m_max: 20,
+                        m_max_0: 40,
+                        distance: Distance::Dot,
+                        level_norm: 0.0,
+                        strategy: EnsembleStrategy::BruteForceKNN,
+                        n_candidates: 0,
+                    },
+                    false,
+                )],
+                search_params: search_params(),
+                random_seeds: false,
+                repeats: 1,
+                title: "exp_ensemple_effect_of_n",
+            })
+            .collect();
+    }
     fn _ensemble_effect_of_n_vp_trees() -> ExperimentSetup {
         ExperimentSetup {
             n: N_100K,
@@ -471,20 +655,64 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             title: "exp_ensemble_effect_of_n_vp_trees",
         }
     }
+    fn _ensemble_effect_of_brute_force_vs_rnn() -> ExperimentSetup {
+        let mut params: Vec<ModelParams> = vec![];
 
+        for max_chunk_size in [64usize, 128, 256, 512, 1024, 2048] {
+            for strategy in [
+                EnsembleStrategy::BruteForceKNN,
+                EnsembleStrategy::RNNDescent {
+                    o_loops: 1,
+                    i_loops: 3,
+                },
+                EnsembleStrategy::RNNDescent {
+                    o_loops: 2,
+                    i_loops: 3,
+                },
+                EnsembleStrategy::RNNDescent {
+                    o_loops: 3,
+                    i_loops: 3,
+                },
+            ] {
+                params.push(ModelParams::VpTreeEnsemble(
+                    EnsembleParams {
+                        n_vp_trees: 6,
+                        max_chunk_size,
+                        same_chunk_m_max: 20,
+                        m_max: 20,
+                        m_max_0: 40,
+                        distance: Distance::Dot,
+                        level_norm: 0.0,
+                        strategy,
+                        n_candidates: 0,
+                    },
+                    false,
+                ));
+            }
+        }
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: N_10K,
+            params,
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 1,
+            title: "exp_ensemble_effect_of_brute_force_vs_rnn",
+        }
+    }
     fn _ensemble_effect_of_chunk_size() -> ExperimentSetup {
         ExperimentSetup {
             n: N_100K,
             n_queries: N_10K,
-            params: [64usize, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048]
+            params: [64usize, 128, 256, 512, 768, 1024] // 1280, 1536, 1792, 2048
                 .into_iter()
                 .map(|chunk_size| {
                     ModelParams::VpTreeEnsemble(
                         EnsembleParams {
                             n_vp_trees: 6,
                             max_chunk_size: chunk_size,
-                            same_chunk_m_max: 16,
-                            m_max: 20,
+                            same_chunk_m_max: 40,
+                            m_max: 40,
                             m_max_0: 40,
                             distance: Distance::Dot,
                             level_norm: 0.0,
@@ -499,6 +727,35 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             random_seeds: false,
             repeats: 1,
             title: "exp_ensemble_effect_of_chunk_size",
+        }
+    }
+    fn _ensemble_effect_of_same_chunk_m_max() -> ExperimentSetup {
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: N_10K,
+            params: (5usize..=40usize)
+                .into_iter()
+                .map(|same_chunk_m_max| {
+                    ModelParams::VpTreeEnsemble(
+                        EnsembleParams {
+                            n_vp_trees: 8,
+                            max_chunk_size: 256,
+                            same_chunk_m_max,
+                            m_max: 20,
+                            m_max_0: 40,
+                            distance: Distance::Dot,
+                            level_norm: 0.0,
+                            strategy: EnsembleStrategy::BruteForceKNN,
+                            n_candidates: 0,
+                        },
+                        true,
+                    )
+                })
+                .collect(),
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 1,
+            title: "exp_ensemble_effect_of_same_chunk_m_max",
         }
     }
     fn _ensemble_effect_of_multiple_vantage_points() -> ExperimentSetup {
@@ -558,6 +815,168 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             random_seeds: false,
             repeats: 1,
             title: "exp_ensemble_effect_of_level_norm",
+        }
+    }
+    fn _ensemble_effect_of_m_max() -> ExperimentSetup {
+        let mut params: Vec<ModelParams> = vec![];
+        for m_max in (4..=40usize).step_by(4) {
+            params.push(ModelParams::VpTreeEnsemble(
+                EnsembleParams {
+                    n_vp_trees: 6,
+                    max_chunk_size: 256,
+                    same_chunk_m_max: m_max,
+                    m_max,
+                    m_max_0: m_max,
+                    distance: Distance::Dot,
+                    level_norm: 0.0,
+                    strategy: EnsembleStrategy::BruteForceKNN,
+                    n_candidates: 0,
+                },
+                false,
+            ));
+        }
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: N_10K,
+            params,
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 2,
+            title: "exp_ensemble_effect_of_m_max",
+        }
+    }
+
+    // /////////////////////////////////////////////////////////////////////////////
+    // SECTION: Chunk Stitching
+    // /////////////////////////////////////////////////////////////////////////////
+    fn _stitching_effect_of_fraction() -> ExperimentSetup {
+        let mut params: Vec<ModelParams> = vec![];
+        for fraction in 0..=20 {
+            let fraction = fraction as f32 / 20.0;
+            for mode in STITCHING_MODES {
+                params.push(ModelParams::Stitching(StitchingParams {
+                    max_chunk_size: 256,
+                    same_chunk_m_max: 40,
+                    neg_fraction: fraction,
+                    keep_fraction: 0.0,
+                    m_max: 40,
+                    x_or_ef: 10,
+                    only_n_chunks: None,
+                    distance: Dot,
+                    stitch_mode: mode,
+                    n_candidates: 0,
+                }));
+            }
+        }
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: N_10K,
+            params,
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 1,
+            title: "exp_stitching_effect_of_fraction",
+        }
+    }
+    fn _stitching_effect_of_m_max() -> ExperimentSetup {
+        let mut params: Vec<ModelParams> = vec![];
+        for m_max in (4..=40usize).step_by(4) {
+            for stitch_mode in STITCHING_MODES_OK {
+                let x_or_ef = 8;
+                let neg_fraction = if stitch_mode == StitchMode::MultiEf {
+                    0.2
+                } else {
+                    0.6
+                };
+                params.push(ModelParams::Stitching(StitchingParams {
+                    max_chunk_size: 256,
+                    same_chunk_m_max: 40,
+                    neg_fraction,
+                    keep_fraction: 0.0,
+                    m_max,
+                    x_or_ef,
+                    only_n_chunks: None,
+                    distance: Dot,
+                    stitch_mode,
+                    n_candidates: 0,
+                }));
+            }
+        }
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: N_10K,
+            params,
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 1,
+            title: "exp_stitching_effect_of_m_max",
+        }
+    }
+    fn _stitching_effect_of_max_chunk_size() -> ExperimentSetup {
+        let mut params: Vec<ModelParams> = vec![];
+        for max_chunk_size in [64, 128, 256, 512, 1024] {
+            for stitch_mode in STITCHING_MODES_OK {
+                let x_or_ef = 8;
+                let neg_fraction = if stitch_mode == StitchMode::MultiEf {
+                    0.2
+                } else {
+                    0.6
+                };
+                params.push(ModelParams::Stitching(StitchingParams {
+                    max_chunk_size,
+                    same_chunk_m_max: 40,
+                    neg_fraction,
+                    keep_fraction: 0.0,
+                    m_max: 40,
+                    x_or_ef,
+                    only_n_chunks: None,
+                    distance: Dot,
+                    stitch_mode,
+                    n_candidates: 0,
+                }));
+            }
+        }
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: N_10K,
+            params,
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 1,
+            title: "exp_stitching_effect_of_max_chunk_size",
+        }
+    }
+    fn _stitching_effect_of_multi_ef() -> ExperimentSetup {
+        let mut params: Vec<ModelParams> = vec![];
+        for max_chunk_size in [256usize, 512usize] {
+            for ef in [1, 2, 4, 8, 16, 32, 64, 128] {
+                let stitch_mode = if ef == 1 {
+                    StitchMode::RandomNegToRandomPosAndBack
+                } else {
+                    StitchMode::MultiEf
+                };
+                params.push(ModelParams::Stitching(StitchingParams {
+                    max_chunk_size,
+                    same_chunk_m_max: 40,
+                    neg_fraction: 0.2,
+                    keep_fraction: 0.0,
+                    m_max: 40,
+                    x_or_ef: ef,
+                    only_n_chunks: None,
+                    distance: Dot,
+                    stitch_mode,
+                    n_candidates: 0,
+                }));
+            }
+        }
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: N_10K,
+            params,
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 1,
+            title: "exp_stitching_effect_of_multi_ef",
         }
     }
 }

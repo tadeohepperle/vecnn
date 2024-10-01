@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from typing import List, Tuple
 import pandas as pd
 import os
+import re
 
 
 class Experiment:
@@ -30,7 +31,7 @@ class Experiment:
 
         # flatten out structure into individual rows:
         for path in self.csv_paths:
-            df = pd.read_csv(path)
+            df = pd.read_csv(path, skip_blank_lines=True, comment="#")
             meta_params = extract_params_from_path(path)
             for index, row in df.iterrows():
                 row_dict = row.to_dict()
@@ -56,13 +57,16 @@ class Experiment:
         ALL_EXPERIMENTS.append(self)
         pass
 
-    def print(self):
+    def print(self, with_params_col: bool = False):
         print("#" * 80)
         print("Name: ", self.name)
         print("Common: ", self.common)
         print("Data: ")
         with pd.option_context('display.max_rows', 1000, 'display.max_columns', 1000, "display.width",1000):
-            print(self.df.to_string(index=False))
+            if with_params_col or "params" not in self.df.columns:
+                print(self.df.to_string(index=False))
+            else:   
+                print(self.df.drop(columns= ["params"]).to_string(index=False))
         print("#" * 80)
 
 
@@ -83,8 +87,19 @@ class Experiment:
             del self.df[col]
         return self
     
+    def take(self, n: int):
+        self.df = self.df.head(n)
+        return self
+    
     def print_latex(self, columns = None, decimal_digits=3):
         print(self.latex_str(columns, decimal_digits))
+
+
+    def with_build_ms_per_n(self):
+        assert "n" not in self.common
+        assert "n" in self.df.columns
+        self.df["build_ms_per_n"] = self.df["build_ms"] / self.df["n"]
+        return self
 
     def latex_str(self, columns = None, decimal_digits=3):
         if columns != None:
@@ -96,7 +111,7 @@ class Experiment:
         latex_str = df.to_latex(index=False, caption=caption, label=self.name, float_format=f"%.{decimal_digits}f")
         return latex_str
 
-    def plot(self, x_col: str, y_col: str, x_label = None, y_label = None, save_path: str = None, show: bool = True, log_x: bool = True, log_y: bool = False):
+    def plot(self, x_col: str, y_col: str, x_label = None, y_label = None, save_path: str = None, show: bool = True, log_x: bool = False):
         if x_label == None:
             x_label = x_col
         if y_label == None:
@@ -107,14 +122,15 @@ class Experiment:
         plt.scatter(self.df[x_col], self.df[y_col])
         if log_x:
             plt.xscale("log")
-        if log_y:
-            plt.yscale("log")
+        # show the ticks on y axis up to including 1.0
+        plt.yticks([i/10 for i in range(11)])
         plt.xlabel(x_label)
         plt.ylabel(y_label)
-        plt.show()
-        
-        if save_path:
+        plt.tight_layout()
+        if save_path != None:
             plt.savefig(save_path)
+        if show:
+            plt.show()
         return self
 
 ALL_EXPERIMENTS: List[Experiment] =[]
@@ -130,7 +146,12 @@ def split_params_column(row_dict):
     if "params" not in row_dict:
         return
     params_str = row_dict["params"]
-    del row_dict["params"]
+    params_str = re.sub(
+        r'strategy: RNNDescent\s*{\s*o_loops:\s*(\d+),\s*i_loops:\s*(\d+)\s*}', 
+        r'strategy: RNNDescent, o_loops: \1, i_loops: \2', 
+        params_str
+    )
+    # del row_dict["params"]
     s =  params_str.split("{")
     row_dict["model"] = s[0].strip()
     rest = s[1].split("}")[0].strip()

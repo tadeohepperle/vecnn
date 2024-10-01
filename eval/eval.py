@@ -117,13 +117,15 @@ class StitchingParams:
 
 @dataclass
 class EnsembleParams:
-    level_norm: float = 0.3
+    level_norm: float = 0.0
     n_vp_trees: int = 6
     n_candidates: int = 0      # for vptree  construction
     max_chunk_size: int = 256  # max size of the chunks the vptree is split into
     same_chunk_m_max: int = 20 # max neighbors within each chunk.
     m_max: int = 20            # of the resulting graph
     m_max_0: int = 40          # of the resulting graph
+    rnn_inner_loops: int = 0
+    rnn_outer_loops: int = 0
     threaded: bool = False
 
 @dataclass
@@ -143,7 +145,10 @@ def model_params_to_str(params: ModelParams) -> str:
     elif isinstance(params, StitchingParams):
         return f"Stitching {{method: {params.method}, n_candidates: {params.n_candidates}, max_chunk_size: {params.max_chunk_size}, same_chunk_m_max: {params.same_chunk_m_max}, m_max: {params.m_max}, fraction: {params.fraction}, x_or_ef: {params.x_or_ef}, threaded: {params.threaded}}}"
     elif isinstance(params, EnsembleParams):
-        return f"Ensemble {{level_norm: {params.level_norm}, n_vp_trees: {params.n_vp_trees}, n_candidates: {params.n_candidates}, max_chunk_size: {params.max_chunk_size}, same_chunk_m_max: {params.same_chunk_m_max}, m_max: {params.m_max}, m_max0: {params.m_max_0}, threaded: {params.threaded}}}"
+        if params.rnn_inner_loops == 0 or params.rnn_outer_loops == 0:
+            return f"Ensemble {{level_norm: {params.level_norm}, n_vp_trees: {params.n_vp_trees}, n_candidates: {params.n_candidates}, max_chunk_size: {params.max_chunk_size}, same_chunk_m_max: {params.same_chunk_m_max}, m_max: {params.m_max}, m_max0: {params.m_max_0}, threaded: {params.threaded}}}"
+        else: 
+            return f"Ensemble {{level_norm: {params.level_norm}, n_vp_trees: {params.n_vp_trees}, n_candidates: {params.n_candidates}, max_chunk_size: {params.max_chunk_size}, same_chunk_m_max: {params.same_chunk_m_max}, m_max: {params.m_max}, m_max0: {params.m_max_0}, threaded: {params.threaded}, rnn_inner_loops: {params.rnn_inner_loops}, rnn_outer_loops: {params.rnn_outer_loops}}}"
     elif isinstance(params, VpTreeParams):
         return f"VpTree {{n_candidates: {params.n_candidates}, threaded: {params.threaded}}}"
     else: 
@@ -269,7 +274,7 @@ class Model:
         elif isinstance(params, EnsembleParams):
             dataset = vecnn.Dataset(data) # not ideal
             start = time.time()
-            hnsw = vecnn.build_hnsw_by_vp_tree_ensemble(dataset, params.level_norm, params.n_vp_trees, params.n_candidates, params.max_chunk_size, params.same_chunk_m_max, params.m_max, params.m_max_0, params.threaded, distance, seed)
+            hnsw = vecnn.build_hnsw_by_vp_tree_ensemble(dataset, params.level_norm, params.n_vp_trees, params.n_candidates, params.max_chunk_size, params.same_chunk_m_max, params.m_max, params.m_max_0, params.rnn_inner_loops, params.rnn_outer_loops, params.threaded, distance, seed)
             build_secs =  time.time() - start
             self.build_metrics =  BuildMetrics(build_secs, hnsw.num_distance_calculations_in_build)
             self.vecnn_hnsw = hnsw
@@ -309,7 +314,7 @@ class Model:
         elif self.vecnn_rnn_graph is not None:
             def knn(query: np.ndarray, params: SearchParams) -> Tuple[np.ndarray, float, Optional[int]]:
                 start = time.time()
-                res = self.vecnn_rnn_graph.knn(query, k=params.k, start_candidates=params.start_candidates) # todo! not hardcode the 10 initial neighbors
+                res = self.vecnn_rnn_graph.knn(query, params.k, params.ef, params.start_candidates)
                 search_time = time.time() - start
                 return (res.indices, search_time, res.num_distance_calculations)
             return knn
@@ -443,15 +448,15 @@ model_params: list[ModelParams] = [
     # VpTreeParams(n_candidates  = 0, threaded=False),
     # RNNGraphParams(outer_loops=3, inner_loops=5, m_initial=40, m_pruned=40),
     # StitchingParams("method2", n_candidates=0, max_chunk_size=256, same_chunk_m_max=20, m_max=20, fraction=0.3, x_or_ef=3, threaded=False),
-    # EnsembleParams(level_norm=0.3, n_vp_trees=6, n_candidates=0, max_chunk_size=256, same_chunk_m_max=16, m_max=20, m_max_0=40, threaded=False),
-    # EnsembleParams(level_norm=0.3, n_vp_trees=6, n_candidates=1, max_chunk_size=256, same_chunk_m_max=16, m_max=20, m_max_0=40, threaded=True),
+    # EnsembleParams(n_vp_trees=6, n_candidates=1, max_chunk_size=1024, same_chunk_m_max=10, m_max=20, m_max_0=40, threaded=True),
+    # EnsembleParams(n_vp_trees=6, n_candidates=1, max_chunk_size=1024, same_chunk_m_max=10, m_max=20, m_max_0=40, threaded=True, rnn_outer_loops=2, rnn_inner_loops=3),
     # HnswParams("rustcv", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
     # HnswParams("jpboth", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
-    HnswParams("vecnn", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
-    HnswParams("hnswlib", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    # HnswParams("vecnn", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    # HnswParams("hnswlib", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
     # HnswParams("jpboth", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
     # HnswParams("vecnn", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
-    # HnswParams("hnswlib", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    HnswParams("hnswlib", threaded=True, level_norm=0.3, ef_construction=10, m_max=8, m_max_0=16),
     # HnswParams("faiss", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
  ]
 # EnsembleParams { n_vp_trees: 6, max_chunk_size: 256, same_chunk_m_max: 16, m_max: 20, m_max_0: 40, level_norm: 0.3, distance: Dot, strategy: BruteForceKNN }  

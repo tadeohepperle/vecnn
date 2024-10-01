@@ -46,10 +46,11 @@ impl RNNGraph {
         py: Python<'py>,
         query: Py<PyArray1<f32>>,
         k: usize,
+        ef: usize,
         start_candidates: usize,
     ) -> PyResult<KnnResult> {
         let q = pyarray1_to_slice(query, Some(self.0.data.dims()))?;
-        let (res, stats) = self.0.knn_search(q, k, k, start_candidates);
+        let (res, stats) = self.0.knn_search(q, k, ef, start_candidates);
         let indices = ndarray::Array::from_iter(res.iter().map(|e| e.1))
             .into_pyarray_bound(py)
             .unbind();
