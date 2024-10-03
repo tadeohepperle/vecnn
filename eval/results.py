@@ -18,7 +18,6 @@ ONE_HALF_FIG_SIZE = (4.2,3.2)
 ONE_FONT_SIZE = 14 # for plots covering the entire page with
 ONE_FIG_SIZE = (8.4,5.2)
 
-
 plt.rcParams["font.family"] = ["Linux Libertine O", "sans-serif"]
 plt.rcParams["text.usetex"] = True
 plt.rcParams["mathtext.fontset"] = "cm"

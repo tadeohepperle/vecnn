@@ -142,7 +142,7 @@ class JpBothHnsw():
 class RNNGraph:
     num_distance_calculations_in_build: int
 
-    def __init__(self, data: Dataset, outer_loops: int, inner_loops: int, max_neighbors_after_reverse_pruning: int, initial_neighbors: int, distance: Distance, seed: int):
+    def __init__(self, data: Dataset, outer_loops: int, inner_loops: int, max_neighbors_after_reverse_pruning: int, initial_neighbors: int, threaded: bool, distance: Distance, seed: int):
         pass
 
     def knn(self, query: np.ndarray, k: int, ef: int, start_candidates: int) -> KnnResult:

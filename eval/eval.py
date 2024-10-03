@@ -96,7 +96,7 @@ class RNNGraphParams:
     outer_loops: int = 3
     m_initial: int = 40
     m_pruned: int = 40
-    # threaded: bool # currently not implemented, because a bit difficult to synchronize 
+    threaded: bool = False
 
 @dataclass
 class StitchingParams:
@@ -141,7 +141,7 @@ def model_params_to_str(params: ModelParams) -> str:
     if isinstance(params, HnswParams):
         return f"Hnsw_{params.implementation} {{ef_constr: {params.ef_construction}, m_max: {params.m_max}, m_max0: {params.m_max_0}, level_norm: {params.level_norm}, threaded: {params.threaded}}}"
     elif isinstance(params, RNNGraphParams):
-        return f"RNNGraph {{outer_loops: {params.outer_loops}, inner_loops: {params.inner_loops}, m_pruned: {params.m_pruned}, m_initial: {params.m_initial}}}"
+        return f"RNNGraph {{outer_loops: {params.outer_loops}, inner_loops: {params.inner_loops}, m_pruned: {params.m_pruned}, m_initial: {params.m_initial}, threaded: {params.threaded}}}"
     elif isinstance(params, StitchingParams):
         return f"Stitching {{method: {params.method}, n_candidates: {params.n_candidates}, max_chunk_size: {params.max_chunk_size}, same_chunk_m_max: {params.same_chunk_m_max}, m_max: {params.m_max}, fraction: {params.fraction}, x_or_ef: {params.x_or_ef}, threaded: {params.threaded}}}"
     elif isinstance(params, EnsembleParams):
@@ -260,7 +260,7 @@ class Model:
         elif isinstance(params, RNNGraphParams):
             dataset = vecnn.Dataset(data) # not ideal
             start = time.time()
-            rnn_graph = vecnn.RNNGraph(dataset, params.outer_loops, params.inner_loops, params.m_pruned, params.m_initial, distance, seed)
+            rnn_graph = vecnn.RNNGraph(dataset, params.outer_loops, params.inner_loops, params.m_pruned, params.m_initial, params.threaded, distance, seed)
             build_secs =  time.time() - start
             self.build_metrics =  BuildMetrics(build_secs, rnn_graph.num_distance_calculations_in_build)
             self.vecnn_rnn_graph = rnn_graph

@@ -1,3 +1,4 @@
+use parking_lot::Mutex;
 use rand::Rng;
 
 use crate::{
@@ -236,8 +237,21 @@ impl<T> Drop for SlicesMemory<T> {
     }
 }
 
+/// get some locks and manage them manually side-by-side with the actual data instead of polluting the data structure (Rust not so happy but me happy)
+pub fn make_ghost_locks(len: usize) -> Vec<Mutex<()>> {
+    let mut locks: Vec<Mutex<()>> = Vec::with_capacity(len);
+    for i in 0..len {
+        unsafe {
+            *locks.get_unchecked_mut(i) = Mutex::new(());
+        }
+    }
+    unsafe { locks.set_len(len) }
+    return locks;
+}
+
 /// A wrapper that is incredibly unsafe but acts if it was not. Use only if you know what you are doing.
 #[derive(Debug)]
+#[repr(transparent)]
 pub struct YoloCell<T>(UnsafeCell<T>);
 unsafe impl<T> Send for YoloCell<T> {}
 unsafe impl<T> Sync for YoloCell<T> {}

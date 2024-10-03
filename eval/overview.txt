@@ -1,0 +1,39 @@
+ensembles with level_norm 0.0 and 256 chunk size
+
+                                   Threaded         NonThreaded
+Ensemble_6_256_10_40                  x                          
+Ensemble_8_256_10_40                  x
+Ensemble_10_256_10_40                 x
+Ensemble_12_256_10_40                 x
+Ensemble_10_256_20_40                 x                  x
+Ensemble_6_256_10_60                                     x
+
+EnsembleRNN_3x3_6_1024_20_40          x                  x
+EnsembleRNN_2x2_6_2048_20_40          x
+EnsembleRNN_2x3_6_2048_20_40          x
+EnsembleRNN_2x3_6_1024_10_40                             x
+
+Faiss_20_40                           x
+Faiss_30_20                           x
+Faiss_40_40                           x
+Faiss_60_40                          ???
+Hnswlib_60_40                         x                  x
+Hnswlib_40_40                                            x
+Jpboth_60_40                         ???                 x
+RustCv_20_40                      IMPOSSIBLE             x
+Vecnn_20_40                           x
+Vecnn_40_40                           x                  x
+Vecnn_60_40                           x                  x
+RNN_2x3_40                            x                  x
+RNN_3x3_40                            x
+RNN_4x5_40                            x
+RNN_6x3_40                            x
+
+
+
+Queue: 
+Jpboth_60_40 Threaded
+Vecnn_20_40  NonThreaded
+
+
+

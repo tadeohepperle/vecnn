@@ -773,6 +773,7 @@ fn connect_vp_tree_chunk_and_update_neighbors_in_hnsw_rnn_descent<'task, 'total>
         &distance_idx_to_idx,
         buffers,
         chunk_size,
+        false, // no threading here, because this should already run in a threaded loop!
     );
 
     // merge the neighbors of the vp-tree in with the hnsw layer:
@@ -1746,6 +1747,7 @@ fn chunk_collection_matches_vp_tree_subtrees() {
     }
 }
 
+// experimental and probably stupid
 pub fn build_hnsw_by_rnn_descent(
     data: Arc<dyn DatasetT>,
     params: RNNGraphParams,
@@ -1792,6 +1794,7 @@ pub fn build_hnsw_by_rnn_descent(
             &distance_idx_to_idx,
             &mut buffers,
             layer.entries.len(),
+            false,
         );
         for (i, entry) in layer.entries.iter_mut().enumerate() {
             let rnn_neighbors = &buffers.neighbors[i];

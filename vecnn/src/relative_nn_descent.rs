@@ -2,6 +2,7 @@ use std::{
     cell::UnsafeCell,
     cmp::Reverse,
     collections::BinaryHeap,
+    ops::Deref,
     sync::Arc,
     time::{Duration, Instant},
     usize,
@@ -9,15 +10,19 @@ use std::{
 
 use ahash::{HashMap, HashSet};
 use nanoserde::{DeJson, SerJson};
+use parking_lot::Mutex;
 use rand::{thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+use rayon::iter::{
+    IntoParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
+};
 
 use crate::{
     dataset::DatasetT,
     distance::{l2, Distance, DistanceFn, DistanceTracker},
     hnsw::DistAnd,
     if_tracking,
-    utils::Stats,
+    utils::{make_ghost_locks, Stats, YoloCell},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, SerJson, DeJson)]
@@ -152,14 +157,22 @@ impl RNNGraph {
         }
     }
 
-    pub fn new(data: Arc<dyn DatasetT>, params: RNNGraphParams, seed: u64) -> Self {
+    pub fn new(data: Arc<dyn DatasetT>, params: RNNGraphParams, seed: u64, threaded: bool) -> Self {
         let distance_tracker = DistanceTracker::new(params.distance);
 
         let start = Instant::now();
         let distance_idx_to_idx =
             |i: usize, j: usize| -> f32 { distance_tracker.distance(data.get(i), data.get(j)) };
         let mut buffers = RNNConstructionBuffers::new();
-        construct_relative_nn_graph(params, seed, &distance_idx_to_idx, &mut buffers, data.len());
+
+        construct_relative_nn_graph(
+            params,
+            seed,
+            &distance_idx_to_idx,
+            &mut buffers,
+            data.len(),
+            threaded,
+        );
 
         let build_stats = Stats {
             num_distance_calculations: distance_tracker.num_calculations(),
@@ -202,27 +215,38 @@ impl RNNConstructionBuffers {
     }
 }
 
-pub fn construct_relative_nn_graph(
+pub fn construct_relative_nn_graph<D>(
     params: RNNGraphParams,
     seed: u64,
-    distance_idx_to_idx: &impl Fn(usize, usize) -> f32,
+    distance_idx_to_idx: &D,
     buffers: &mut RNNConstructionBuffers,
     n_entries: usize,
-) {
+    threaded: bool,
+) where
+    D: Fn(usize, usize) -> f32 + Send + Sync,
+{
     buffers.clear_and_prepare(n_entries, params.initial_neighbors);
     let neighbors = &mut buffers.neighbors[0..n_entries];
     let two_sided_neighbors = &mut buffers.two_sided_neighbors[0..n_entries];
-
     fill_with_random_neighbors(
         distance_idx_to_idx,
         params.initial_neighbors,
         neighbors,
         seed,
     );
+    let locks = if threaded {
+        make_ghost_locks(n_entries)
+    } else {
+        vec![]
+    };
     for t1 in 0..params.outer_loops {
         // dbg_stats(&nodes, "before update_neighbors");
         for _ in 0..params.inner_loops {
-            update_neighbors(neighbors, distance_idx_to_idx)
+            if threaded {
+                update_neighbors_parallel(neighbors, &locks, distance_idx_to_idx);
+            } else {
+                update_neighbors(neighbors, distance_idx_to_idx)
+            }
         }
         // dbg_stats(&nodes, "after update_neighbors");
         if t1 != params.outer_loops - 1 {
@@ -230,6 +254,7 @@ pub fn construct_relative_nn_graph(
                 neighbors,
                 two_sided_neighbors,
                 params.max_neighbors_after_reverse_pruning,
+                threaded,
             );
         }
     }
@@ -260,7 +285,7 @@ fn update_neighbors(
     neighbors: &mut [Vec<Neighbor>],
     distance_idx_to_idx: &impl Fn(usize, usize) -> f32,
 ) {
-    let mut new_neighbors: Vec<Neighbor> = vec![];
+    let mut new_neighbors: Vec<Neighbor> = vec![]; // reused buffer
     let n_entries = neighbors.len();
 
     for u_idx in 0..n_entries {
@@ -277,10 +302,6 @@ fn update_neighbors(
                 if !v.is_new && !w.is_new {
                     continue;
                 }
-                // if v.idx == w.idx {
-                //     dbg!((u_idx, w, v));
-                //     panic!("TODO unsolved problem")
-                // }
                 if v.idx == w.idx {
                     keep_neighbor = false;
                     break;
@@ -309,6 +330,63 @@ fn update_neighbors(
         }
         std::mem::swap(&mut neighbors[u_idx], &mut new_neighbors);
     }
+}
+fn update_neighbors_parallel<D>(
+    neighbors: &mut [Vec<Neighbor>],
+    locks: &[Mutex<()>],
+    distance_idx_to_idx: &D,
+) where
+    D: Fn(usize, usize) -> f32 + Send + Sync,
+{
+    assert!(locks.len() == neighbors.len());
+    let neighbors: &[YoloCell<Vec<Neighbor>>] = unsafe { std::mem::transmute(neighbors) };
+    (0..neighbors.len()).into_par_iter().for_each(|u_idx| {
+        let mut old_neighbors: Vec<Neighbor>;
+        let guard = locks[u_idx].lock();
+        old_neighbors = std::mem::take(unsafe { neighbors[u_idx].get_mut() }); //  clear out the old neighbors list
+        drop(guard);
+        old_neighbors.sort(); // (sort by distance to this point)
+        remove_duplicates_for_sorted(&mut old_neighbors);
+
+        let mut new_neighbors: Vec<Neighbor> = vec![]; // todo: maybe reuse in threadlocal buffer
+
+        for v in old_neighbors.drain(..) {
+            let mut keep_neighbor = true;
+
+            for w in new_neighbors.iter() {
+                if !v.is_new && !w.is_new {
+                    continue;
+                }
+                let dist_v_u = v.dist;
+                let dist_v_w = distance_idx_to_idx(w.idx, v.idx);
+                if dist_v_w <= dist_v_u {
+                    // prune by RNG rule
+                    keep_neighbor = false;
+
+                    // insert connection w -> v instead:
+                    let guard = locks[w.idx].lock();
+                    let w_neighbors = unsafe { neighbors[w.idx].get_mut() };
+                    w_neighbors.push(Neighbor {
+                        idx: v.idx,
+                        dist: dist_v_w,
+                        is_new: true,
+                    });
+                    drop(guard);
+                    break;
+                }
+            }
+            if keep_neighbor {
+                new_neighbors.push(v);
+            }
+        }
+        for v in new_neighbors.iter_mut() {
+            v.is_new = false;
+        }
+        let guard = locks[u_idx].lock();
+        let u_neighbors = unsafe { neighbors[u_idx].get_mut() };
+        *u_neighbors = new_neighbors;
+        drop(guard);
+    });
 }
 
 /// Warning! expects a sorted vector
@@ -348,6 +426,7 @@ fn add_reverse_edges(
     neighbors: &mut [Vec<Neighbor>],
     two_sided_neighbors: &mut [Vec<Neighbor>],
     max_neighbors_after_reverse_pruning: usize,
+    threaded: bool,
 ) {
     // create list for each node, with all **INCOMING** connections to this node and all **OUTGOING** connections from this node
     assert_eq!(neighbors.len(), two_sided_neighbors.len());
@@ -367,10 +446,18 @@ fn add_reverse_edges(
     }
     // all neighbors are now cleared.
     // sort all in_and_out neighbors per node and remove duplicates, then shrink to r:
-    for in_and_out in two_sided_neighbors.iter_mut() {
-        in_and_out.sort();
-        remove_duplicates(in_and_out);
-        in_and_out.truncate(max_neighbors_after_reverse_pruning);
+    if threaded {
+        two_sided_neighbors.par_iter_mut().for_each(|in_and_out| {
+            in_and_out.sort();
+            remove_duplicates(in_and_out);
+            in_and_out.truncate(max_neighbors_after_reverse_pruning);
+        });
+    } else {
+        for in_and_out in two_sided_neighbors.iter_mut() {
+            in_and_out.sort();
+            remove_duplicates(in_and_out);
+            in_and_out.truncate(max_neighbors_after_reverse_pruning);
+        }
     }
     for (idx, in_and_out) in two_sided_neighbors.into_iter().enumerate() {
         for nn in in_and_out.drain(..) {
@@ -381,11 +468,82 @@ fn add_reverse_edges(
             })
         }
     }
-    for neighbors in neighbors.iter_mut() {
-        neighbors.sort();
-        neighbors.truncate(max_neighbors_after_reverse_pruning);
+
+    if threaded {
+        neighbors.par_iter_mut().for_each(|neighbors| {
+            neighbors.sort();
+            neighbors.truncate(max_neighbors_after_reverse_pruning);
+        });
+    } else {
+        for neighbors in neighbors.iter_mut() {
+            neighbors.sort();
+            neighbors.truncate(max_neighbors_after_reverse_pruning);
+        }
     }
 }
+
+// todo: Note: probably not worth it fixing this, the reverse list construction is probably not gonna benefic from multithreading much
+// fn add_reverse_edges_parallel_with_memory_corruption_bug(
+//     neighbors: &mut [Vec<Neighbor>],
+//     two_sided_neighbors: &mut [Vec<Neighbor>],
+//     locks: &[Mutex<()>],
+//     max_neighbors_after_reverse_pruning: usize,
+// ) {
+//     assert_eq!(neighbors.len(), two_sided_neighbors.len());
+//     assert_eq!(neighbors.len(), locks.len());
+//     for r in two_sided_neighbors.iter_mut() {
+//         r.clear();
+//     }
+//     let neighbors: &[YoloCell<Vec<Neighbor>>] = unsafe { std::mem::transmute(neighbors) };
+//     // create list for each node, with all **INCOMING** connections to this node and all **OUTGOING** connections from this node
+//     let two_sided_neighbors: &[YoloCell<Vec<Neighbor>>] =
+//         unsafe { std::mem::transmute(two_sided_neighbors) };
+//     (0..neighbors.len()).into_par_iter().for_each(|idx| {
+//         let neighbors = unsafe { neighbors[idx].get_mut() }; // noone else accesses this so no lock needed
+//         for n in neighbors.iter_mut() {
+//             let guard = locks[n.idx].lock();
+//             unsafe { two_sided_neighbors[n.idx].get_mut() }.push(Neighbor {
+//                 idx,
+//                 dist: n.dist,
+//                 is_new: n.is_new,
+//             });
+//             drop(guard);
+//             n.is_new = true;
+//         }
+//         unsafe { two_sided_neighbors[idx].get_mut() }.extend(neighbors.drain(..));
+//     });
+//     // all neighbors are now cleared and put into the two_sided_neighbors, two times each.
+//     // sort all in_and_out neighbors per node and remove duplicates, then shrink to r:
+//     two_sided_neighbors.par_iter().for_each(|in_and_out| {
+//         let in_and_out = unsafe { in_and_out.get_mut() }; // safe, because each neighbors list accessed independently
+//         in_and_out.sort();
+//         remove_duplicates(in_and_out);
+//         in_and_out.truncate(max_neighbors_after_reverse_pruning);
+//     });
+//     // put back into neighbors:
+//     (0..two_sided_neighbors.len())
+//         .into_par_iter()
+//         .for_each(|idx| {
+//             let in_and_out = unsafe { two_sided_neighbors[idx].get_mut() };
+//             for nn in in_and_out.drain(..) {
+//                 // clears out two sided neighbor list:
+//                 let guard = locks[nn.idx].lock();
+//                 // put neighbors back in, lock needed again:
+//                 unsafe { neighbors[nn.idx].get_mut() }.push(Neighbor {
+//                     idx,
+//                     dist: nn.dist,
+//                     is_new: nn.is_new,
+//                 });
+//                 drop(guard);
+//             }
+//         });
+//     // sort and truncate to max neighbors:
+//     neighbors.par_iter().for_each(|neighbors| {
+//         let neighbors = unsafe { neighbors.get_mut() };
+//         neighbors.sort();
+//         neighbors.truncate(max_neighbors_after_reverse_pruning);
+//     });
+// }
 
 fn fill_with_random_neighbors(
     distance_idx_to_idx: &impl Fn(usize, usize) -> f32, // idx to idx distance (NOT! id to id)
@@ -430,7 +588,7 @@ mod tests {
     #[test]
     fn relative_nn_construction() {
         let data = crate::utils::random_data_set(1000, 20);
-        let graph = RNNGraph::new(data, RNNGraphParams::default(), 42);
+        let graph = RNNGraph::new(data, RNNGraphParams::default(), 42, false);
         std::fs::write("graph.txt", format!("{graph:?}"));
     }
 }

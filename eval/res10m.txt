@@ -1,0 +1,183 @@
+These params are too bad, never cross 80 recall:
+     Ensemble {level_norm: 0.0, n_vp_trees: 4, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True}
+     Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: False}
+     Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True}
+     Hnsw_faiss {ef_constr: 20, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+     Hnsw_hnswlib {ef_constr: 20, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+     Hnsw_hnswlib {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+     Hnsw_hnswlib {ef_constr: 30, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+     Hnsw_jpboth {ef_constr: 20, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+     Hnsw_jpboth {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+     Hnsw_jpboth {ef_constr: 30, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+     Hnsw_vecnn {ef_constr: 20, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+     Hnsw_vecnn {ef_constr: 30, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+     Stitching {method: method2, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 40, m_max: 40, fraction: 0.6, x_or_ef: 3, threaded: False}
+These params are good enough reaching more than 80 recall:
+     Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 8, m_max: 40, m_max0: 40, threaded: True, rnn_inner_loops: 3, rnn_outer_loops: 2}
+     Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: True}
+     Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: False}
+     Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True}
+     Ensemble {level_norm: 0.0, n_vp_trees: 12, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: True}
+     Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: False, rnn_inner_loops: 3, rnn_outer_loops: 2}
+     Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: True, rnn_inner_loops: 3, rnn_outer_loops: 2}
+     Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: False, rnn_inner_loops: 3, rnn_outer_loops: 3}
+     Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True, rnn_inner_loops: 3, rnn_outer_loops: 3}
+     Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 2048, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True, rnn_inner_loops: 2, rnn_outer_loops: 2}
+     Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 2048, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True, rnn_inner_loops: 3, rnn_outer_loops: 2}
+     Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: True}
+     Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 60, m_max0: 60, threaded: False}
+     Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 60, m_max0: 60, threaded: True}
+     Ensemble {level_norm: 0.0, n_vp_trees: 8, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: True}
+     Hnsw_faiss {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+     Hnsw_faiss {ef_constr: 30, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+     Hnsw_faiss {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+     Hnsw_faiss {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+     Hnsw_hnswlib {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}
+     Hnsw_hnswlib {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}
+     Hnsw_hnswlib {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+     Hnsw_jpboth {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}
+     Hnsw_jpboth {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+     Hnsw_rustcv {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}
+     Hnsw_vecnn {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+     Hnsw_vecnn {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.0, threaded: False}
+     Hnsw_vecnn {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.0, threaded: True}
+     Hnsw_vecnn {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}
+     Hnsw_vecnn {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+     RNNGraph {outer_loops: 2, inner_loops: 3, m_pruned: 40, m_initial: 40, threaded: False}
+     RNNGraph {outer_loops: 2, inner_loops: 3, m_pruned: 40, m_initial: 40, threaded: True}
+     RNNGraph {outer_loops: 3, inner_loops: 3, m_pruned: 40, m_initial: 40, threaded: True}
+     RNNGraph {outer_loops: 4, inner_loops: 5, m_pruned: 40, m_initial: 40, threaded: True}
+     RNNGraph {outer_loops: 6, inner_loops: 3, m_pruned: 40, m_initial: 40, threaded: True}
+
+
+Recall lower than 80 (at ef=150):
+     ef    recall  search_ms   build_secs                                                                                                                                          params
+                                                                                                                                                                                         
+5   150  0.735070   2.536774   339.143587    Ensemble {level_norm: 0.0, n_vp_trees: 4, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True}
+15  150  0.784297   2.177452  1195.057139   Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: False}
+16  150  0.776033   2.522194   531.486464    Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True}
+18  150  0.721253  16.927729   215.707589                                                              Hnsw_faiss {ef_constr: 20, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+23  150  0.660777   1.028283   195.984256                                                            Hnsw_hnswlib {ef_constr: 20, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+24  150  0.725943   0.654417   215.566962                                                            Hnsw_hnswlib {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+25  150  0.788067   0.588221   230.007890                                                            Hnsw_hnswlib {ef_constr: 30, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+29  150  0.339327   1.665354   192.618657                                                             Hnsw_jpboth {ef_constr: 20, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+30  150  0.751840   3.059448   330.518965                                                             Hnsw_jpboth {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+31  150  0.690400   1.974709   240.669768                                                             Hnsw_jpboth {ef_constr: 30, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+35  150  0.626277   1.169981   255.611780                                                              Hnsw_vecnn {ef_constr: 20, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+37  150  0.741183   1.041109   335.001650                                                              Hnsw_vecnn {ef_constr: 30, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+47  150  0.748353   3.127280  4119.554573  Stitching {method: method2, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 40, m_max: 40, fraction: 0.6, x_or_ef: 3, threaded: False}
+
+
+Recall greater than 80:
+     ef    recall  search_ms    build_secs                                                                                                                                                                                  params threaded
+                                                                                                                                                                                                                                           
+0    50  0.817793   1.453926    785.917974   Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 8, m_max: 40, m_max0: 40, threaded: True, rnn_inner_loops: 3, rnn_outer_loops: 2}     True
+1   120  0.803327   2.197040    653.445596                                           Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: True}     True
+2   140  0.804753   1.929621   1997.723215                                          Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: False}    False
+3   140  0.800013   2.228816    966.347405                                           Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True}     True
+4   120  0.808513   2.156274    792.184758                                           Ensemble {level_norm: 0.0, n_vp_trees: 12, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: True}     True
+6    70  0.806970   1.305503   1507.701631  Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: False, rnn_inner_loops: 3, rnn_outer_loops: 2}    False
+7    70  0.805487   1.689278    586.674613   Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: True, rnn_inner_loops: 3, rnn_outer_loops: 2}     True
+8    60  0.822050   1.140689   3443.232914  Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: False, rnn_inner_loops: 3, rnn_outer_loops: 3}    False
+9    60  0.819383   1.312823   2448.249893   Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True, rnn_inner_loops: 3, rnn_outer_loops: 3}     True
+10   50  0.809827   1.199778   1641.958978   Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 2048, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True, rnn_inner_loops: 2, rnn_outer_loops: 2}     True
+11   50  0.822313   1.226819   1505.832253   Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 2048, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True, rnn_inner_loops: 3, rnn_outer_loops: 2}     True
+12  130  0.803047   2.478032    405.485258                                            Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: True}     True
+13   90  0.802990   2.407979   1117.219075                                           Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 60, m_max0: 60, threaded: False}    False
+14  100  0.811880   3.392196    385.491639                                            Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 60, m_max0: 60, threaded: True}     True
+17  130  0.810177   2.402174    522.064988                                            Ensemble {level_norm: 0.0, n_vp_trees: 8, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: True}     True
+19   40  0.818177  15.759218    361.420055                                                                                                      Hnsw_faiss {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}     True
+20  120  0.808037  12.938894    222.804103                                                                                                      Hnsw_faiss {ef_constr: 30, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}     True
+21   40  0.804213   9.932605    338.423656                                                                                                      Hnsw_faiss {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}     True
+22   30  0.806610  11.575785    481.950592                                                                                                      Hnsw_faiss {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}     True
+26   60  0.808333   0.321880   2703.509085                                                                                                   Hnsw_hnswlib {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}    False
+27   40  0.825650   0.273892   3877.533648                                                                                                   Hnsw_hnswlib {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}    False
+28   40  0.818235   0.446565    452.965038                                                                                                    Hnsw_hnswlib {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}     True
+32   50  0.822577   0.836153  11143.633296                                                                                                    Hnsw_jpboth {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}    False
+33   50  0.824130   1.504611    540.783693                                                                                                     Hnsw_jpboth {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}     True
+34   30  0.842017   1.471237  10645.218454                                                                                                    Hnsw_rustcv {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}    False
+36  110  0.801917   1.209521    421.842622                                                                                                      Hnsw_vecnn {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}     True
+38   40  0.805570   0.608872   5636.132444                                                                                                     Hnsw_vecnn {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.0, threaded: False}    False
+39   40  0.802787   0.927532    827.314317                                                                                                      Hnsw_vecnn {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.0, threaded: True}     True
+40   40  0.822303   0.552252   6813.595722                                                                                                     Hnsw_vecnn {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}    False
+41   40  0.819193   0.713206    728.004317                                                                                                      Hnsw_vecnn {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}     True
+42  110  0.811830   2.589242   3173.806071                                                                                                 RNNGraph {outer_loops: 2, inner_loops: 3, m_pruned: 40, m_initial: 40, threaded: False}    False
+43  100  0.803251   1.781869   2212.687794                                                                                                  RNNGraph {outer_loops: 2, inner_loops: 3, m_pruned: 40, m_initial: 40, threaded: True}     True
+44   30  0.815667   1.101472   4174.668832                                                                                                  RNNGraph {outer_loops: 3, inner_loops: 3, m_pruned: 40, m_initial: 40, threaded: True}     True
+45   30  0.869047   1.045229   7253.773919                                                                                                  RNNGraph {outer_loops: 4, inner_loops: 5, m_pruned: 40, m_initial: 40, threaded: True}     True
+46   30  0.891193   0.418964    519.650352                                                                                                  RNNGraph {outer_loops: 6, inner_loops: 3, m_pruned: 40, m_initial: 40, threaded: True}     True
+
+
+Recall greater than 80, multithreaded:
+     ef    recall  search_ms   build_secs                                                                                                                                                                                 params
+                                                                                                                                                                                                                                
+0    50  0.817793   1.453926   785.917974  Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 8, m_max: 40, m_max0: 40, threaded: True, rnn_inner_loops: 3, rnn_outer_loops: 2}
+1   120  0.803327   2.197040   653.445596                                          Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: True}
+3   140  0.800013   2.228816   966.347405                                          Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True}
+4   120  0.808513   2.156274   792.184758                                          Ensemble {level_norm: 0.0, n_vp_trees: 12, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: True}
+7    70  0.805487   1.689278   586.674613  Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: True, rnn_inner_loops: 3, rnn_outer_loops: 2}
+9    60  0.819383   1.312823  2448.249893  Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True, rnn_inner_loops: 3, rnn_outer_loops: 3}
+10   50  0.809827   1.199778  1641.958978  Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 2048, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True, rnn_inner_loops: 2, rnn_outer_loops: 2}
+11   50  0.822313   1.226819  1505.832253  Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 2048, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: True, rnn_inner_loops: 3, rnn_outer_loops: 2}
+12  130  0.803047   2.478032   405.485258                                           Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: True}
+14  100  0.811880   3.392196   385.491639                                           Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 60, m_max0: 60, threaded: True}
+17  130  0.810177   2.402174   522.064988                                           Ensemble {level_norm: 0.0, n_vp_trees: 8, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: True}
+19   40  0.818177  15.759218   361.420055                                                                                                     Hnsw_faiss {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+20  120  0.808037  12.938894   222.804103                                                                                                     Hnsw_faiss {ef_constr: 30, m_max: 10, m_max0: 20, level_norm: 0.3, threaded: True}
+21   40  0.804213   9.932605   338.423656                                                                                                     Hnsw_faiss {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+22   30  0.806610  11.575785   481.950592                                                                                                     Hnsw_faiss {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+28   40  0.818235   0.446565   452.965038                                                                                                   Hnsw_hnswlib {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+33   50  0.824130   1.504611   540.783693                                                                                                    Hnsw_jpboth {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+36  110  0.801917   1.209521   421.842622                                                                                                     Hnsw_vecnn {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+39   40  0.802787   0.927532   827.314317                                                                                                     Hnsw_vecnn {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.0, threaded: True}
+41   40  0.819193   0.713206   728.004317                                                                                                     Hnsw_vecnn {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: True}
+43  100  0.803251   1.781869  2212.687794                                                                                                 RNNGraph {outer_loops: 2, inner_loops: 3, m_pruned: 40, m_initial: 40, threaded: True}
+44   30  0.815667   1.101472  4174.668832                                                                                                 RNNGraph {outer_loops: 3, inner_loops: 3, m_pruned: 40, m_initial: 40, threaded: True}
+45   30  0.869047   1.045229  7253.773919                                                                                                 RNNGraph {outer_loops: 4, inner_loops: 5, m_pruned: 40, m_initial: 40, threaded: True}
+46   30  0.891193   0.418964   519.650352                                                                                                 RNNGraph {outer_loops: 6, inner_loops: 3, m_pruned: 40, m_initial: 40, threaded: True}
+
+
+Recall greater than 80, singlethreaded:
+     ef    recall search_ms    build_secs                                                                                                                                                                                  params
+                                                                                                                                                                                                                                 
+2   140  0.804753  1.929621   1997.723215                                          Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: False}
+6    70  0.806970  1.305503   1507.701631  Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 10, m_max: 40, m_max0: 40, threaded: False, rnn_inner_loops: 3, rnn_outer_loops: 2}
+8    60  0.822050  1.140689   3443.232914  Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 20, m_max: 20, m_max0: 40, threaded: False, rnn_inner_loops: 3, rnn_outer_loops: 3}
+13   90  0.802990  2.407979   1117.219075                                           Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 60, m_max0: 60, threaded: False}
+26   60  0.808333  0.321880   2703.509085                                                                                                   Hnsw_hnswlib {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}
+27   40  0.825650  0.273892   3877.533648                                                                                                   Hnsw_hnswlib {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}
+32   50  0.822577  0.836153  11143.633296                                                                                                    Hnsw_jpboth {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}
+34   30  0.842017  1.471237  10645.218454                                                                                                    Hnsw_rustcv {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}
+38   40  0.805570  0.608872   5636.132444                                                                                                     Hnsw_vecnn {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.0, threaded: False}
+40   40  0.822303  0.552252   6813.595722                                                                                                     Hnsw_vecnn {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3, threaded: False}
+42  110  0.811830  2.589242   3173.806071                                                                                                 RNNGraph {outer_loops: 2, inner_loops: 3, m_pruned: 40, m_initial: 40, threaded: False}
+
+
+Recall greater than 80, compare single and multi threaded:
+                                                                                                                                                                   params  both  threaded_build_secs  threaded_search_ms  threaded_recall  single_build_secs  single_search_ms  single_recall
+0   Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 8, m_max: 40, m_max0: 40, rnn_inner_loops: 3, rnn_outer_loops: 2}     1           785.917974            1.453926         0.817793                NaN               NaN            NaN
+1                                           Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40}     1           653.445596            2.197040         0.803327                NaN               NaN            NaN
+2                                           Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 20, m_max: 20, m_max0: 40}     2           966.347405            2.228816         0.800013        1997.723215          1.929621       0.804753
+3                                           Ensemble {level_norm: 0.0, n_vp_trees: 12, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40}     1           792.184758            2.156274         0.808513                NaN               NaN            NaN
+4   Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 10, m_max: 40, m_max0: 40, rnn_inner_loops: 3, rnn_outer_loops: 2}     2           586.674613            1.689278         0.805487        1507.701631          1.305503       0.806970
+5   Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 20, m_max: 20, m_max0: 40, rnn_inner_loops: 3, rnn_outer_loops: 3}     2          2448.249893            1.312823         0.819383        3443.232914          1.140689       0.822050
+6   Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 2048, same_chunk_m_max: 20, m_max: 20, m_max0: 40, rnn_inner_loops: 2, rnn_outer_loops: 2}     1          1641.958978            1.199778         0.809827                NaN               NaN            NaN
+7   Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 2048, same_chunk_m_max: 20, m_max: 20, m_max0: 40, rnn_inner_loops: 3, rnn_outer_loops: 2}     1          1505.832253            1.226819         0.822313                NaN               NaN            NaN
+8                                            Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40}     1           405.485258            2.478032         0.803047                NaN               NaN            NaN
+9                                            Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 60, m_max0: 60}     2           385.491639            3.392196         0.811880        1117.219075          2.407979       0.802990
+10                                           Ensemble {level_norm: 0.0, n_vp_trees: 8, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40}     1           522.064988            2.402174         0.810177                NaN               NaN            NaN
+11                                                                                                     Hnsw_faiss {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3}     1           361.420055           15.759218         0.818177                NaN               NaN            NaN
+12                                                                                                     Hnsw_faiss {ef_constr: 30, m_max: 10, m_max0: 20, level_norm: 0.3}     1           222.804103           12.938894         0.808037                NaN               NaN            NaN
+13                                                                                                     Hnsw_faiss {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3}     1           338.423656            9.932605         0.804213                NaN               NaN            NaN
+14                                                                                                     Hnsw_faiss {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3}     1           481.950592           11.575785         0.806610                NaN               NaN            NaN
+15                                                                                                   Hnsw_hnswlib {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3}     1                  NaN                 NaN              NaN        2703.509085          0.321880       0.808333
+16                                                                                                   Hnsw_hnswlib {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3}     2           452.965038            0.446565         0.818235        3877.533648          0.273892       0.825650
+17                                                                                                    Hnsw_jpboth {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3}     2           540.783693            1.504611         0.824130       11143.633296          0.836153       0.822577
+18                                                                                                    Hnsw_rustcv {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3}     1                  NaN                 NaN              NaN       10645.218454          1.471237       0.842017
+19                                                                                                     Hnsw_vecnn {ef_constr: 20, m_max: 20, m_max0: 40, level_norm: 0.3}     1           421.842622            1.209521         0.801917                NaN               NaN            NaN
+20                                                                                                     Hnsw_vecnn {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.0}     2           827.314317            0.927532         0.802787        5636.132444          0.608872       0.805570
+21                                                                                                     Hnsw_vecnn {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3}     2           728.004317            0.713206         0.819193        6813.595722          0.552252       0.822303
+22                                                                                                 RNNGraph {outer_loops: 2, inner_loops: 3, m_pruned: 40, m_initial: 40}     2          2212.687794            1.781869         0.803251        3173.806071          2.589242       0.811830
+23                                                                                                 RNNGraph {outer_loops: 3, inner_loops: 3, m_pruned: 40, m_initial: 40}     1          4174.668832            1.101472         0.815667                NaN               NaN            NaN
+24                                                                                                 RNNGraph {outer_loops: 4, inner_loops: 5, m_pruned: 40, m_initial: 40}     1          7253.773919            1.045229         0.869047                NaN               NaN            NaN
+25                                                                                                 RNNGraph {outer_loops: 6, inner_loops: 3, m_pruned: 40, m_initial: 40}     1           519.650352            0.418964         0.891193                NaN               NaN            NaN

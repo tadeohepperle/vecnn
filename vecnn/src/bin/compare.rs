@@ -32,7 +32,7 @@ use vecnn::{
 };
 use HnswStructure::*;
 
-const IS_ON_SERVER: bool = true; // modify on uni Server for testing 10M dataset!
+const IS_ON_SERVER: bool = false; // modify on uni Server for testing 10M dataset!
 const DATA_PATH: &str = const {
     if IS_ON_SERVER {
         "/data/hepperle"
@@ -84,103 +84,47 @@ fn main() {
     }
 
     let test_setup = ExperimentSetup {
-        n: N_10M,
+        n: N_100K,
         n_queries: N_10K,
         params: vec![
-            ModelParams::VpTreeEnsemble(
-                EnsembleParams {
-                    n_vp_trees: 6,
-                    max_chunk_size: 256,
-                    same_chunk_m_max: 16,
-                    m_max: 20,
-                    m_max_0: 40,
-                    distance: Distance::Dot,
-                    level_norm: 0.3,
-                    strategy: EnsembleStrategy::BruteForceKNN,
-                    n_candidates: 0,
+            ModelParams::RNNGraph(
+                RNNGraphParams {
+                    outer_loops: 2,
+                    inner_loops: 3,
+                    max_neighbors_after_reverse_pruning: 40,
+                    initial_neighbors: 40,
+                    distance: Dot,
                 },
-                true,
+                false,
             ),
-            ModelParams::VpTreeEnsemble(
-                EnsembleParams {
-                    n_vp_trees: 8,
-                    max_chunk_size: 512,
-                    same_chunk_m_max: 20,
-                    m_max: 20,
-                    m_max_0: 40,
-                    distance: Distance::Dot,
-                    level_norm: 0.3,
-                    strategy: EnsembleStrategy::BruteForceKNN,
-                    n_candidates: 0,
-                },
-                true,
-            ),
-            ModelParams::VpTreeEnsemble(
-                EnsembleParams {
-                    n_vp_trees: 6,
-                    max_chunk_size: 256,
-                    same_chunk_m_max: 30,
-                    m_max: 30,
-                    m_max_0: 60,
-                    distance: Distance::Dot,
-                    level_norm: 0.3,
-                    strategy: EnsembleStrategy::BruteForceKNN,
-                    n_candidates: 0,
-                },
-                true,
-            ),
-            ModelParams::VpTreeEnsemble(
-                EnsembleParams {
-                    n_vp_trees: 8,
-                    max_chunk_size: 512,
-                    same_chunk_m_max: 16,
-                    m_max: 20,
-                    m_max_0: 40,
-                    distance: Distance::Dot,
-                    level_norm: 0.3,
-                    strategy: EnsembleStrategy::RNNDescent {
-                        i_loops: 3,
-                        o_loops: 3,
-                    },
-                    n_candidates: 0,
+            ModelParams::RNNGraph(
+                RNNGraphParams {
+                    outer_loops: 2,
+                    inner_loops: 3,
+                    max_neighbors_after_reverse_pruning: 40,
+                    initial_neighbors: 40,
+                    distance: Dot,
                 },
                 true,
             ),
         ],
-        search_params: vec![
-            SearchParams {
-                truth_distance: Dot,
-                k: 30,
-                ef: 60,
-                start_candidates: 0,
-                vp_max_visits: 0,
-            },
-            SearchParams {
-                truth_distance: Dot,
-                k: 30,
-                ef: 100,
-                start_candidates: 0,
-                vp_max_visits: 0,
-            },
-            SearchParams {
-                truth_distance: Dot,
-                k: 30,
-                ef: 80,
-                start_candidates: 0,
-                vp_max_visits: 0,
-            },
-        ],
+        search_params: vec![SearchParams {
+            truth_distance: Dot,
+            k: 30,
+            ef: 60,
+            start_candidates: 0,
+            vp_max_visits: 0,
+        }],
         random_seeds: true,
         repeats: 1,
-        title: "test_setup_hnsw_10m",
+        title: "test_setup_rnn_threaded",
     };
 
-    // let experiments: Vec<ExperimentSetup> = vec![test_setup];
-    let experiments = final_experiment_collection();
+    let experiments: Vec<ExperimentSetup> = vec![test_setup];
+    // let experiments = final_experiment_collection();
     for e in experiments.iter() {
         eval_models_on_laion(e);
     }
-    // eval_models_on_laion(&test_setup);
 }
 /// Specify a bunch of experiments in here, comment in/out what is needed for a particular run
 fn final_experiment_collection() -> Vec<ExperimentSetup> {
@@ -415,13 +359,16 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             n_queries: N_10K,
             params: (1..=24)
                 .map(|t_inner| {
-                    ModelParams::RNNGraph(RNNGraphParams {
-                        outer_loops: 1,
-                        inner_loops: t_inner,
-                        max_neighbors_after_reverse_pruning: 40,
-                        initial_neighbors: 40,
-                        distance: Dot,
-                    })
+                    ModelParams::RNNGraph(
+                        RNNGraphParams {
+                            outer_loops: 1,
+                            inner_loops: t_inner,
+                            max_neighbors_after_reverse_pruning: 40,
+                            initial_neighbors: 40,
+                            distance: Dot,
+                        },
+                        false,
+                    )
                 })
                 .collect(),
             search_params: search_params(),
@@ -432,13 +379,16 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
     }
     fn _rnn_effect_of_outer_loops() -> ExperimentSetup {
         fn loops(inner_loops: usize, outer_loops: usize) -> ModelParams {
-            ModelParams::RNNGraph(RNNGraphParams {
-                inner_loops,
-                outer_loops,
-                max_neighbors_after_reverse_pruning: 40,
-                initial_neighbors: 40,
-                distance: Dot,
-            })
+            ModelParams::RNNGraph(
+                RNNGraphParams {
+                    inner_loops,
+                    outer_loops,
+                    max_neighbors_after_reverse_pruning: 40,
+                    initial_neighbors: 40,
+                    distance: Dot,
+                },
+                false,
+            )
         }
         ExperimentSetup {
             n: N_100K,
@@ -464,13 +414,16 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             params: (8..=48usize)
                 .step_by(4)
                 .map(|m_max| {
-                    ModelParams::RNNGraph(RNNGraphParams {
-                        inner_loops: 3,
-                        outer_loops: 4,
-                        max_neighbors_after_reverse_pruning: m_max,
-                        initial_neighbors: m_max,
-                        distance: Dot,
-                    })
+                    ModelParams::RNNGraph(
+                        RNNGraphParams {
+                            inner_loops: 3,
+                            outer_loops: 4,
+                            max_neighbors_after_reverse_pruning: m_max,
+                            initial_neighbors: m_max,
+                            distance: Dot,
+                        },
+                        false,
+                    )
                 })
                 .collect(),
             search_params: search_params(),
@@ -483,13 +436,16 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
         ExperimentSetup {
             n: N_100K,
             n_queries: N_10K,
-            params: vec![ModelParams::RNNGraph(RNNGraphParams {
-                inner_loops: 4,
-                outer_loops: 3,
-                max_neighbors_after_reverse_pruning: 40,
-                initial_neighbors: 40,
-                distance: Dot,
-            })],
+            params: vec![ModelParams::RNNGraph(
+                RNNGraphParams {
+                    inner_loops: 4,
+                    outer_loops: 3,
+                    max_neighbors_after_reverse_pruning: 40,
+                    initial_neighbors: 40,
+                    distance: Dot,
+                },
+                false,
+            )],
             search_params: search_params_varied_k_and_ef(),
             random_seeds: false,
             repeats: 5,
@@ -500,13 +456,16 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
         ExperimentSetup {
             n: N_100K,
             n_queries: N_10K,
-            params: vec![ModelParams::RNNGraph(RNNGraphParams {
-                inner_loops: 4,
-                outer_loops: 3,
-                max_neighbors_after_reverse_pruning: 40,
-                initial_neighbors: 40,
-                distance: Dot,
-            })],
+            params: vec![ModelParams::RNNGraph(
+                RNNGraphParams {
+                    inner_loops: 4,
+                    outer_loops: 3,
+                    max_neighbors_after_reverse_pruning: 40,
+                    initial_neighbors: 40,
+                    distance: Dot,
+                },
+                false,
+            )],
             search_params: (0usize..=6)
                 .map(|start_candidates| SearchParams {
                     truth_distance: Dot,
@@ -527,13 +486,16 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             .map(|n| ExperimentSetup {
                 n,
                 n_queries: N_10K,
-                params: vec![ModelParams::RNNGraph(RNNGraphParams {
-                    inner_loops: 4,
-                    outer_loops: 3,
-                    max_neighbors_after_reverse_pruning: 40,
-                    initial_neighbors: 40,
-                    distance: Dot,
-                })],
+                params: vec![ModelParams::RNNGraph(
+                    RNNGraphParams {
+                        inner_loops: 4,
+                        outer_loops: 3,
+                        max_neighbors_after_reverse_pruning: 40,
+                        initial_neighbors: 40,
+                        distance: Dot,
+                    },
+                    false,
+                )],
                 search_params: search_params(),
                 random_seeds: false,
                 repeats: 1,
@@ -1010,7 +972,7 @@ enum ModelParams {
     Hnsw(HnswParams, HnswStructure),
     Stitching(StitchingParams),
     VpTreeEnsemble(EnsembleParams, bool), // bool = threaded
-    RNNGraph(RNNGraphParams),
+    RNNGraph(RNNGraphParams, bool),       // bool = threaded
     VpTree(VpTreeParams),
     HnswByRnnDescent(RNNGraphParams, f32), // f32 = level_norm_param
 }
@@ -1028,7 +990,13 @@ impl ModelParams {
                     format!("{e:?}")
                 }
             }
-            ModelParams::RNNGraph(e) => format!("{e:?}"),
+            ModelParams::RNNGraph(e, threaded) => {
+                if *threaded {
+                    format!("Threaded {e:?}")
+                } else {
+                    format!("{e:?}")
+                }
+            }
             ModelParams::VpTree(e) => format!("{e:?}"),
             ModelParams::HnswByRnnDescent(e, level_norm_param) => {
                 format!("{e:?}, level_norm: {level_norm_param}")
@@ -1465,7 +1433,9 @@ fn eval_models(req_data: &RequiredData, setup: &ExperimentSetup) {
                 ModelParams::Stitching(params) => {
                     Model::SliceHnsw(build_hnsw_by_vp_tree_stitching(data, params, seed))
                 }
-                ModelParams::RNNGraph(params) => Model::RNNGraph(RNNGraph::new(data, params, seed)),
+                ModelParams::RNNGraph(params, threaded) => {
+                    Model::RNNGraph(RNNGraph::new(data, params, seed, threaded))
+                }
                 ModelParams::VpTreeEnsemble(params, threaded) => {
                     // todo! a bit hacky!! move the specialization to the transition module instead.
                     if params.level_norm == -1.0 {

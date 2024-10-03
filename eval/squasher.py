@@ -153,7 +153,9 @@ def split_params_column(row_dict):
     )
     # del row_dict["params"]
     s =  params_str.split("{")
+    
     row_dict["model"] = s[0].strip()
+    
     rest = s[1].split("}")[0].strip()
     for kv in rest.split(", "):
         k, v = kv.split(": ")
@@ -181,8 +183,8 @@ def extract_params_from_path(file_name: str) -> dict:
         n_queries_str = split[2].split(".csv")[0]
         return {"n": int(n_str), "n_queries": int(n_queries_str)}
     except Exception as e:
-        print(e)
-        return {}
+        # print(file_name, e)
+        return {"n": 10120191, "n_queries": 10000}
 
 
 def save_all_experiments_as_latex_tables(path: str = "latex_tables.txt"):
