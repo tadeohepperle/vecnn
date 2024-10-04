@@ -58,6 +58,7 @@ pub mod tracking {
         pub events: Vec<Event>,
         pub pt_metadata: HashMap<usize, PtMeta>,
         pub edge_metadata: HashMap<(usize, usize), EdgeMeta>,
+        pub current_layer: usize,
     }
 
     #[derive(Debug, Clone, Default)]

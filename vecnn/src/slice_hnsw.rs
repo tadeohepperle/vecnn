@@ -7,8 +7,9 @@ use crate::{
     dataset::DatasetT,
     distance::DistanceTracker,
     hnsw::{DistAnd, HnswParams},
-    utils::Stats,
-    utils::{SliceBinaryHeap, SlicesMemory},
+    if_tracking,
+    tracking::Tracking,
+    utils::{SliceBinaryHeap, SlicesMemory, Stats},
 };
 
 pub const MAX_LAYERS: usize = 16;
@@ -52,6 +53,8 @@ impl SliceHnsw {
         let mut ep_idx: usize = 0;
         let top_layer = self.layers.len() - 1;
         for l in (1..=top_layer).rev() {
+            if_tracking!(Tracking.current_layer = l);
+
             let layer = &self.layers[l];
             search_layer(
                 &*self.data,
@@ -71,8 +74,13 @@ impl SliceHnsw {
             //     q_data,
             //     ep_idx,
             // );
+            if_tracking!(Tracking.add_event(Event::EdgeDown {
+                from: layer.entries[this_layer_ep_idx].id,
+                upper_level: l,
+            }));
             ep_idx = layer.entries[this_layer_ep_idx].lower_level_idx;
         }
+        if_tracking!(Tracking.current_layer = 0);
         let layer_0 = &self.layers[0];
         search_layer(
             &*self.data,
@@ -636,12 +644,33 @@ pub fn search_layer(
         buffers.frontier.push(Reverse(DistAnd(ep_dist, ep_idx)));
     }
 
+    #[cfg(feature = "tracking")]
+    let mut prev_best_id: usize = layer_entries[buffers.frontier.peek().unwrap().0 .1].id;
+
     while buffers.frontier.len() > 0 {
         let DistAnd(c_dist, c_idx) = buffers.frontier.pop().unwrap().0;
+
         let worst_dist_found = buffers.found.peek().unwrap().0;
         if c_dist > worst_dist_found {
             break;
         };
+
+        #[cfg(feature = "tracking")]
+        {
+            let best_id = layer_entries[c_idx].id;
+            Tracking.add_event(crate::tracking::Event::Point {
+                id: best_id,
+                level: Tracking.current_layer,
+            });
+            Tracking.add_event(crate::tracking::Event::EdgeHorizontal {
+                from: prev_best_id,
+                to: best_id,
+                level: Tracking.current_layer,
+                comment: "search",
+            });
+            prev_best_id = best_id;
+        }
+
         for nei in layer_entries[c_idx].neighbors.iter() {
             let nei_idx = nei.1;
             if buffers.visited.insert(nei_idx) {
