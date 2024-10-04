@@ -8,7 +8,6 @@ use crate::{
     distance::DistanceTracker,
     hnsw::{DistAnd, HnswParams},
     if_tracking,
-    tracking::Tracking,
     utils::{SliceBinaryHeap, SlicesMemory, Stats},
 };
 
@@ -53,7 +52,7 @@ impl SliceHnsw {
         let mut ep_idx: usize = 0;
         let top_layer = self.layers.len() - 1;
         for l in (1..=top_layer).rev() {
-            if_tracking!(Tracking.current_layer = l);
+            if_tracking!(crate::tracking::Tracking.current_layer = l);
 
             let layer = &self.layers[l];
             search_layer(
@@ -74,13 +73,13 @@ impl SliceHnsw {
             //     q_data,
             //     ep_idx,
             // );
-            if_tracking!(Tracking.add_event(Event::EdgeDown {
+            if_tracking!(crate::tracking::Tracking.add_event(Event::EdgeDown {
                 from: layer.entries[this_layer_ep_idx].id,
                 upper_level: l,
             }));
             ep_idx = layer.entries[this_layer_ep_idx].lower_level_idx;
         }
-        if_tracking!(Tracking.current_layer = 0);
+        if_tracking!(crate::tracking::Tracking.current_layer = 0);
         let layer_0 = &self.layers[0];
         search_layer(
             &*self.data,
@@ -658,14 +657,14 @@ pub fn search_layer(
         #[cfg(feature = "tracking")]
         {
             let best_id = layer_entries[c_idx].id;
-            Tracking.add_event(crate::tracking::Event::Point {
+            crate::tracking::Tracking.add_event(crate::tracking::Event::Point {
                 id: best_id,
-                level: Tracking.current_layer,
+                level: crate::tracking::Tracking.current_layer,
             });
-            Tracking.add_event(crate::tracking::Event::EdgeHorizontal {
+            crate::tracking::Tracking.add_event(crate::tracking::Event::EdgeHorizontal {
                 from: prev_best_id,
                 to: best_id,
-                level: Tracking.current_layer,
+                level: crate::tracking::Tracking.current_layer,
                 comment: "search",
             });
             prev_best_id = best_id;
