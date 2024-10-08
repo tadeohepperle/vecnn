@@ -1747,7 +1747,9 @@ fn chunk_collection_matches_vp_tree_subtrees() {
     }
 }
 
-// experimental and probably stupid
+/// Builds an HNSW structure by connecting points via Relative NN-Descent on multiple layers
+///
+/// experimental and probably stupid, included for the sake of completeness
 pub fn build_hnsw_by_rnn_descent(
     data: Arc<dyn DatasetT>,
     params: RNNGraphParams,

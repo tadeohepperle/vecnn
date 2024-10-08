@@ -140,7 +140,7 @@ def find_paths_with_prefix(prefix: str) -> List[str]:
     directory = os.path.dirname(prefix)
     prefix_name = os.path.basename(prefix)
     
-    return [directory + "/" + f for f in os.listdir(directory) if f.startswith(prefix_name)]
+    return [directory + "/" + f for f in os.listdir(directory) if f.startswith(prefix_name) and f.endswith(".csv")]
 
 def split_params_column(row_dict):
     if "params" not in row_dict:

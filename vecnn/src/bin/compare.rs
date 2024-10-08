@@ -85,25 +85,33 @@ fn main() {
 
     let test_setup = ExperimentSetup {
         n: N_100K,
-        n_queries: N_10K,
+        n_queries: 100,
         params: vec![
-            ModelParams::RNNGraph(
-                RNNGraphParams {
-                    outer_loops: 2,
-                    inner_loops: 3,
-                    max_neighbors_after_reverse_pruning: 40,
-                    initial_neighbors: 40,
+            ModelParams::VpTreeEnsemble(
+                EnsembleParams {
+                    n_vp_trees: 4,
+                    max_chunk_size: 256,
+                    same_chunk_m_max: 10,
+                    m_max: 20,
+                    m_max_0: 40,
+                    level_norm: 0.0,
                     distance: Dot,
+                    strategy: EnsembleStrategy::BruteForceKNN,
+                    n_candidates: 0,
                 },
                 false,
             ),
-            ModelParams::RNNGraph(
-                RNNGraphParams {
-                    outer_loops: 2,
-                    inner_loops: 3,
-                    max_neighbors_after_reverse_pruning: 40,
-                    initial_neighbors: 40,
+            ModelParams::VpTreeEnsemble(
+                EnsembleParams {
+                    n_vp_trees: 4,
+                    max_chunk_size: 256,
+                    same_chunk_m_max: 10,
+                    m_max: 20,
+                    m_max_0: 40,
+                    level_norm: 0.0,
                     distance: Dot,
+                    strategy: EnsembleStrategy::BruteForceKNN,
+                    n_candidates: 0,
                 },
                 true,
             ),

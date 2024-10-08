@@ -428,7 +428,7 @@ def benchmark_models(params_list: list[ModelParams], data: np.ndarray, queries: 
 # to do that go into ../vecnn and run `cargo run --bin compare --release -- gen 1000000 50000`.
 # this will place files `laion_subsampled_(50000, 768).bin` and `computed_true_knns_n=50000_(10000,1000).bin`
 # into the data folder. You can then load them with the functions from laion_util.py 
-IS_ON_SERVER = True
+IS_ON_SERVER = False
 DATA_PATH =  "/data/hepperle" if IS_ON_SERVER else "../data"
 QUERIES_FILE_NAME = "laion_queries_(10000, 768).bin"
 DATA_FILE_NAMES = {
@@ -438,7 +438,7 @@ DATA_FILE_NAMES = {
     "10m": ("laion_10m.h5", "laion_gold_10m_(10000, 1000).bin"),
 }
 
-N : Literal["100k", "300k", "1m", "10m"]= "10m" # choose one of the keys from DATA_FILE_NAMES
+N : Literal["100k", "300k", "1m", "10m"]= "100k" # choose one of the keys from DATA_FILE_NAMES
 
 # n_queries is always 10k, the entire public queries from SISAP 2024
 load_start = time.time()
@@ -450,9 +450,10 @@ model_params: list[ModelParams] = [
     # HnswParams("jpboth", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
     # HnswParams("vecnn", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
     # HnswParams("jpboth", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
-    # HnswParams("vecnn", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    HnswParams("hnswlib", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    # HnswParams("faiss", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
     # VpTreeParams(n_candidates  = 0, threaded=False),
-    RNNGraphParams(outer_loops=3, inner_loops=3, m_initial=40, m_pruned=40),
+    # RNNGraphParams(outer_loops=3, inner_loops=3, m_initial=40, m_pruned=40),
     # RNNGraphParams(outer_loops=4, inner_loops=5, m_initial=40, m_pruned=40),
     # HnswParams("hnswlib", threaded=True, level_norm=0.3, ef_construction=10, m_max=8, m_max_0=16),
 
@@ -492,19 +493,19 @@ model_params: list[ModelParams] = [
 # EnsembleParams { n_vp_trees: 6, max_chunk_size: 256, same_chunk_m_max: 16, m_max: 20, m_max_0: 40, level_norm: 0.3, distance: Dot, strategy: BruteForceKNN }  
 # SliceS2HnswParams { level_norm_param: 0.3, ef_construction: 20, m_max: 20, m_max_0: 40, distance: Dot }                                                       
 search_params: list[SearchParams] = [
-    SearchParams(k=30, ef = 30, start_candidates = 1), # make sure ef >= k
-    SearchParams(k=30, ef = 40, start_candidates = 1), # make sure ef >= k
+    # SearchParams(k=30, ef = 30, start_candidates = 1), # make sure ef >= k
+    # SearchParams(k=30, ef = 40, start_candidates = 1), # make sure ef >= k
     SearchParams(k=30, ef = 50, start_candidates = 1), # make sure ef >= k
-    SearchParams(k=30, ef = 60, start_candidates = 1), # make sure ef >= k
-    SearchParams(k=30, ef = 70, start_candidates = 1), # make sure ef >= k
-    SearchParams(k=30, ef = 80, start_candidates = 1), # make sure ef >= k
-    SearchParams(k=30, ef = 90, start_candidates = 1), # make sure ef >= k
-    SearchParams(k=30, ef = 100, start_candidates = 1), # make sure ef >= k
-    SearchParams(k=30, ef = 110, start_candidates = 1), # make sure ef >= k
-    SearchParams(k=30, ef = 120, start_candidates = 1), # make sure ef >= k
-    SearchParams(k=30, ef = 130, start_candidates = 1), # make sure ef >= k
-    SearchParams(k=30, ef = 140, start_candidates = 1), # make sure ef >= k
-    SearchParams(k=30, ef = 150, start_candidates = 1) # make sure ef >= k
+    # SearchParams(k=30, ef = 60, start_candidates = 1), # make sure ef >= k
+    # SearchParams(k=30, ef = 70, start_candidates = 1), # make sure ef >= k
+    # SearchParams(k=30, ef = 80, start_candidates = 1), # make sure ef >= k
+    # SearchParams(k=30, ef = 90, start_candidates = 1), # make sure ef >= k
+    # SearchParams(k=30, ef = 100, start_candidates = 1), # make sure ef >= k
+    # SearchParams(k=30, ef = 110, start_candidates = 1), # make sure ef >= k
+    # SearchParams(k=30, ef = 120, start_candidates = 1), # make sure ef >= k
+    # SearchParams(k=30, ef = 130, start_candidates = 1), # make sure ef >= k
+    # SearchParams(k=30, ef = 140, start_candidates = 1), # make sure ef >= k
+    # SearchParams(k=30, ef = 150, start_candidates = 1) # make sure ef >= k
 ]
 
 start = time.time()

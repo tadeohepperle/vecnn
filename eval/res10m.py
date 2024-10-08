@@ -36,6 +36,41 @@ def model_kind(params_str: str) -> str:
     if params_str.startswith("Stitching"):
         return "Stitching"
     return "unknown"
+
+MODEL_IDENTIFIERS = [
+    ("Ensemble6", "Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40}"),
+    ("Ensemble10", "Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40}"),
+    ("Ensemble6Layered", "Ensemble {level_norm: 0.3, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 20, m_max0: 40}"),
+    ("Ensemble6Rnn", "Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 10, m_max: 40, m_max0: 40, rnn_inner_loops: 3, rnn_outer_loops: 2}"),
+    ("Ensemble10Rnn", "Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 10, m_max: 40, m_max0: 40, rnn_inner_loops: 3, rnn_outer_loops: 2}"),
+    ("RnnDescent2x3", "RNNGraph {outer_loops: 2, inner_loops: 3, m_pruned: 40, m_initial: 40}"),
+    ("RnnDescent3x3", "RNNGraph {outer_loops: 3, inner_loops: 3, m_pruned: 40, m_initial: 40}"),
+    ("Hnsw40", "Hnsw_vecnn {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3}"),
+    ("Hnswlib40", "Hnsw_hnswlib {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3}"),
+    ("JpBoth40", "Hnsw_jpboth {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3}"),
+    ("RustCv40", "Hnsw_rustcv {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3}"),
+    ("Faiss40", "Hnsw_faiss {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3}"),
+    ("Hnsw60", "Hnsw_vecnn {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3}"),
+    ("Hnswlib60", "Hnsw_hnswlib {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3}"),
+    ("JpBoth60", "Hnsw_jpboth {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3}"),
+    ("RustCv60", "Hnsw_rustcv {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3}"),
+    ("Faiss60", "Hnsw_faiss {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3}"),
+]
+MODEL_IDENTIFIER_NAMES = [i for i, p in MODEL_IDENTIFIERS]
+PARAMS_TO_IDENTIFIER = {p: i for i, p in MODEL_IDENTIFIERS}
+
+MODEL_KIND_COLOR = {
+    "Ensemble": "green",
+    "RNNGraph": "blue",
+    "Hnsw": "red",
+    "Stitching": "orange",
+}
+MODEL_KIND_NAME = {
+    "Ensemble": "VP-Tree Ensemble",
+    "RNNGraph": "Relative NN-Descent",
+    "Hnsw": "HNSW",
+    "Stitching": "Stitching",
+}
 # /////////////////////////////////////////////////////////////////////////////
 # SECTION: read and shape the data
 # /////////////////////////////////////////////////////////////////////////////
@@ -47,8 +82,10 @@ class TenMExperiments:
     ef_to_recall: pd.Series
     ef_to_search_ms : pd.Series
     ef_to_search_ndc: pd.Series
-    recall_gt_80: pd.DataFrame
+    recall_agg: pd.DataFrame
+    recall_agg_by_threaded: pd.DataFrame
     pivoted: pd.DataFrame
+    id_models: pd.DataFrame
 
     def print(self):
         print("A10M:")
@@ -61,8 +98,8 @@ class TenMExperiments:
         df_print(self.ef_to_search_ms)
         print("Ef to search ndc:")
         df_print(self.ef_to_search_ndc)
-        print("Recall gt 80:")
-        df_print(self.recall_gt_80)
+        print("recall_agg:")
+        df_print(self.recall_agg)
 
     def __init__(self):
         a10m = thesis_exp("a10m")
@@ -99,18 +136,18 @@ class TenMExperiments:
         ef_to_search_ms = pivoted["search_ms"]
         ef_to_search_ndc = pivoted["search_ndc"]
         
-        recall_gt_80 = pivoted[("count", 30)].to_frame()
-        recall_gt_80.reset_index(inplace=True)
-        recall_gt_80.drop(columns=[("count", 30)], inplace=True)
-        recall_gt_80["params"] = recall_gt_80["params"].astype(str)
+        recall_agg = pivoted[("count", 30)].to_frame()
+        recall_agg.reset_index(inplace=True)
+        recall_agg.drop(columns=[("count", 30)], inplace=True)
+        recall_agg["params"] = recall_agg["params"].astype(str)
         
-        recall_gt_80["ef"] = 0
-        recall_gt_80["recall"] = 0
-        recall_gt_80["search_ms"] = 0
-        recall_gt_80["search_ndc"] = 0
+        recall_agg["ef"] = 0
+        recall_agg["recall"] = 0
+        recall_agg["search_ms"] = 0
+        recall_agg["search_ndc"] = 0
         
         MIN_RECALL = 0.8
-        for i, row in recall_gt_80.iterrows():
+        for i, row in recall_agg.iterrows():
             params_str = row['params'].iloc[0] # completely retarded, but this is how you access the string stored in the column 
             # find the ef where recall is > 0.8
             searches = params_and_ef[params_and_ef["params"] == params_str]
@@ -128,105 +165,127 @@ class TenMExperiments:
                 last_recall = s["search_recall"]
                 if s["search_recall"] > MIN_RECALL:
                     break
-            recall_gt_80.at[i, "count"] = last_count   
-            recall_gt_80.at[i, "ef"] = last_ef
-            recall_gt_80.at[i, "recall"] = last_recall
-            recall_gt_80.at[i, "search_ms"] = last_search_ms
-            recall_gt_80.at[i, "search_ndc"] = last_search_ndc
+            recall_agg.at[i, "count"] = last_count   
+            recall_agg.at[i, "ef"] = last_ef
+            recall_agg.at[i, "recall"] = last_recall
+            recall_agg.at[i, "search_ms"] = last_search_ms
+            recall_agg.at[i, "search_ndc"] = last_search_ndc
         self.a10m = a10m
         self.ef_to_recall = ef_to_recall
         self.ef_to_search_ms = ef_to_search_ms
         self.ef_to_search_ndc = ef_to_search_ndc
-        self.recall_gt_80 = recall_gt_80
+        self.recall_agg = recall_agg
         self.params_and_ef = params_and_ef
 
-
-    def recall_lower_80(self) -> pd.DataFrame:
-        return self.recall_gt_80[exp.recall_gt_80["recall"] <= 0.8][["ef","recall","search_ms", "build_secs", "params"]]
-    def recall_greater_80(self) -> pd.DataFrame:
-        return self.recall_gt_80[exp.recall_gt_80["recall"] > 0.8][["ef","recall","search_ms", "build_secs", "params", "threaded", "count"]]
-    def recall_greater_80_single_threaded(self) -> pd.DataFrame:
-        return self.recall_gt_80[(exp.recall_gt_80["recall"] > 0.8) & (exp.recall_gt_80["threaded"] == False)][["ef","recall","search_ms", "build_secs", "params"]]
-    def recall_greater_80_multi_threaded(self) -> pd.DataFrame:
-        return self.recall_gt_80[(exp.recall_gt_80["recall"] > 0.8) & (exp.recall_gt_80["threaded"] == True)][["ef","recall","search_ms", "build_secs", "params"]]
-    def recall_greater_80_compare(self) -> pd.DataFrame:
         objs = {}
-        gt = self.recall_greater_80()
-        for params_str in gt["params"].unique():
-            row = gt[(gt["params"] == params_str)]
+        for params_str in recall_agg["params"].unique():
+            row = recall_agg[(recall_agg["params"] == params_str)]
             params_str = str(params_str)
             threaded = False
             if "threaded: True" in params_str:
                 threaded = True
                 params_str = params_str.replace(", threaded: True", "")
             else:
-                params_str = params_str.replace(", threaded: False", "")
-            
+                params_str = params_str.replace(", threaded: False", "")            
             if params_str not in objs:
-                objs[params_str] = {"params": params_str, "both": 0}
-            objs[params_str]["both"] +=1
-            if threaded:
-                objs[params_str]["threaded_recall"] = row["recall"].iloc[0]
-                objs[params_str]["threaded_build_secs"] = row["build_secs"].iloc[0]
-                objs[params_str]["threaded_search_ms"] = row["search_ms"].iloc[0]
-                objs[params_str]["threaded_ef"] = row["ef"].iloc[0]
-            else:
-                objs[params_str]["single_recall"] = row["recall"].iloc[0]
-                objs[params_str]["single_build_secs"] = row["build_secs"].iloc[0]
-                objs[params_str]["single_search_ms"] = row["search_ms"].iloc[0]   
-                objs[params_str]["single_ef"] = row["ef"].iloc[0]     
+                objs[params_str] = {"params": params_str}
+            prefix = "threaded" if threaded else "single"
+            objs[params_str][prefix + "_recall"] = row["recall"].iloc[0]
+            objs[params_str][prefix + "_cnt"] = row["count"].iloc[0]
+            objs[params_str][prefix + "_build_secs"] = row["build_secs"].iloc[0]
+            objs[params_str][prefix + "_search_ms"] = row["search_ms"].iloc[0]
+            objs[params_str][prefix + "_ef"] = row["ef"].iloc[0]
         objs_list = [v for k,v in objs.items()]
-        return pd.DataFrame(objs_list, columns=["params", "both", "threaded_build_secs", "threaded_search_ms", "threaded_recall", "threaded_ef","single_build_secs", "single_search_ms", "single_recall", "single_ef"])
+        agg_by_treaded_colums = ["params", "both", "threaded_build_secs", "threaded_search_ms", "threaded_recall", "threaded_ef", "threaded_cnt", "single_build_secs", "single_search_ms", "single_recall", "single_ef",  "single_cnt",]
+        self.recall_agg_by_threaded = pd.DataFrame(objs_list, columns=agg_by_treaded_colums)
+        self.recall_agg_by_threaded["threaded_cnt"] = self.recall_agg_by_threaded["threaded_cnt"].fillna(0).astype(int)
+        self.recall_agg_by_threaded["single_cnt"] = self.recall_agg_by_threaded["single_cnt"].fillna(0).astype(int)
+        self.recall_agg_by_threaded["both"] = (self.recall_agg_by_threaded["threaded_cnt"] >= 1) & (self.recall_agg_by_threaded["single_cnt"] >= 1)
+        self.recall_agg_by_threaded["identifier"] = self.recall_agg_by_threaded["params"].map(PARAMS_TO_IDENTIFIER)
 
+        self.id_models  = self.recall_agg_by_threaded[~self.recall_agg_by_threaded["identifier"].isna()]
+        self.id_models .drop(columns=["params"], inplace=True)
+        self.id_models .insert(0, 'identifier', self.id_models .pop('identifier') ) 
+        self.id_models .sort_values(by="identifier",inplace=True)
+
+    def recall_lower_80(self) -> pd.DataFrame:
+        return self.recall_agg[exp.recall_agg["recall"] <= 0.8][["ef","recall","search_ms", "build_secs", "params"]]
+    def recall_greater_80(self) -> pd.DataFrame:
+        return self.recall_agg[exp.recall_agg["recall"] > 0.8][["ef","recall","search_ms", "build_secs", "params", "threaded", "count"]]
+
+def convert_seconds(seconds):
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+
+    hours = str(hours)+"h" if hours > 0 else ""
+    minutes = str(minutes)+"m" if minutes > 0 else ""
+    secs = str(secs)+"s" if secs > 0 else ""
+    if secs == "" and (minutes != "" or hours != ""):
+        secs = "0s"
+    return hours, minutes, secs
+
+
+def id_models_latex_df(exp: TenMExperiments, single: bool) -> pd.DataFrame:
+    st = "single" if single else "threaded"
+    df = exp.id_models[["identifier", f"{st}_build_secs", f"{st}_ef", f"{st}_recall", f"{st}_search_ms"]]
+    df.rename(columns={"identifier": "identifier", f"{st}_build_secs": "build_time", f"{st}_ef": "ef", f"{st}_recall": "recall", f"{st}_search_ms": "search_ms"}, inplace=True)
+    df['identifier'] = pd.Categorical(df['identifier'], categories=MODEL_IDENTIFIER_NAMES, ordered=True)
+    df = df[~df["build_time"].isna()]
+    df.sort_values(by="identifier",inplace=True) 
+    df[["h","m","s"]] = df["build_time"].apply(convert_seconds).apply(pd.Series)
+    df["identifier"] = df["identifier"].apply(lambda x: f"\emph{{{x}}}")
+    df["recall"] = df["recall"].round(3)
+    df["search_rank"] = df["search_ms"].rank(ascending=True).astype(int)
+    df["search_ms"] = df["search_ms"].round(3).apply(lambda x: f"{x:.3f}ms")
+    # add a rank column based on build time
+    df["rank"] = df["build_time"].rank(ascending=True).astype(int)
+    df["ef"] = df["ef"].astype(int)
+    return df
+def latex_table_for_id_models_single_threaded(exp: TenMExperiments):
+    df = id_models_latex_df(exp, single=True)
+    df = df[["identifier", "h", "m", "s", "rank", "ef", "recall", "search_ms", "search_rank"]]
+    df.to_latex("./tables/a10m_id_models_single.tex", index=False, escape=False, header=False, float_format="%.3f")
+    df_print(df)
+
+def latex_table_for_id_models_multi_threaded(exp: TenMExperiments):
+    df = id_models_latex_df(exp, single=False)
+    df_single = id_models_latex_df(exp, single=True)
+    df["speedup"] = (df_single["build_time"] / df["build_time"]).apply(lambda x: "-" if pd.isna(x) else f"{x:.1f}x")
+    df = df[["identifier", "m", "s", "speedup","rank",  "ef", "recall", "search_ms", "search_rank"]]
+    df.to_latex("./tables/a10m_id_models_threaded.tex", index=False, escape=False, header=False, float_format="%.3f")
+    df_print(df)
+
+def df_data_to_latex(df: pd.DataFrame, file_name: str):
+    s = ""
+    for i, row in df.iterrows():
+        for i, col in enumerate(df.columns):
+            if i == len(df.columns) - 1:
+                s += str(row[col]) + "\\\\ \n"
+            else:
+                s += str(row[col]) + " & "
+    with open(file_name, "w") as f:
+        f.write(s)
 
 # /////////////////////////////////////////////////////////////////////////////
 # SECTION: Display the results
 # /////////////////////////////////////////////////////////////////////////////
 exp= TenMExperiments()
 
-# remove all the experiments that do not cross 80 recall
-not_crossing_80 = exp.recall_gt_80[exp.recall_gt_80["recall"] < 0.8]["params"]
+not_crossing_80 = exp.recall_agg[exp.recall_agg["recall"] < 0.8]["params"]
 print("These params are too bad, never cross 80 recall:")
 for p in not_crossing_80:
     print("    ", p)
-crossing_80 = exp.recall_gt_80[exp.recall_gt_80["recall"] > 0.8]["params"]
+crossing_80 = exp.recall_agg[exp.recall_agg["recall"] > 0.8]["params"]
 print("These params are good enough reaching more than 80 recall:")
 for p in crossing_80:
     print("    ", p)
-
 
 print("\n\nRecall lower than 80 (at ef=150):")
 df_print(exp.recall_lower_80())
 
 print("\n\nRecall greater than 80:")
 df_print(exp.recall_greater_80())
-
-print("\n\nRecall greater than 80, multithreaded:")
-df_print(exp.recall_greater_80_multi_threaded())
-
-print("\n\nRecall greater than 80, singlethreaded:")
-df_print(exp.recall_greater_80_single_threaded())
-
-print("\n\nRecall greater than 80, compare single and multi threaded:")
-df_compare = exp.recall_greater_80_compare()
-df_print(df_compare)
-print("\n\nRecall greater than 80, compare single and multi threaded where both have been executed:")
-df_print(df_compare[df_compare["both"] > 1])
-
-MODEL_KIND_COLOR = {
-    "Ensemble": "green",
-    "RNNGraph": "blue",
-    "Hnsw": "red",
-    "Stitching": "orange",
-}
-
-MODEL_KIND_NAME = {
-    "Ensemble": "VP-Tree Ensemble",
-    "RNNGraph": "Relative NN-Descent",
-    "Hnsw": "HNSW",
-    "Stitching": "Stitching",
-}
-
 
 print("\n\nFor all runs that have been performed multiple times, validate that the differences are not large:")
 df = exp.a10m.df
@@ -240,17 +299,23 @@ df.sort_values(by="params",inplace=True)
 df_print(df)
 
 
-print("\n\nRecall Increase for each param combination over ef 30..150:")
-df_print(exp.ef_to_recall)
+print("\n\nRecall aggregated by threaded:")
+df_print(exp.recall_agg_by_threaded)
+
+print("\n\nRecall aggregated by threaded for the FINAL models:")
+df_print(exp.id_models)
+
+latex_table_for_id_models_single_threaded(exp)
+latex_table_for_id_models_multi_threaded(exp)
+
+# print("\n\nRecall Increase for each param combination over ef 30..150:")
+# df_print(exp.ef_to_recall)
 
 # df = df.pivot(index=["params"], columns="ef")
 # df_print(df)
 # df_print(exp.pivoted[exp.pivoted[("count", 30)] > 1])
 
 params_and_ef_filtered = exp.params_and_ef[exp.params_and_ef["params"].isin(crossing_80) & (exp.params_and_ef["search_ms"] < 6)]
-# print(params_and_ef_filtered)
-# params_and_ef_filtered = exp.params_and_ef
-
 
 # fig, axs = plt.subplots(1, 2, figsize=(8.4, 2.5))
 # axs[0].grid(axis="y")
@@ -262,7 +327,6 @@ params_and_ef_filtered = exp.params_and_ef[exp.params_and_ef["params"].isin(cros
 # axs[0].set_xlabel("ef")
 # axs[0].set_ylabel("Recall")
 # axs[0].set_xticks([30,60,90,120,150])
-
 # for params in params_and_ef_filtered["params"].unique():
 #     subdf = params_and_ef_filtered[params_and_ef_filtered["params"] == params]
 #     kind: str = str(subdf["model_kind"].iloc[0])
@@ -271,7 +335,6 @@ params_and_ef_filtered = exp.params_and_ef[exp.params_and_ef["params"].isin(cros
 # axs[1].set_xlabel("ef")
 # axs[1].set_xticks([30,60,90,120,150])
 # axs[1].set_ylabel("Search time (ms)")
-
 # handles, labels = axs[0].get_legend_handles_labels()
 # labels = [MODEL_KIND_NAME[l] for l in labels]
 # by_label = dict(zip(labels, handles))
