@@ -24,6 +24,7 @@ impl Distance {
 pub type DistanceFn = fn(&[Float], &[Float]) -> Float;
 
 pub struct DistanceTracker {
+    #[cfg(not(feature = "no_ndc_tracking"))]
     num_calculations: AtomicUsize,
     f: DistanceFn,
 }
@@ -31,6 +32,7 @@ pub struct DistanceTracker {
 impl DistanceTracker {
     pub fn new(f: Distance) -> Self {
         DistanceTracker {
+            #[cfg(not(feature = "no_ndc_tracking"))]
             num_calculations: AtomicUsize::new(0),
             f: f.to_fn(),
         }
@@ -39,7 +41,10 @@ impl DistanceTracker {
     pub fn reset(&mut self) {}
 
     pub fn num_calculations(&self) -> usize {
-        self.num_calculations.load(Ordering::SeqCst)
+        #[cfg(not(feature = "no_ndc_tracking"))]
+        return self.num_calculations.load(Ordering::SeqCst);
+        #[cfg(feature = "no_ndc_tracking")]
+        return 0;
     }
 
     #[inline(always)]

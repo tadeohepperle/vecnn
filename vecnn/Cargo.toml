@@ -3,9 +3,9 @@ name = "vecnn"
 version = { workspace = true }
 edition = "2021"
 [features]
-default = []         # "tracking", "no_ndc_tracking"
+default = ["no_ndc_tracking"] # "tracking", "no_ndc_tracking"
 tracking = []
-no_ndc_tracking = [] # "ndc" = number of distance calculations. Saves the atomic fetch_add instructions on the DistanceTracker.
+no_ndc_tracking = []          # "ndc" = number of distance calculations. Saves the atomic fetch_add instructions on the DistanceTracker.
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
