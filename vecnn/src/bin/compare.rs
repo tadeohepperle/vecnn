@@ -103,7 +103,7 @@ fn main() {
             // ),
             ModelParams::VpTreeEnsemble(
                 EnsembleParams {
-                    n_vp_trees: 2,
+                    n_vp_trees: 4,
                     max_chunk_size: 256,
                     same_chunk_m_max: 10,
                     m_max: 20,

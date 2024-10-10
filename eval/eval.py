@@ -450,7 +450,7 @@ model_params: list[ModelParams] = [
     # HnswParams("jpboth", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
     # HnswParams("vecnn", threaded=False, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
     # HnswParams("jpboth", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
-    HnswParams("hnswlib", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
+    # HnswParams("hnswlib", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
     # HnswParams("faiss", threaded=True, level_norm=0.3, ef_construction=20, m_max=20, m_max_0=40),
     # VpTreeParams(n_candidates  = 0, threaded=False),
     # RNNGraphParams(outer_loops=3, inner_loops=3, m_initial=40, m_pruned=40),
@@ -463,7 +463,7 @@ model_params: list[ModelParams] = [
     # HnswParams("vecnn", threaded=True, level_norm=0.3, ef_construction=60, m_max=20, m_max_0=40),
     # HnswParams("vecnn", threaded=False, level_norm=0.3, ef_construction=60, m_max=20, m_max_0=40),
     
-    # EnsembleParams(threaded=True, n_vp_trees=6, max_chunk_size=256, same_chunk_m_max=10, m_max=40, m_max_0=40, level_norm = 0.0),
+    EnsembleParams(threaded=True, n_vp_trees=6, max_chunk_size=256, same_chunk_m_max=10, m_max=40, m_max_0=40, level_norm = 0.0),
     # EnsembleParams(threaded=True, n_vp_trees=7, max_chunk_size=256, same_chunk_m_max=10, m_max=40, m_max_0=40, level_norm = 0.0),
     # EnsembleParams(threaded=True, n_vp_trees=8, max_chunk_size=256, same_chunk_m_max=10, m_max=40, m_max_0=40, level_norm = 0.0),
     # EnsembleParams(threaded=True, n_vp_trees=9, max_chunk_size=256, same_chunk_m_max=10, m_max=40, m_max_0=40, level_norm = 0.0),

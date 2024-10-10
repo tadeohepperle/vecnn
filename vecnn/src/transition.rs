@@ -1,5 +1,6 @@
 use ahash::{HashMap, HashMapExt, HashSet};
 use core::f32;
+use ndarray::linalg::Dot;
 use std::{
     cell::UnsafeCell,
     collections::BinaryHeap,
@@ -317,7 +318,7 @@ fn fill_hnsw_layer_by_vp_tree_ensemble(
     };
 
     let mut brute_force_buffers = if params.strategy == EnsembleStrategy::BruteForceKNN {
-        EnsembleBruteForceBuffers::new(max_chunk_size, same_chunk_m_max)
+        EnsembleBruteForceBuffers::new(max_chunk_size, same_chunk_m_max, data.dims())
     } else {
         EnsembleBruteForceBuffers::new_uninit() // ignored anyway
     };
@@ -432,7 +433,7 @@ fn fill_hnsw_layer_by_vp_tree_ensemble_threaded_by_vp_tree(
             &mut rng,
             params.n_candidates,
         );
-        let mut tls = EnsembleBruteForceBuffers::new(max_chunk_size, same_chunk_m_max);
+        let mut tls = EnsembleBruteForceBuffers::new(max_chunk_size, same_chunk_m_max, data.dims());
         for chunk in chunks.iter() {
             let chunk_size = chunk.range.len();
             let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
@@ -859,30 +860,36 @@ struct EnsembleBruteForceBuffers {
     chunk_dst_mat: Vec<f32>,
     chunk_neighbors_memory: SlicesMemory<DistAnd<usize>>,
     chunk_neighbors: Vec<SliceBinaryHeap<'static, DistAnd<usize>>>,
+    // copy chunk data into this, to have better memory locality when calculating chunk_size * (chunk_size-1) distances
+    chunk_data: Vec<f32>,
 }
 
 impl EnsembleBruteForceBuffers {
-    fn new_uninit() -> Self {
+    const fn new_uninit() -> Self {
         Self {
             chunk_dst_mat: vec![],
             chunk_neighbors_memory: SlicesMemory::new_uninit(),
             chunk_neighbors: vec![],
+            chunk_data: vec![],
         }
     }
 
-    fn new(max_chunk_size: usize, same_chunk_m_max: usize) -> Self {
+    fn new(max_chunk_size: usize, same_chunk_m_max: usize, dimensions: usize) -> Self {
         let (memory, neighbors) =
             slice_binary_heap_arena::<DistAnd<usize>>(max_chunk_size, same_chunk_m_max);
         Self {
             chunk_dst_mat: vec![0.0; max_chunk_size * max_chunk_size],
             chunk_neighbors_memory: memory,
             chunk_neighbors: neighbors,
+            chunk_data: vec![0.0; max_chunk_size * dimensions],
         }
     }
 
-    fn init(&mut self, max_chunk_size: usize, same_chunk_m_max: usize) {
+    fn init(&mut self, max_chunk_size: usize, same_chunk_m_max: usize, dims: usize) {
         self.chunk_dst_mat.clear();
         self.chunk_dst_mat.reserve(max_chunk_size * max_chunk_size);
+        self.chunk_data.clear();
+        self.chunk_data.reserve(max_chunk_size * dims);
         // for _ in 0..(max_chunk_size * max_chunk_size) {
         //     self.chunk_dst_mat.push(0.0);
         // }
@@ -909,7 +916,7 @@ impl EnsembleBruteForceBuffers {
 }
 
 thread_local! {
-    static ENSEMPLE_BRUTE_FORCE_TLS:UnsafeCell<EnsembleBruteForceBuffers> = const {UnsafeCell::new(EnsembleBruteForceBuffers{chunk_dst_mat:vec![],chunk_neighbors_memory:SlicesMemory::new_uninit(), chunk_neighbors: vec![] })};
+    static ENSEMPLE_BRUTE_FORCE_TLS:UnsafeCell<EnsembleBruteForceBuffers> = const {UnsafeCell::new(EnsembleBruteForceBuffers::new_uninit())};
 }
 
 fn ensemble_brute_force_buffers_tls() -> &'static mut EnsembleBruteForceBuffers {
@@ -942,15 +949,30 @@ fn connect_vp_tree_chunk_and_update_neighbors_in_hnsw_brute_force<'task, 'total>
     // heavy_work_dummy_task();
     // return;
     let chunk_size = chunk_nodes.len();
-    buffers.init(chunk_size, same_chunk_m_max);
-    let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
+    let dims = data.dims();
+    buffers.init(chunk_size, same_chunk_m_max, dims);
 
-    // calculate distances between all the nodes in this chunk. (clearing chunk_dst_mat not necessary, because everything relevant should be overwritten).
+    // copy over data into local buffer:
+
     for i in 0..chunk_size {
         if_tracking!(Tracking.pt_meta(chunk_nodes[i].id as usize).chunk = Tracking.current_chunk);
+        unsafe {
+            let data = data.get(chunk_nodes.get_unchecked(i).id as usize);
+            let dst: *mut f32 = buffers.chunk_data.as_mut_ptr().add(dims * i);
+            std::ptr::copy_nonoverlapping(data.as_ptr(), dst, dims);
+        }
+    }
+    unsafe { buffers.chunk_data.set_len(chunk_size * dims) };
+    // let mat = unsafe { ndarray::ArrayView2::<f32>::from_shape_ptr((chunk_size, dims), buffers.chunk_data.as_ptr()) };
+    // mat.dot(mat.tras)
+
+    let chunk_dst_mat_idx = |i: usize, j: usize| i + j * chunk_size;
+    let get_vector = |i: usize| -> &[f32] { &buffers.chunk_data[i * dims..(i + 1) * dims] };
+    // calculate distances between all the nodes in this chunk. (clearing chunk_dst_mat not necessary, because everything relevant should be overwritten).
+    for i in 0..chunk_size {
+        let i_data = get_vector(i);
         for j in i + 1..chunk_size {
-            let i_data = data.get(chunk_nodes[i].id as usize);
-            let j_data = data.get(chunk_nodes[j].id as usize);
+            let j_data = get_vector(j);
             let dist = distance.distance(i_data, j_data);
             buffers.chunk_dst_mat[chunk_dst_mat_idx(i, j)] = dist;
             buffers.chunk_dst_mat[chunk_dst_mat_idx(j, i)] = dist;
@@ -971,7 +993,6 @@ fn connect_vp_tree_chunk_and_update_neighbors_in_hnsw_brute_force<'task, 'total>
     }
 
     // merge the neighbors of the vp-tree in with the hnsw layer:
-
     for i in 0..chunk_size {
         let i_idx_in_hnsw = chunk_nodes[i].idx_in_hnsw_layer as usize;
         let i_neighbors: &mut SliceBinaryHeap<'_, DistAnd<usize>> = &mut buffers.chunk_neighbors[i];

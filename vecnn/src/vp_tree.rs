@@ -230,7 +230,7 @@ impl VpTree {
 
 #[inline(always)]
 fn first_element_idx_of_second_part(len: usize) -> usize {
-    (len - 1) / 2
+    (len - 1) / 2 // todo: 64 chunk negative side % 64 ==0
 }
 
 #[inline(always)]

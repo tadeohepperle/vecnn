@@ -3,7 +3,7 @@ name = "vecnn"
 version = { workspace = true }
 edition = "2021"
 [features]
-default = ["no_ndc_tracking"] # "tracking", "no_ndc_tracking"
+default = ["no_ndc_tracking"] # "tracking", "no_ndc_tracking" 
 tracking = []
 no_ndc_tracking = []          # "ndc" = number of distance calculations. Saves the atomic fetch_add instructions on the DistanceTracker.
 
@@ -23,6 +23,7 @@ strum = { version = "0.26.3", features = ["derive"] }
 threadpool = "1.8.1"
 core_affinity = "0.8.1"
 parking_lot = "0.12.3"
+ndarray = "0.16.1"
 
 [dev-dependencies]
 criterion = "0.5"

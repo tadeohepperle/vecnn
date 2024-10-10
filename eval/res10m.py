@@ -56,6 +56,7 @@ MODEL_IDENTIFIERS = [
     ("RustCv60", "Hnsw_rustcv {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3}"),
     ("Faiss60", "Hnsw_faiss {ef_constr: 60, m_max: 20, m_max0: 40, level_norm: 0.3}"),
 ]
+IDENTIFIER_TO_MODEL_KIND = {i: model_kind(p) for i, p in MODEL_IDENTIFIERS}
 MODEL_IDENTIFIER_NAMES = [i for i, p in MODEL_IDENTIFIERS]
 PARAMS_TO_IDENTIFIER = {p: i for i, p in MODEL_IDENTIFIERS}
 
@@ -75,7 +76,10 @@ MODEL_KIND_NAME = {
 # SECTION: read and shape the data
 # /////////////////////////////////////////////////////////////////////////////
 
-
+COMPARE_SAME_EF = 100 # recall reached at ef 60, for other comparision mode
+RECALL_EF_COL = f"recall_ef{COMPARE_SAME_EF}"
+SEARCH_MS_EF_COL = f"search_ms_ef{COMPARE_SAME_EF}"
+MIN_RECALL = 0.8
 class TenMExperiments:
     a10m: Experiment
     params_and_ef: pd.DataFrame
@@ -102,7 +106,7 @@ class TenMExperiments:
         df_print(self.recall_agg)
 
     def __init__(self):
-        a10m = thesis_exp("a10m")
+        a10m = thesis_exp("a10m_filtered")
         a10m.df["count"] = 1
         efs = a10m.df["ef"].unique()
         params = a10m.df["params"].unique()
@@ -145,8 +149,9 @@ class TenMExperiments:
         recall_agg["recall"] = 0
         recall_agg["search_ms"] = 0
         recall_agg["search_ndc"] = 0
+        recall_agg[RECALL_EF_COL] = 0
+        recall_agg[SEARCH_MS_EF_COL] = 0
         
-        MIN_RECALL = 0.8
         for i, row in recall_agg.iterrows():
             params_str = row['params'].iloc[0] # completely retarded, but this is how you access the string stored in the column 
             # find the ef where recall is > 0.8
@@ -156,20 +161,27 @@ class TenMExperiments:
             last_search_ms = 0
             last_search_ndc = 0
             last_count = 0
+            min_recall_reached : bool = False
             for j, s in searches.iterrows():
                 assert s["ef"] > last_ef
-                last_ef = s["ef"]
-                last_count = s["count"]
-                last_search_ms = s["search_ms"]
-                last_search_ndc = s["search_ndc"]
-                last_recall = s["search_recall"]
+                if s["ef"] == COMPARE_SAME_EF:
+                    recall_agg.at[i, RECALL_EF_COL] = s["search_recall"]
+                    recall_agg.at[i, SEARCH_MS_EF_COL] = s["search_ms"]
+                if not min_recall_reached:
+                    last_ef = s["ef"]
+                    last_count = s["count"]
+                    last_search_ms = s["search_ms"]
+                    last_recall = s["search_recall"]
+                    # last_search_ndc = s["search_ndc"]
                 if s["search_recall"] > MIN_RECALL:
-                    break
+                    min_recall_reached = True
+                
             recall_agg.at[i, "count"] = last_count   
             recall_agg.at[i, "ef"] = last_ef
             recall_agg.at[i, "recall"] = last_recall
             recall_agg.at[i, "search_ms"] = last_search_ms
-            recall_agg.at[i, "search_ndc"] = last_search_ndc
+            # recall_agg.at[i, "search_ndc"] = last_search_ndc
+            
         self.a10m = a10m
         self.ef_to_recall = ef_to_recall
         self.ef_to_search_ms = ef_to_search_ms
@@ -195,8 +207,11 @@ class TenMExperiments:
             objs[params_str][prefix + "_build_secs"] = row["build_secs"].iloc[0]
             objs[params_str][prefix + "_search_ms"] = row["search_ms"].iloc[0]
             objs[params_str][prefix + "_ef"] = row["ef"].iloc[0]
+            objs[params_str][prefix + "_" + RECALL_EF_COL] = row[RECALL_EF_COL].iloc[0]
+            objs[params_str][prefix + "_" + SEARCH_MS_EF_COL] = row[SEARCH_MS_EF_COL].iloc[0]
+
         objs_list = [v for k,v in objs.items()]
-        agg_by_treaded_colums = ["params", "both", "threaded_build_secs", "threaded_search_ms", "threaded_recall", "threaded_ef", "threaded_cnt", "single_build_secs", "single_search_ms", "single_recall", "single_ef",  "single_cnt",]
+        agg_by_treaded_colums = ["params", "both", "threaded_build_secs", "threaded_search_ms", "threaded_recall", "threaded_ef", "threaded_cnt", "single_build_secs", "single_search_ms", "single_recall", "single_ef",  "single_cnt", f"threaded_{RECALL_EF_COL}", f"threaded_{SEARCH_MS_EF_COL}", f"single_{RECALL_EF_COL}", f"single_{SEARCH_MS_EF_COL}",]
         self.recall_agg_by_threaded = pd.DataFrame(objs_list, columns=agg_by_treaded_colums)
         self.recall_agg_by_threaded["threaded_cnt"] = self.recall_agg_by_threaded["threaded_cnt"].fillna(0).astype(int)
         self.recall_agg_by_threaded["single_cnt"] = self.recall_agg_by_threaded["single_cnt"].fillna(0).astype(int)
@@ -228,16 +243,17 @@ def convert_seconds(seconds):
 
 def id_models_latex_df(exp: TenMExperiments, single: bool) -> pd.DataFrame:
     st = "single" if single else "threaded"
-    df = exp.id_models[["identifier", f"{st}_build_secs", f"{st}_ef", f"{st}_recall", f"{st}_search_ms"]]
-    df.rename(columns={"identifier": "identifier", f"{st}_build_secs": "build_time", f"{st}_ef": "ef", f"{st}_recall": "recall", f"{st}_search_ms": "search_ms"}, inplace=True)
+    df = exp.id_models[["identifier", f"{st}_build_secs", f"{st}_ef", f"{st}_recall", f"{st}_search_ms", f"{st}_{RECALL_EF_COL}", f"{st}_{SEARCH_MS_EF_COL}"]]
+    df.rename(columns={"identifier": "identifier", f"{st}_build_secs": "build_time", f"{st}_ef": "ef", f"{st}_recall": "recall", f"{st}_search_ms": "search_ms", f"{st}_{RECALL_EF_COL}": RECALL_EF_COL, f"{st}_{SEARCH_MS_EF_COL}": SEARCH_MS_EF_COL}, inplace=True)
     df['identifier'] = pd.Categorical(df['identifier'], categories=MODEL_IDENTIFIER_NAMES, ordered=True)
     df = df[~df["build_time"].isna()]
     df.sort_values(by="identifier",inplace=True) 
     df[["h","m","s"]] = df["build_time"].apply(convert_seconds).apply(pd.Series)
-    df["identifier"] = df["identifier"].apply(lambda x: f"\emph{{{x}}}")
+    
     df["recall"] = df["recall"].round(3)
+    df[RECALL_EF_COL] = df[RECALL_EF_COL].round(3)
+    df["search_ms"] = df["search_ms"].round(3)
     df["search_rank"] = df["search_ms"].rank(ascending=True).astype(int)
-    df["search_ms"] = df["search_ms"].round(3).apply(lambda x: f"{x:.3f}ms")
     # add a rank column based on build time
     df["rank"] = df["build_time"].rank(ascending=True).astype(int)
     df["ef"] = df["ef"].astype(int)
@@ -245,15 +261,33 @@ def id_models_latex_df(exp: TenMExperiments, single: bool) -> pd.DataFrame:
 def latex_table_for_id_models_single_threaded(exp: TenMExperiments):
     df = id_models_latex_df(exp, single=True)
     df = df[["identifier", "h", "m", "s", "rank", "ef", "recall", "search_ms", "search_rank"]]
+    df["search_ms"] = df["search_ms"].round(3).apply(lambda x: f"{x:.3f}ms")
+    df["identifier"] = df["identifier"].apply(lambda x: f"\emph{{{x}}}")
     df.to_latex("./tables/a10m_id_models_single.tex", index=False, escape=False, header=False, float_format="%.3f")
     df_print(df)
 
 def latex_table_for_id_models_multi_threaded(exp: TenMExperiments):
     df = id_models_latex_df(exp, single=False)
     df_single = id_models_latex_df(exp, single=True)
+    df["search_ms"] = df["search_ms"].round(3).apply(lambda x: f"{x:.3f}ms")
+    df["identifier"] = df["identifier"].apply(lambda x: f"\emph{{{x}}}")
     df["speedup"] = (df_single["build_time"] / df["build_time"]).apply(lambda x: "-" if pd.isna(x) else f"{x:.1f}x")
     df = df[["identifier", "m", "s", "speedup","rank",  "ef", "recall", "search_ms", "search_rank"]]
     df.to_latex("./tables/a10m_id_models_threaded.tex", index=False, escape=False, header=False, float_format="%.3f")
+    df_print(df)
+
+
+def latex_table_for_id_models_multi_threaded_fixed_ef(exp: TenMExperiments):
+    df = id_models_latex_df(exp, single=False).copy()
+    df_single = id_models_latex_df(exp, single=True)
+    df["search_ms"] = df["search_ms"].round(3).apply(lambda x: f"{x:.3f}ms")
+    df["identifier"] = df["identifier"].apply(lambda x: f"\emph{{{x}}}")
+    df["speedup"] = (df_single["build_time"] / df["build_time"]).apply(lambda x: "-" if pd.isna(x) else f"{x:.1f}x")
+    df["search_ms_rank"] = df[SEARCH_MS_EF_COL].rank(ascending=True).astype(int)
+    df["recall_rank"] = df[RECALL_EF_COL].rank(ascending=False).astype(int)
+    df = df[["identifier", "m", "s", "speedup", "rank", RECALL_EF_COL, "recall_rank", SEARCH_MS_EF_COL, "search_ms_rank"]]
+
+    df.to_latex("./tables/a10m_id_models_threaded_by_fixed_ef.tex", index=False, escape=False, header=False, float_format="%.3f")
     df_print(df)
 
 def df_data_to_latex(df: pd.DataFrame, file_name: str):
@@ -307,6 +341,30 @@ df_print(exp.id_models)
 
 latex_table_for_id_models_single_threaded(exp)
 latex_table_for_id_models_multi_threaded(exp)
+latex_table_for_id_models_multi_threaded_fixed_ef(exp)
+
+df = id_models_latex_df(exp, single=True)
+df["model_kind"] = df["identifier"].map(IDENTIFIER_TO_MODEL_KIND)
+print(df)
+
+plt.scatter(df["build_time"]/60, df["search_ms"], color=df["model_kind"].map(MODEL_KIND_COLOR))
+plt.xlim(left=0)
+plt.ylim(bottom=0)
+plt.xlabel("Build time (minutes)")
+plt.ylabel("Search time (ms)")
+plt.savefig("../../writing/images/a10m_build_vs_search_single.pdf", bbox_inches='tight',pad_inches = 0.1, dpi = 300)
+# plt.legend()
+plt.show()
+
+# plt.barh(df["identifier"], df["build_time"]/60,label = df["model_kind"], color=df["model_kind"].map(MODEL_KIND_COLOR))
+# plt.gca().invert_yaxis()
+# plt.xlabel("Build time (minutes)")
+# plt.show()
+
+# plt.barh(df["identifier"], df["recall_ef100"], label = df["model_kind"], color=df["model_kind"].map(MODEL_KIND_COLOR))
+# plt.gca().invert_yaxis()
+# plt.xlabel("Recall at ef=100")
+# plt.show()
 
 # print("\n\nRecall Increase for each param combination over ef 30..150:")
 # df_print(exp.ef_to_recall)
@@ -317,30 +375,30 @@ latex_table_for_id_models_multi_threaded(exp)
 
 params_and_ef_filtered = exp.params_and_ef[exp.params_and_ef["params"].isin(crossing_80) & (exp.params_and_ef["search_ms"] < 6)]
 
-# fig, axs = plt.subplots(1, 2, figsize=(8.4, 2.5))
-# axs[0].grid(axis="y")
-# for params in params_and_ef_filtered["params"].unique():
-#     subdf = params_and_ef_filtered[params_and_ef_filtered["params"] == params]
-#     kind: str = str(subdf["model_kind"].iloc[0])
-#     axs[0].plot(subdf["ef"], subdf["search_recall"], color=MODEL_KIND_COLOR[kind], label=kind, alpha=0.5)
-#     axs[0].scatter(subdf["ef"], subdf["search_recall"], label=kind, color=MODEL_KIND_COLOR[kind], alpha=0.5)
-# axs[0].set_xlabel("ef")
-# axs[0].set_ylabel("Recall")
-# axs[0].set_xticks([30,60,90,120,150])
-# for params in params_and_ef_filtered["params"].unique():
-#     subdf = params_and_ef_filtered[params_and_ef_filtered["params"] == params]
-#     kind: str = str(subdf["model_kind"].iloc[0])
-#     axs[1].plot(subdf["ef"], subdf["search_ms"], color=MODEL_KIND_COLOR[kind], label=kind, alpha=0.5)
-#     axs[1].scatter(subdf["ef"], subdf["search_ms"], label=kind, color=MODEL_KIND_COLOR[kind], alpha=0.5)
-# axs[1].set_xlabel("ef")
-# axs[1].set_xticks([30,60,90,120,150])
-# axs[1].set_ylabel("Search time (ms)")
-# handles, labels = axs[0].get_legend_handles_labels()
-# labels = [MODEL_KIND_NAME[l] for l in labels]
-# by_label = dict(zip(labels, handles))
-# fig.legend(by_label.values(), by_label.keys(), loc='upper center', ncol=4)
-# plt.subplots_adjust(top=0.8)
-# save_plot("a10m_recall_and_search_ms_by_kind", tight = False)
+fig, axs = plt.subplots(1, 2, figsize=(8.4, 2.5))
+axs[0].grid(axis="y")
+for params in params_and_ef_filtered["params"].unique():
+    subdf = params_and_ef_filtered[params_and_ef_filtered["params"] == params]
+    kind: str = str(subdf["model_kind"].iloc[0])
+    axs[0].plot(subdf["ef"], subdf["search_recall"], color=MODEL_KIND_COLOR[kind], label=kind, alpha=0.5)
+    axs[0].scatter(subdf["ef"], subdf["search_recall"], label=kind, color=MODEL_KIND_COLOR[kind], alpha=0.5)
+axs[0].set_xlabel("ef")
+axs[0].set_ylabel("Recall")
+axs[0].set_xticks([30,60,90,120,150])
+for params in params_and_ef_filtered["params"].unique():
+    subdf = params_and_ef_filtered[params_and_ef_filtered["params"] == params]
+    kind: str = str(subdf["model_kind"].iloc[0])
+    axs[1].plot(subdf["ef"], subdf["search_ms"], color=MODEL_KIND_COLOR[kind], label=kind, alpha=0.5)
+    axs[1].scatter(subdf["ef"], subdf["search_ms"], label=kind, color=MODEL_KIND_COLOR[kind], alpha=0.5)
+axs[1].set_xlabel("ef")
+axs[1].set_xticks([30,60,90,120,150])
+axs[1].set_ylabel("Search time (ms)")
+handles, labels = axs[0].get_legend_handles_labels()
+labels = [MODEL_KIND_NAME[l] for l in labels]
+by_label = dict(zip(labels, handles))
+fig.legend(by_label.values(), by_label.keys(), loc='upper center', ncol=4)
+plt.subplots_adjust(top=0.8)
+save_plot("a10m_recall_and_search_ms_by_kind", tight = False)
 
 
 # for kind in ["Ensemble", "RNNGraph", "Hnsw"]:

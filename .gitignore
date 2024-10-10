@@ -13,3 +13,4 @@
 /vecnn/perf.data.old
 perf.data
 /vecnnpy/*.bin
+/vecnn/flamegraph.svg
