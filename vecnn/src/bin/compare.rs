@@ -104,16 +104,19 @@ fn main() {
             ModelParams::VpTreeEnsemble(
                 EnsembleParams {
                     n_vp_trees: 4,
-                    max_chunk_size: 256,
+                    max_chunk_size: 1024,
                     same_chunk_m_max: 10,
                     m_max: 20,
                     m_max_0: 40,
                     level_norm: 0.0,
                     distance: Dot,
-                    strategy: EnsembleStrategy::BruteForceKNN,
+                    strategy: EnsembleStrategy::RNNDescent {
+                        o_loops: 2,
+                        i_loops: 3,
+                    },
                     n_candidates: 0,
                 },
-                true,
+                false,
             ),
         ],
         search_params: vec![SearchParams {

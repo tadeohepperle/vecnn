@@ -653,16 +653,34 @@ fn connect_vp_tree_chunk_and_update_neighbors_in_hnsw_rnn_descent<'task, 'total>
     inner_loops: usize,
     outer_loops: usize,
 ) {
+    const SEED: u64 = 42;
+    let chunk_size = chunk_nodes.len();
+    let dims = data.dims();
+
+    // copy data over to a local buffer, to reduce the random accesses:
+    let mut chunk_data: Vec<f32> = Vec::with_capacity(chunk_size * dims); // opt: if necessary can also be moved to TLS to remove this allocation. Let's see first if its relevant
+    unsafe {
+        chunk_data.set_len(chunk_size * dims);
+    }
+    for i in 0..chunk_size {
+        let i_id = chunk_nodes[i].id as usize;
+        let i_data = data.get(i_id);
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                i_data.as_ptr(),
+                chunk_data.as_mut_ptr().add(i * dims),
+                dims,
+            )
+        };
+    }
     let distance_idx_to_idx = |idx_a: usize, idx_b: usize| -> f32 {
-        let id_a = chunk_nodes[idx_a].id as usize;
-        let id_b = chunk_nodes[idx_b].id as usize;
-        let data_a = data.get(id_a);
-        let data_b = data.get(id_b);
+        let data_a =
+            unsafe { std::slice::from_raw_parts(chunk_data.as_ptr().add(idx_a * dims), dims) };
+        let data_b =
+            unsafe { std::slice::from_raw_parts(chunk_data.as_ptr().add(idx_b * dims), dims) };
         distance.distance(data_a, data_b)
     };
 
-    const SEED: u64 = 42;
-    let chunk_size = chunk_nodes.len();
     crate::relative_nn_descent::construct_relative_nn_graph(
         RNNGraphParams {
             outer_loops,
