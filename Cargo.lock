@@ -1281,6 +1281,7 @@ dependencies = [
  "core_affinity",
  "criterion",
  "heapless",
+ "matrixmultiply",
  "nanoserde",
  "ndarray 0.16.1",
  "num-traits",

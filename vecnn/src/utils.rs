@@ -581,3 +581,49 @@ mod binary_heap {
         }
     }
 }
+
+// see the private function ndarray::mat_mul_general in impl_linalg.rs
+//
+// lhs should be len x dim
+// rhs should be dim x len
+// res should be len x len
+pub(crate) fn mat_mul_f32(
+    lhs: &ndarray::ArrayView2<'_, f32>,
+    rhs: &ndarray::ArrayView2<'_, f32>,
+    res: &mut ndarray::ArrayViewMut2<'_, f32>,
+) {
+    // m and n are number of rows (so number of elements in chunk)
+    // k is the number of dimensions.
+    let ((m, k), (k2, n), (mr, mr2)) = (lhs.dim(), rhs.dim(), res.dim());
+    assert_eq!(m, n);
+    assert_eq!(k, k2);
+    assert_eq!(m, mr);
+    assert_eq!(m, mr2);
+
+    // common parameters for gemm
+    let ap = lhs.as_ptr();
+    let bp = rhs.as_ptr();
+    let cp = res.as_mut_ptr();
+    let (rsc, csc) = (res.strides()[0], res.strides()[1]);
+
+    let alpha: f32 = 1.0;
+    let beta: f32 = 0.0;
+    unsafe {
+        matrixmultiply::sgemm(
+            m,
+            k,
+            n,
+            alpha,
+            ap as *const _,
+            lhs.strides()[0],
+            lhs.strides()[1],
+            bp as *const _,
+            rhs.strides()[0],
+            rhs.strides()[1],
+            beta,
+            cp as *mut _,
+            rsc,
+            csc,
+        );
+    }
+}

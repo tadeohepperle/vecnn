@@ -541,7 +541,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
                         strategy: EnsembleStrategy::BruteForceKNN,
                         n_candidates: 0,
                     },
-                    false,
+                    true,
                 )],
                 search_params: search_params(),
                 random_seeds: false,

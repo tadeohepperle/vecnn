@@ -24,6 +24,8 @@ threadpool = "1.8.1"
 core_affinity = "0.8.1"
 parking_lot = "0.12.3"
 ndarray = "0.16.1"
+matrixmultiply = { version = "0.3.2", features = ["cgemm"], default-features = false } # used by ndarray as well, but ndarray does not expose the matrixmultiply::sgemm function we need
+
 
 [dev-dependencies]
 criterion = "0.5"
