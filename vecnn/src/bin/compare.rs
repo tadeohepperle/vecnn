@@ -174,6 +174,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
         // _stitching_effect_of_max_chunk_size(),
         // _stitching_effect_of_multi_ef(),
         // _stitching_effect_of_m_max(),
+        _stitching_effect_of_same_chunk_m_max(),
     ]);
     return res;
 
@@ -265,7 +266,8 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
     }
     fn _hnsw_effect_of_ef_construction() -> ExperimentSetup {
         let ef_construction: Vec<usize> = vec![
-            30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200,
+            10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190,
+            200,
         ];
         ExperimentSetup {
             n: N_100K,
@@ -287,7 +289,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
                 .collect(),
             search_params: search_params(),
             random_seeds: false,
-            repeats: 1,
+            repeats: 5,
             title: "exp_hnsw_effect_of_ef_construction",
         }
     }
@@ -341,6 +343,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
     fn _hnsw_effect_of_n() -> Vec<ExperimentSetup> {
         return n_log_steps_per_magnitude(N_10K, N_10M, 5)
             .into_iter()
+            .rev()
             .map(|n| ExperimentSetup {
                 n,
                 n_queries: N_10K,
@@ -494,12 +497,13 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
     fn _rnn_effect_of_n() -> Vec<ExperimentSetup> {
         return n_log_steps_per_magnitude(N_10K, N_10M, 5)
             .into_iter()
+            .rev()
             .map(|n| ExperimentSetup {
                 n,
                 n_queries: N_10K,
                 params: vec![ModelParams::RNNGraph(
                     RNNGraphParams {
-                        inner_loops: 4,
+                        inner_loops: 3,
                         outer_loops: 3,
                         max_neighbors_after_reverse_pruning: 40,
                         initial_neighbors: 40,
@@ -508,7 +512,7 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
                     false,
                 )],
                 search_params: search_params(),
-                random_seeds: false,
+                random_seeds: true,
                 repeats: 1,
                 title: "exp_rnn_effect_of_n",
             })
@@ -803,6 +807,35 @@ fn final_experiment_collection() -> Vec<ExperimentSetup> {
             random_seeds: false,
             repeats: 1,
             title: "exp_stitching_effect_of_fraction",
+        }
+    }
+
+    fn _stitching_effect_of_same_chunk_m_max() -> ExperimentSetup {
+        ExperimentSetup {
+            n: N_100K,
+            n_queries: N_10K,
+            params: (4usize..=40usize)
+                .step_by(2)
+                .into_iter()
+                .map(|same_chunk_m_max| {
+                    ModelParams::Stitching(StitchingParams {
+                        max_chunk_size: 256,
+                        same_chunk_m_max,
+                        neg_fraction: 0.6,
+                        keep_fraction: 0.0,
+                        m_max: 40,
+                        x_or_ef: 10,
+                        only_n_chunks: None,
+                        distance: Dot,
+                        stitch_mode: StitchMode::DontStarveXXSearch,
+                        n_candidates: 0,
+                    })
+                })
+                .collect(),
+            search_params: search_params(),
+            random_seeds: false,
+            repeats: 1,
+            title: "exp_stitching_effect_of_same_chunk_m_max",
         }
     }
     fn _stitching_effect_of_m_max() -> ExperimentSetup {

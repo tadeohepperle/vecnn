@@ -1,31 +1,21 @@
 import pandas as pd
 from squasher import Experiment
-
+from results_utils import *
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import random
 plt.rcParams["font.family"] = ["Linux Libertine O", "sans-serif"]
 plt.rcParams["text.usetex"] = True
 plt.rcParams["mathtext.fontset"] = "cm"
 plt.rc('axes', axisbelow=True)
 plt.rcParams["font.size"] = 12
 
-def thesis_exp(prefix: str, name: str |None = None) -> Experiment:
-    if name is None:
-        name = prefix
-    return Experiment("./thesis_experiments/" + prefix, name = name)
-def df_print(df: pd.DataFrame):
-    with pd.option_context('display.max_rows', 1000, 'display.max_columns', 1000, "display.width",1000, "display.max_colwidth", 1000):
-        print(df)
-def save_plot(name: str, tight : bool = True):
-    if tight:
-        plt.tight_layout()
-    plt.savefig("../../writing/images/" + name + ".pdf", bbox_inches='tight',pad_inches = 0.1, dpi = 200)
-    plt.clf()
 def model_name(params_str: str) -> str:
     for prefix in ["Ensemble", "RNNGraph", "Hnsw_faiss", "Hnsw_hnswlib", "Hnsw_rustcv", "Hnsw_jpboth", "Hnsw_vecnn", "Stitching"]:
         if params_str.startswith(prefix):
             return prefix
     return "unknown"
+
 def model_kind(params_str: str) -> str:
     if params_str.startswith("Ensemble"):
         return "Ensemble"
@@ -38,13 +28,18 @@ def model_kind(params_str: str) -> str:
     return "unknown"
 
 MODEL_IDENTIFIERS = [
-    ("Ensemble6", "Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40}"),
-    ("Ensemble10", "Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 40, m_max0: 40}"),
+    ("Ensemble6", "Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 20, m_max0: 40}"),
     ("Ensemble6Layered", "Ensemble {level_norm: 0.3, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 20, m_max0: 40}"),
-    ("Ensemble6Rnn", "Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 10, m_max: 40, m_max0: 40, rnn_inner_loops: 3, rnn_outer_loops: 2}"),
-    ("Ensemble10Rnn", "Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 10, m_max: 40, m_max0: 40, rnn_inner_loops: 3, rnn_outer_loops: 2}"),
+    ("Ensemble10", "Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 256, same_chunk_m_max: 10, m_max: 20, m_max0: 40}"),
+    ("Ensemble6Rnn", "Ensemble {level_norm: 0.0, n_vp_trees: 6, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 10, m_max: 20, m_max0: 40, rnn_inner_loops: 3, rnn_outer_loops: 2}"),
+    ("Ensemble10Rnn", "Ensemble {level_norm: 0.0, n_vp_trees: 10, n_candidates: 0, max_chunk_size: 1024, same_chunk_m_max: 10, m_max: 20, m_max0: 40, rnn_inner_loops: 3, rnn_outer_loops: 2}"),
     ("RnnDescent2x3", "RNNGraph {outer_loops: 2, inner_loops: 3, m_pruned: 40, m_initial: 40}"),
     ("RnnDescent3x3", "RNNGraph {outer_loops: 3, inner_loops: 3, m_pruned: 40, m_initial: 40}"),
+    ("Hnsw30", "Hnsw_vecnn {ef_constr: 30, m_max: 20, m_max0: 40, level_norm: 0.3}"),
+    ("Hnswlib30", "Hnsw_hnswlib {ef_constr: 30, m_max: 20, m_max0: 40, level_norm: 0.3}"),
+    ("JpBoth30", "Hnsw_jpboth {ef_constr: 30, m_max: 20, m_max0: 40, level_norm: 0.3}"),
+    ("RustCv30", "Hnsw_rustcv {ef_constr: 30, m_max: 20, m_max0: 40, level_norm: 0.3}"),
+    ("Faiss30", "Hnsw_faiss {ef_constr: 30, m_max: 20, m_max0: 40, level_norm: 0.3}"),
     ("Hnsw40", "Hnsw_vecnn {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3}"),
     ("Hnswlib40", "Hnsw_hnswlib {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3}"),
     ("JpBoth40", "Hnsw_jpboth {ef_constr: 40, m_max: 20, m_max0: 40, level_norm: 0.3}"),
@@ -280,13 +275,16 @@ def latex_table_for_id_models_multi_threaded(exp: TenMExperiments):
 def latex_table_for_id_models_multi_threaded_fixed_ef(exp: TenMExperiments):
     df = id_models_latex_df(exp, single=False).copy()
     df_single = id_models_latex_df(exp, single=True)
-    df["search_ms"] = df["search_ms"].round(3).apply(lambda x: f"{x:.3f}ms")
+    df[SEARCH_MS_EF_COL] = df[SEARCH_MS_EF_COL].round(3).apply(lambda x: f"{x:.3f}ms")
     df["identifier"] = df["identifier"].apply(lambda x: f"\emph{{{x}}}")
-    df["speedup"] = (df_single["build_time"] / df["build_time"]).apply(lambda x: "-" if pd.isna(x) else f"{x:.1f}x")
+    # df["speedup"] = (df_single["build_time"] / df["build_time"]).apply(lambda x: "-" if pd.isna(x) else f"{x:.1f}x")
     df["search_ms_rank"] = df[SEARCH_MS_EF_COL].rank(ascending=True).astype(int)
     df["recall_rank"] = df[RECALL_EF_COL].rank(ascending=False).astype(int)
-    df = df[["identifier", "m", "s", "speedup", "rank", RECALL_EF_COL, "recall_rank", SEARCH_MS_EF_COL, "search_ms_rank"]]
-
+    df = df[["identifier", "m", "s", "rank", RECALL_EF_COL, "recall_rank", SEARCH_MS_EF_COL, "search_ms_rank"]]
+    df["rank_sum"] = df["recall_rank"] + df["search_ms_rank"] + df["rank"]
+    df["rank_sum"] = (df["rank_sum"] - df["rank_sum"].min()) / (df["rank_sum"].max() - df["rank_sum"].min())
+    df["rank_sum"] = (1.0 -df["rank_sum"]).round(2).apply(lambda x: f"{x:.2f}")
+    
     df.to_latex("./tables/a10m_id_models_threaded_by_fixed_ef.tex", index=False, escape=False, header=False, float_format="%.3f")
     df_print(df)
 
@@ -345,20 +343,73 @@ latex_table_for_id_models_multi_threaded_fixed_ef(exp)
 
 df = id_models_latex_df(exp, single=True)
 df["model_kind"] = df["identifier"].map(IDENTIFIER_TO_MODEL_KIND)
-print(df)
 
-plt.scatter(df["build_time"]/60, df["search_ms"], color=df["model_kind"].map(MODEL_KIND_COLOR))
+
+dfm = id_models_latex_df(exp, single=False)
+dfm["model_kind"] = dfm["identifier"].map(IDENTIFIER_TO_MODEL_KIND)
+
+
+
+
+
+fig, axs = plt.subplots(1, 2, figsize=(8.4, 4.5), sharey=True)  # Share y-axis
+set_page_fract(2)
+axs[0].barh(df["identifier"], df["build_time"]/60, label=df["model_kind"], color=df["model_kind"].map(MODEL_KIND_COLOR))
+axs[0].invert_yaxis()
+axs[0].invert_xaxis()
+axs[0].yaxis.set_label_position("right") 
+axs[0].yaxis.tick_right()               
+axs[0].set_xlabel("Single-threaded build time (m)")
+axs[1].barh(dfm["identifier"], dfm["build_time"]/60, label=dfm["model_kind"], color=dfm["model_kind"].map(MODEL_KIND_COLOR))
+axs[1].invert_yaxis()
+axs[1].set_xlabel("Multi-threaded build time (m)")
+fig.tight_layout(pad=0.4)
+fig.savefig("../../writing/images/a10m_build_time.pdf", bbox_inches='tight', pad_inches=0.1, dpi=300) #
+
+
+dfm_no_faiss = dfm.copy()
+dfm_no_faiss = dfm_no_faiss[(dfm_no_faiss["search_ms"] < 8) & (dfm_no_faiss["recall"] >= 0.8)]
+print("dfm:")
+df_print(dfm)
+df_print(dfm_no_faiss)
+
+set_page_fract(1)
+# plt.rcParams["font.size"] = 10
+# plt.scatter(dfm_no_faiss["build_time"]/60, dfm_no_faiss["search_ms_ef100"], c=dfm_no_faiss["recall_ef100"])
+plt.scatter(dfm_no_faiss["build_time"]/60, dfm_no_faiss["search_ms"], color=dfm_no_faiss["model_kind"].map(MODEL_KIND_COLOR))
 plt.xlim(left=0)
 plt.ylim(bottom=0)
+plt.xticks(range(0, 15, 1))
 plt.xlabel("Build time (minutes)")
 plt.ylabel("Search time (ms)")
-plt.savefig("../../writing/images/a10m_build_vs_search_single.pdf", bbox_inches='tight',pad_inches = 0.1, dpi = 300)
-# plt.legend()
-plt.show()
 
-# plt.barh(df["identifier"], df["build_time"]/60,label = df["model_kind"], color=df["model_kind"].map(MODEL_KIND_COLOR))
-# plt.gca().invert_yaxis()
-# plt.xlabel("Build time (minutes)")
+
+for row in dfm_no_faiss.itertuples():
+    build_mins = row.build_time/60
+    search_ms = row.search_ms
+    x_pos = build_mins
+    y_pos = search_ms
+    if row.model_kind == "Ensemble":
+        if "Layered" in row.identifier:
+            x_pos -= 0.4
+            y_pos += 0.2
+        elif row.identifier == "Ensemble6":
+            x_pos += 0.8
+            y_pos += 0.0
+        else:
+            x_pos += 0.3
+            y_pos += 0.1
+    if row.model_kind == "RNNGraph":
+        x_pos -= 3.0
+        y_pos -= 0.2
+    if row.model_kind == "Hnsw":
+        x_pos += 0.3
+        y_pos += 0.1
+    if row.identifier == "Hnsw30":
+        y_pos += 0.05
+    plt.annotate(row.identifier, (build_mins, search_ms), xytext=(x_pos, y_pos), arrowprops=dict(arrowstyle="->", connectionstyle="angle3"), fontsize=11 )
+
+plt.savefig("../../writing/images/a10m_multi_threaded_pareto.pdf", bbox_inches='tight',pad_inches = 0.1, dpi = 300)
 # plt.show()
 
 # plt.barh(df["identifier"], df["recall_ef100"], label = df["model_kind"], color=df["model_kind"].map(MODEL_KIND_COLOR))
@@ -374,22 +425,23 @@ plt.show()
 # df_print(exp.pivoted[exp.pivoted[("count", 30)] > 1])
 
 params_and_ef_filtered = exp.params_and_ef[exp.params_and_ef["params"].isin(crossing_80) & (exp.params_and_ef["search_ms"] < 6)]
-
 fig, axs = plt.subplots(1, 2, figsize=(8.4, 2.5))
 axs[0].grid(axis="y")
-for params in params_and_ef_filtered["params"].unique():
+unique_params = params_and_ef_filtered["params"].unique()
+# random.shuffle(unique_params)
+for params in unique_params:
     subdf = params_and_ef_filtered[params_and_ef_filtered["params"] == params]
     kind: str = str(subdf["model_kind"].iloc[0])
-    axs[0].plot(subdf["ef"], subdf["search_recall"], color=MODEL_KIND_COLOR[kind], label=kind, alpha=0.5)
-    axs[0].scatter(subdf["ef"], subdf["search_recall"], label=kind, color=MODEL_KIND_COLOR[kind], alpha=0.5)
+    axs[0].plot(subdf["ef"], subdf["search_recall"], color=MODEL_KIND_COLOR[kind], label=kind, alpha=0.4)
+    axs[0].scatter(subdf["ef"], subdf["search_recall"], label=kind, color=MODEL_KIND_COLOR[kind], alpha=0.4)
 axs[0].set_xlabel("ef")
 axs[0].set_ylabel("Recall")
 axs[0].set_xticks([30,60,90,120,150])
-for params in params_and_ef_filtered["params"].unique():
+for params in unique_params:
     subdf = params_and_ef_filtered[params_and_ef_filtered["params"] == params]
     kind: str = str(subdf["model_kind"].iloc[0])
-    axs[1].plot(subdf["ef"], subdf["search_ms"], color=MODEL_KIND_COLOR[kind], label=kind, alpha=0.5)
-    axs[1].scatter(subdf["ef"], subdf["search_ms"], label=kind, color=MODEL_KIND_COLOR[kind], alpha=0.5)
+    axs[1].plot(subdf["ef"], subdf["search_ms"], color=MODEL_KIND_COLOR[kind], label=kind, alpha=0.4)
+    axs[1].scatter(subdf["ef"], subdf["search_ms"], label=kind, color=MODEL_KIND_COLOR[kind], alpha=0.4)
 axs[1].set_xlabel("ef")
 axs[1].set_xticks([30,60,90,120,150])
 axs[1].set_ylabel("Search time (ms)")
