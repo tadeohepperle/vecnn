@@ -264,15 +264,15 @@ triptychon_plot(stitching_same_chunk_m_max.df, "same_chunk_m_max", "\emph{same\_
 
 ensemble_n_vp_trees = thesis_exp("exp_ensemble_effect_of_n_vp_trees")
 ensemble_n_vp_trees.print()
-# triptychon_plot(ensemble_n_vp_trees.df, "n_vp_trees", "\\texttt{n\_vp\_trees}", "ensemble_n_vp_trees")
+triptychon_plot(ensemble_n_vp_trees.df, "n_vp_trees", "\\emph{n\_vp\_trees}", "ensemble_n_vp_trees")
 
 ensemble_m_max = thesis_exp("exp_ensemble_effect_of_m_max")
 ensemble_m_max.print()
-# triptychon_plot(ensemble_m_max.df, "m_max", "\\texttt{m\_max}", "ensemble_m_max", recall_min= 40, recall_step=10)
+triptychon_plot(ensemble_m_max.df, "m_max", "\\emph{m\_max}", "ensemble_m_max", recall_min= 40, recall_step=10)
 
 ensemble_chunk_size = thesis_exp("exp_ensemble_effect_of_chunk_size")
 ensemble_chunk_size.print()
-# triptychon_plot(ensemble_chunk_size.df, "max_chunk_size", "maximum chunk size", "ensemble_chunk_size", recall_min= 80, recall_step=10)
+triptychon_plot(ensemble_chunk_size.df, "max_chunk_size", "maximum chunk size", "ensemble_chunk_size", recall_min= 80, recall_step=10)
 
 ensemble_same_chunk_m_max = thesis_exp("exp_ensemble_effect_of_same_chunk_m_max")
 ensemble_same_chunk_m_max.print()
@@ -281,7 +281,7 @@ triptychon_plot(ensemble_same_chunk_m_max.df, "same_chunk_m_max", "\emph{same\_c
 
 ensemble_level_norm = thesis_exp("exp_ensemble_effect_of_level_norm")
 ensemble_level_norm.print()
-triptychon_plot(ensemble_level_norm.df, "level_norm", "\\texttt{level\_norm}", "ensemble_level_norm")
+triptychon_plot(ensemble_level_norm.df, "level_norm", "\\emph{level\_norm}", "ensemble_level_norm")
 
 ensemble_rnn = thesis_exp("exp_ensemble_effect_of_brute_force_vs_rnn_smmax20").sort_by(["strategy", "o_loops", "max_chunk_size"])
 ensemble_rnn.df = ensemble_rnn.df.sort_values(by=[])

@@ -253,6 +253,7 @@ def id_models_latex_df(exp: TenMExperiments, single: bool) -> pd.DataFrame:
     df["rank"] = df["build_time"].rank(ascending=True).astype(int)
     df["ef"] = df["ef"].astype(int)
     return df
+
 def latex_table_for_id_models_single_threaded(exp: TenMExperiments):
     df = id_models_latex_df(exp, single=True)
     df = df[["identifier", "h", "m", "s", "rank", "ef", "recall", "search_ms", "search_rank"]]
