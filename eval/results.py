@@ -12,40 +12,59 @@ set_page_fract(2)
 
 hnsw_ef_search = thesis_exp("exp_hnsw_effect_of_ef_search", "hnsw_ef_search").filter("k", 30)
 hnsw_ef_search.print()
-plt.grid(axis="y")
-plt.plot(hnsw_ef_search.df["ef"], hnsw_ef_search.df["recall"])
-plt.scatter(hnsw_ef_search.df["ef"], hnsw_ef_search.df["recall"])
-plt.yticks([i/100 for i in range(85,101,5)])
-plt.xlabel("$ef$ (search)")
-plt.ylabel("Recall")
-save_plot("hnsw_search_ef_recall")
+# plt.grid(axis="y")
+# plt.plot(hnsw_ef_search.df["ef"], hnsw_ef_search.df["recall"])
+# plt.scatter(hnsw_ef_search.df["ef"], hnsw_ef_search.df["recall"])
+# plt.yticks([i/100 for i in range(85,101,5)])
+# plt.xlabel("$ef$ (search)")
+# plt.ylabel("Recall")
+# save_plot("hnsw_search_ef_recall")
 
-plt.grid(axis="y")
-plt.plot(hnsw_ef_search.df["ef"], hnsw_ef_search.df["time_ms"])
-plt.scatter(hnsw_ef_search.df["ef"], hnsw_ef_search.df["time_ms"])
-plt.xlabel("$ef$ (search)")
-plt.ylabel("Search time (ms)")
-save_plot("hnsw_search_ef_search_time")
+# plt.grid(axis="y")
+# plt.plot(hnsw_ef_search.df["ef"], hnsw_ef_search.df["time_ms"])
+# plt.scatter(hnsw_ef_search.df["ef"], hnsw_ef_search.df["time_ms"])
+# plt.xlabel("$ef$ (search)")
+# plt.ylabel("Search time (ms)")
+# save_plot("hnsw_search_ef_search_time")
+
+
+fig, axs = plt.subplots(1, 2, figsize=(8.4, 2.5))
+fig.subplots_adjust(wspace=0.6)
+axs[0].grid(axis="y")
+axs[0].plot(hnsw_ef_search.df["ef"], hnsw_ef_search.df["recall"])
+axs[0].scatter(hnsw_ef_search.df["ef"], hnsw_ef_search.df["recall"])
+axs[0].set_yticks([i/100 for i in range(85,101,5)])
+axs[0].set_xlabel("$ef$ (search)")
+axs[0].set_ylabel("Recall")
+axs[1].grid(axis="y")
+axs[1].plot(hnsw_ef_search.df["ef"], hnsw_ef_search.df["time_ms"])
+axs[1].scatter(hnsw_ef_search.df["ef"], hnsw_ef_search.df["time_ms"])
+axs[1].set_xlabel("$ef$ (search)")
+axs[1].set_ylabel("Search time (ms)")
+
+save_plot("hnsw_search_ef_both")
 
 rnn_start_candidates = thesis_exp("exp_rnn_effect_of_start_candidates")
 rnn_start_candidates.print()
 
-# plt.grid(axis="y")
-# plt.plot([1,2,3,4,5,6,7], rnn_start_candidates.df["recall"])
-# plt.scatter([1,2,3,4,5,6,7], rnn_start_candidates.df["recall"])
-# plt.xticks(ticks=[1,2,3,4,5,6,7], labels =[1,2,4,8,16,32,64])
-# plt.yticks([i/100 for i in range(95,99,1)])
-# plt.xlabel("Start candidates")
-# plt.ylabel("Recall")
-# save_plot("rnn_start_candidates_recall")
+fig, axs = plt.subplots(1, 2, figsize=(8.4, 2.5))
+fig.subplots_adjust(wspace=0.6)
+axs[0].grid(axis="y")
+axs[0].plot([1,2,3,4,5,6,7], rnn_start_candidates.df["recall"])
+axs[0].scatter([1,2,3,4,5,6,7], rnn_start_candidates.df["recall"])
+axs[0].set_xticks(ticks=[1,2,3,4,5,6,7], labels =[1,2,4,8,16,32,64])
+axs[0].set_yticks([i/100 for i in range(95,99,1)])
+axs[0].set_xlabel("Start candidates")
+axs[0].set_ylabel("Recall")
+axs[1].grid(axis="y")
+axs[1].plot([1,2,3,4,5,6,7], rnn_start_candidates.df["time_ms"])
+axs[1].scatter([1,2,3,4,5,6,7], rnn_start_candidates.df["time_ms"])
+axs[1].set_xticks( ticks=[1,2,3,4,5,6,7], labels =[1,2,4,8,16,32,64])
+axs[1].set_xlabel("Start candidates")
+axs[1].set_ylabel("Search time (ms)")
 
-# plt.grid(axis="y")
-# plt.plot([1,2,3,4,5,6,7], rnn_start_candidates.df["time_ms"])
-# plt.scatter([1,2,3,4,5,6,7], rnn_start_candidates.df["time_ms"])
-# plt.xticks( ticks=[1,2,3,4,5,6,7], labels =[1,2,4,8,16,32,64])
-# plt.xlabel("Start candidates")
-# plt.ylabel("Search time (ms)")
-# save_plot("rnn_start_candidates_search_time")
+save_plot("rnn_start_candidates_both")
+
 
 set_page_fract(3)
 
@@ -131,7 +150,9 @@ method_colors = {
 }
 stitching_fraction.df["stitch_mode"] = stitching_fraction.df["stitch_mode"].map(stitch_method_remap)
 
+Y_HEIGHT = 3.5
 set_page_fract(1)
+plt.figure(figsize=(8.4,3.6)) 
 # plot fraction against recall with group by stitch_mode:
 plt.grid(axis="y")
 for stitch_mode in stitching_fraction.df["stitch_mode"].unique():
@@ -141,27 +162,28 @@ for stitch_mode in stitching_fraction.df["stitch_mode"].unique():
 plt.xlabel("Fraction of negative half")
 plt.ylabel("Recall")
 plt.legend()
+
 save_plot( "stitching_fraction_recall")
-
-# plt.grid(axis="y")
-# for stitch_mode in stitching_fraction.df["stitch_mode"].unique():
-#     subdf = stitching_fraction.df[stitching_fraction.df["stitch_mode"] == stitch_mode]
-#     plt.plot(subdf["neg_fraction"], subdf["build_ms"]/1000, color = method_colors[stitch_mode])
-#     plt.scatter(subdf["neg_fraction"], subdf["build_ms"]/1000, label=stitch_mode, color = method_colors[stitch_mode])
-# plt.xlabel("Fraction of negative half")
-# plt.ylabel("Build time (s)")
+plt.figure(figsize=(8.4,3.4)) 
+plt.grid(axis="y")
+for stitch_mode in stitching_fraction.df["stitch_mode"].unique():
+    subdf = stitching_fraction.df[stitching_fraction.df["stitch_mode"] == stitch_mode]
+    plt.plot(subdf["neg_fraction"], subdf["build_ms"]/1000, color = method_colors[stitch_mode])
+    plt.scatter(subdf["neg_fraction"], subdf["build_ms"]/1000, label=stitch_mode, color = method_colors[stitch_mode])
+plt.xlabel("Fraction of negative half")
+plt.ylabel("Build time (s)")
+plt.legend()
+save_plot("stitching_fraction_build_time")
+plt.figure(figsize=(8.4,3.4)) 
+plt.grid(axis="y")
+for stitch_mode in stitching_fraction.df["stitch_mode"].unique():
+    subdf = stitching_fraction.df[stitching_fraction.df["stitch_mode"] == stitch_mode]
+    plt.plot(subdf["neg_fraction"], subdf["time_ms"], color = method_colors[stitch_mode])
+    plt.scatter(subdf["neg_fraction"], subdf["time_ms"], label=stitch_mode, color = method_colors[stitch_mode])
+plt.xlabel("Fraction of negative half")
+plt.ylabel("Search time (ms)")
 # plt.legend()
-# save_plot("stitching_fraction_build_time")
-
-# plt.grid(axis="y")
-# for stitch_mode in stitching_fraction.df["stitch_mode"].unique():
-#     subdf = stitching_fraction.df[stitching_fraction.df["stitch_mode"] == stitch_mode]
-#     plt.plot(subdf["neg_fraction"], subdf["time_ms"], color = method_colors[stitch_mode])
-#     plt.scatter(subdf["neg_fraction"], subdf["time_ms"], label=stitch_mode, color = method_colors[stitch_mode])
-# plt.xlabel("Fraction of negative half")
-# plt.ylabel("Search time (ms)")
-# plt.legend()
-# save_plot("stitching_fraction_search_time")
+save_plot("stitching_fraction_search_time")
 
 stitching_chunk_size = thesis_exp("exp_stitching_effect_of_max_chunk_size")
 stitching_chunk_size.df["stitch_mode"] = stitching_chunk_size.df["stitch_mode"].map(stitch_method_remap)

@@ -314,6 +314,7 @@ print("These params are good enough reaching more than 80 recall:")
 for p in crossing_80:
     print("    ", p)
 
+
 print("\n\nRecall lower than 80 (at ef=150):")
 df_print(exp.recall_lower_80())
 
@@ -349,9 +350,58 @@ df["model_kind"] = df["identifier"].map(IDENTIFIER_TO_MODEL_KIND)
 dfm = id_models_latex_df(exp, single=False)
 dfm["model_kind"] = dfm["identifier"].map(IDENTIFIER_TO_MODEL_KIND)
 
+order_multi = [
+       "Ensemble6",
+"Ensemble6Layered",
+      "Ensemble10",
+   "Ensemble10Rnn",
+    "Ensemble6Rnn",
+   "RnnDescent2x3",
+   "RnnDescent3x3",
+          "Hnswlib30",
+       "Hnswlib40",
+       "Hnswlib60",
+          "Hnsw30",
+          "Hnsw40",
+          "Hnsw60",
 
+         "Faiss30",
+         "Faiss40",
+         "Faiss60",
+        "JpBoth30",
+        "JpBoth40",
+        "JpBoth60",
+]
 
+order_single = [
+       "Ensemble6",
+"Ensemble6Layered",
+      "Ensemble10",
+   "Ensemble10Rnn",
+    "Ensemble6Rnn",
+   "RnnDescent2x3",
+   "RnnDescent3x3",
+   "Hnswlib30",
+       "Hnswlib40",
+       "Hnswlib60",
+          "Hnsw30",
+          "Hnsw40",
+          "Hnsw60",
+        "JpBoth30",
+        "JpBoth40",
+        "JpBoth60",
+        "RustCv30",
+        "RustCv40",
+        "RustCv60",
+]
 
+dfm.set_index("identifier", inplace=True)
+dfm = dfm.loc[order_multi]
+dfm.reset_index( inplace=True)
+
+df.set_index("identifier", inplace=True)
+df = df.loc[order_single]
+df.reset_index( inplace=True)
 
 fig, axs = plt.subplots(1, 2, figsize=(8.4, 4.5), sharey=True)  # Share y-axis
 set_page_fract(2)
@@ -433,16 +483,26 @@ unique_params = params_and_ef_filtered["params"].unique()
 for params in unique_params:
     subdf = params_and_ef_filtered[params_and_ef_filtered["params"] == params]
     kind: str = str(subdf["model_kind"].iloc[0])
-    axs[0].plot(subdf["ef"], subdf["search_recall"], color=MODEL_KIND_COLOR[kind], label=kind, alpha=0.4)
-    axs[0].scatter(subdf["ef"], subdf["search_recall"], label=kind, color=MODEL_KIND_COLOR[kind], alpha=0.4)
+    alpha = 0.4
+    if kind == "Stitching":
+        alpha = 0.8
+    elif kind == "Ensemble":
+        alpha = 0.6
+    axs[0].plot(subdf["ef"], subdf["search_recall"], color=MODEL_KIND_COLOR[kind], label=kind, alpha=alpha)
+    axs[0].scatter(subdf["ef"], subdf["search_recall"], label=kind, color=MODEL_KIND_COLOR[kind], alpha=alpha*0.7)
 axs[0].set_xlabel("ef")
 axs[0].set_ylabel("Recall")
 axs[0].set_xticks([30,60,90,120,150])
 for params in unique_params:
     subdf = params_and_ef_filtered[params_and_ef_filtered["params"] == params]
     kind: str = str(subdf["model_kind"].iloc[0])
-    axs[1].plot(subdf["ef"], subdf["search_ms"], color=MODEL_KIND_COLOR[kind], label=kind, alpha=0.4)
-    axs[1].scatter(subdf["ef"], subdf["search_ms"], label=kind, color=MODEL_KIND_COLOR[kind], alpha=0.4)
+    alpha = 0.4
+    if kind == "Stitching":
+        alpha = 0.8
+    elif kind == "Ensemble":
+        alpha = 0.6
+    axs[1].plot(subdf["ef"], subdf["search_ms"], color=MODEL_KIND_COLOR[kind], label=kind, alpha=alpha)
+    axs[1].scatter(subdf["ef"], subdf["search_ms"], label=kind, color=MODEL_KIND_COLOR[kind], alpha=alpha*0.7)
 axs[1].set_xlabel("ef")
 axs[1].set_xticks([30,60,90,120,150])
 axs[1].set_ylabel("Search time (ms)")
